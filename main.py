@@ -35,7 +35,7 @@ class AIHarness:
         self.cmd_registry.register("models", "List configured models and providers", self.cmd_models)
         self.cmd_registry.register("switch", "Switch active model (e.g., /switch llama3-openrouter)", self.cmd_switch)
         self.cmd_registry.register("clear", "Clear conversation context window", self.cmd_clear)
-        self.cmd_registry.register("context", "Display current context window content", self.cmd_context)
+        self.cmd_registry.register("context", "Display context window, tool schemas, and MCP status", self.cmd_context)
         self.cmd_registry.register("system", "Show or set system prompt (/system [text] or /system clear)", self.cmd_system)
         self.cmd_registry.register("tools", "Show tools or toggle tool context inclusion (/tools on|off)", self.cmd_tools)
         self.cmd_registry.register("mcps", "List available MCP servers and exposed tools (/mcps)", self.cmd_mcps)
@@ -85,7 +85,8 @@ class AIHarness:
         console.print("[yellow]Conversation context cleared (system prompt preserved).[/yellow]")
 
     async def cmd_context(self, args):
-        console.print(f"\n[bold green]Current Context Window ({len(self.messages)} messages):[/bold green]\n")
+        # 1. Messages / Conversation Window
+        console.print(f"\n[bold green]=== CONTEXT MESSAGES ({len(self.messages)} Messages) ===[/bold green]\n")
         for idx, msg in enumerate(self.messages):
             role = msg.get("role", "unknown")
             content = msg.get("content", "")
@@ -94,7 +95,7 @@ class AIHarness:
 
             header = f"[{idx}] Role: [bold yellow]{role}[/bold yellow]"
             if tool_call_id:
-                header += f" | ID: [dim]{tool_call_id}[/dim]"
+                header += f" | Tool Call ID: [dim]{tool_call_id}[/dim]"
 
             console.print(header)
 
@@ -106,6 +107,49 @@ class AIHarness:
                 console.print("  [dim]<empty>[/dim]")
 
             console.print()
+
+        # 2. Active Tool Schemas (Sent in API Request)
+        tools_state = "[bold green]ENABLED[/bold green]" if self.tools_enabled else "[bold red]DISABLED[/bold red]"
+        console.print(f"[bold green]=== ACTIVE TOOL SCHEMAS ({tools_state}) ===[/bold green]\n")
+        if self.tools_enabled:
+            schemas = self.tool_registry.get_schemas()
+            if schemas:
+                for s in schemas:
+                    fn = s.get("function", {})
+                    name = fn.get("name", "unnamed")
+                    desc = fn.get("description", "No description")
+                    params = fn.get("parameters", {}).get("properties", {})
+                    param_keys = ", ".join(params.keys()) if params else "none"
+                    console.print(f"• [bold yellow]{name}[/bold yellow]: {desc}")
+                    console.print(f"  [dim]Parameters: ({param_keys})[/dim]")
+            else:
+                console.print("  [dim]No tools currently registered.[/dim]")
+        else:
+            console.print("  [dim]Tools are disabled (/tools off). No schemas are sent to the model.[/dim]")
+        console.print()
+
+        # 3. Connected MCP Servers and Exposing Tools
+        console.print("[bold green]=== MCP SERVERS & TOOLS ===[/bold green]\n")
+        mcp_info = self.mcp_manager.get_server_info()
+        if mcp_info:
+            for name, details in mcp_info.items():
+                status = "[bold green]CONNECTED[/bold green]" if details["connected"] else "[bold red]DISCONNECTED[/bold red]"
+                cmd_str = f"{details['command']} {' '.join(details['args'])}" if details['command'] else "N/A"
+                console.print(f"• [bold yellow]{name}[/bold yellow] [{status}] — [dim]{cmd_str}[/dim]")
+                
+                tools = details.get("tools", [])
+                if tools:
+                    for t in tools:
+                        t_name = t.get("name", "unnamed")
+                        t_desc = t.get("description", "No description")
+                        t_props = t.get("inputSchema", {}).get("properties", {})
+                        t_args = ", ".join(t_props.keys()) if t_props else "none"
+                        console.print(f"    - [cyan]{t_name}[/cyan]: {t_desc} [dim]({t_args})[/dim]")
+                else:
+                    console.print("    [dim]No tools exposed.[/dim]")
+        else:
+            console.print("  [dim]No MCP servers configured in mcps.json.[/dim]")
+        console.print()
 
     async def cmd_system(self, args):
         sys_idx = next((i for i, m in enumerate(self.messages) if m.get("role") == "system"), None)

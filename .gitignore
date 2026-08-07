@@ -67,3 +67,6 @@ venv.bak/
 # OS
 .DS_Store
 Thumbs.db
+
+# MCP server SQLite database
+data.db
