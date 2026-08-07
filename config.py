@@ -19,6 +19,7 @@ class ModelConfig(BaseModel):
     name: str
     provider: str
     model_id: str
+    system_prompt: Optional[str] = "You are a helpful text-based AI assistant inside an interactive terminal CLI harness."
 
 
 class HarnessConfig(BaseModel):

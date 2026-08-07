@@ -35,27 +35,32 @@
     "gpt-4o": {
       "name": "GPT-4o",
       "provider": "openai",
-      "model_id": "gpt-4o"
+      "model_id": "gpt-4o",
+      "system_prompt": "You are GPT-4o, an advanced AI assistant inside an interactive terminal harness."
     },
     "llama3-groq": {
       "name": "Llama 3 70B (via Groq)",
       "provider": "groq",
-      "model_id": "llama-3.3-70b-versatile"
+      "model_id": "llama-3.3-70b-versatile",
+      "system_prompt": "You are Llama 3 70B running on Groq LPU acceleration, a fast and helpful AI assistant."
     },
     "llama3-openrouter": {
       "name": "Llama 3 70B (via OpenRouter)",
       "provider": "openrouter",
-      "model_id": "meta-llama/llama-3.3-70b-instruct"
+      "model_id": "meta-llama/llama-3.3-70b-instruct",
+      "system_prompt": "You are Llama 3 70B routed via OpenRouter, an intelligent AI assistant."
     },
     "llama3-ollama": {
       "name": "Llama 3 8B (Local Ollama)",
       "provider": "ollama",
-      "model_id": "llama3:latest"
+      "model_id": "llama3:latest",
+      "system_prompt": "You are a local Llama 3 model running offline via Ollama."
     },
     "gemma-4-e4b-lmstudio": {
       "name": "Gemma 4 E4B (Local LM Studio)",
       "provider": "lmstudio",
-      "model_id": "google/gemma-4-e4b"
+      "model_id": "google/gemma-4-e4b",
+      "system_prompt": "You are Gemma 4 E4B running locally via LM Studio, an intelligent AI assistant inside an interactive terminal harness."
     }
   }
 }
