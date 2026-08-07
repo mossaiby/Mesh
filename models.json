@@ -1,0 +1,61 @@
+{
+  "active_model": "gemma-4-e4b-lmstudio",
+  "providers": {
+    "openai": {
+      "name": "OpenAI Official",
+      "base_url": "https://api.openai.com/v1",
+      "api_key_env": "OPENAI_API_KEY"
+    },
+    "groq": {
+      "name": "Groq Cloud",
+      "base_url": "https://api.groq.com/openai/v1",
+      "api_key_env": "GROQ_API_KEY"
+    },
+    "openrouter": {
+      "name": "OpenRouter",
+      "base_url": "https://openrouter.ai/api/v1",
+      "api_key_env": "OPENROUTER_API_KEY",
+      "default_headers": {
+        "HTTP-Referer": "https://github.com/ai-harness",
+        "X-Title": "AI Harness CLI"
+      }
+    },
+    "ollama": {
+      "name": "Local Ollama",
+      "base_url": "http://localhost:11434/v1",
+      "api_key_env": "OLLAMA_API_KEY"
+    },
+    "lmstudio": {
+      "name": "Local LM Studio",
+      "base_url": "http://localhost:1234/v1",
+      "api_key_env": "LOCAL_API_KEY"
+    }
+  },
+  "models": {
+    "gpt-4o": {
+      "name": "GPT-4o",
+      "provider": "openai",
+      "model_id": "gpt-4o"
+    },
+    "llama3-groq": {
+      "name": "Llama 3 70B (via Groq)",
+      "provider": "groq",
+      "model_id": "llama-3.3-70b-versatile"
+    },
+    "llama3-openrouter": {
+      "name": "Llama 3 70B (via OpenRouter)",
+      "provider": "openrouter",
+      "model_id": "meta-llama/llama-3.3-70b-instruct"
+    },
+    "llama3-ollama": {
+      "name": "Llama 3 8B (Local Ollama)",
+      "provider": "ollama",
+      "model_id": "llama3:latest"
+    },
+    "gemma-4-e4b-lmstudio": {
+      "name": "Gemma 4 E4B (Local LM Studio)",
+      "provider": "lmstudio",
+      "model_id": "google/gemma-4-e4b"
+    }
+  }
+}
