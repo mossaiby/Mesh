@@ -116,11 +116,12 @@ python main.py
 ## ⚙️ Configuration Files
 
 ### `models.json`
-Defines provider REST endpoints and model configurations, including model-specific system prompts.
+Defines provider REST endpoints and model configurations, plus a single global system prompt shared by every model. Mesh always talks to whichever model is active with the same base instructions - switching models (`/switch`) changes only the endpoint/model ID, never the assistant's persona or instructions. Use `/system` to view or temporarily override the prompt for the current session.
 
 ```json
 {
   "active_model": "llama3-groq",
+  "system_prompt": "You are a helpful, intelligent AI assistant running inside Mesh, an interactive terminal CLI.",
   "providers": {
     "groq": {
       "name": "Groq Cloud",
@@ -137,14 +138,12 @@ Defines provider REST endpoints and model configurations, including model-specif
     "llama3-groq": {
       "name": "Llama 3 70B (Groq)",
       "provider": "groq",
-      "model_id": "llama-3.3-70b-versatile",
-      "system_prompt": "You are Llama 3 70B running on Groq acceleration, a fast AI assistant."
+      "model_id": "llama-3.3-70b-versatile"
     },
     "gemma-4-e4b-lmstudio": {
       "name": "Gemma 4 E4B (Local)",
       "provider": "lmstudio",
-      "model_id": "google/gemma-4-e4b",
-      "system_prompt": "You are Gemma 4 E4B running locally via LM Studio."
+      "model_id": "google/gemma-4-e4b"
     }
   }
 }
@@ -296,6 +295,7 @@ Mesh/
 - **Directory-permission misclassification**: `PermissionManager` used to guess "is this a directory?" from whether the path had a file suffix, which misclassified extensionless existing files (`Makefile`, `LICENSE`, `Dockerfile`, ...) as directories — approving "Always Allow" would add the *file itself* to the allow-list instead of its parent directory. Now uses `Path.is_dir()`.
 - **Web search title/snippet misalignment**: `web_search` matched result titles and snippets purely by their position in two independently-filtered lists, which could silently pair a title with the wrong snippet whenever unrelated links were filtered out. The link regex is now scoped to DuckDuckGo Lite's actual result-link anchors, and titles/snippets are paired by their original row index rather than by post-filter position.
 - **Inconsistent tool de-registration**: `SkillRegistry.set_skill_state` reached directly into `ToolRegistry`'s private `_tools` dict to remove a disabled skill's tools. Switched to the registry's public `unregister()` method.
+- **Consolidated system prompt**: Each model in `models.json` used to carry its own near-duplicate `system_prompt`. Replaced with a single global `system_prompt` on the top-level config, so the assistant's persona and instructions stay consistent across `/switch`, and there's one place to edit instead of one per model.
 
 ---
 

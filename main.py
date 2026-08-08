@@ -54,13 +54,11 @@ class Mesh:
         
         self.setup_defaults()
 
-        model_cfg, _ = self.config_mgr.get_active_model_and_provider()
-        self.update_system_message(model_cfg.system_prompt)
+        self.update_system_message(self.config_mgr.config.system_prompt)
 
     def update_system_message(self, base_prompt: str = None):
         if not base_prompt:
-            model_cfg, _ = self.config_mgr.get_active_model_and_provider()
-            base_prompt = model_cfg.system_prompt or "You are a helpful text-based AI assistant."
+            base_prompt = self.config_mgr.config.system_prompt or "You are a helpful text-based AI assistant."
 
         skill_instructions = self.skill_registry.get_combined_system_instructions()
         full_sys = base_prompt
@@ -236,7 +234,6 @@ class Mesh:
         try:
             self.config_mgr.set_active_model(selected_key)
             model_cfg, provider_cfg = self.config_mgr.get_active_model_and_provider()
-            self.update_system_message(model_cfg.system_prompt)
             console.print(f"[success]Switched active model to: [label]{selected_key}[/label] ({model_cfg.name} via {provider_cfg.name})[/success]")
         except Exception as e:
             console.print(f"[error]Error switching model: {e}[/error]")

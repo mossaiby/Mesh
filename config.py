@@ -19,11 +19,11 @@ class ModelConfig(BaseModel):
     name: str
     provider: str
     model_id: str
-    system_prompt: Optional[str] = "You are a helpful text-based AI assistant running inside Mesh, an interactive terminal CLI."
 
 
 class MeshConfig(BaseModel):
     active_model: str
+    system_prompt: str = "You are a helpful text-based AI assistant running inside Mesh, an interactive terminal CLI."
     providers: Dict[str, ProviderConfig] = Field(default_factory=dict)
     models: Dict[str, ModelConfig] = Field(default_factory=dict)
 
