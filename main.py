@@ -25,6 +25,7 @@ from tools.memory_tool import _load_memory, _save_memory
 from commands.registry import CommandRegistry
 from mcp.client import MCPManager
 from skills import SkillRegistry, PythonCodingSkill
+from compaction import compact_messages
 
 console = Console()
 
@@ -93,7 +94,7 @@ class AIHarness:
         self.cmd_registry.register("memory", "Manage key-value memories (/memory [save|get|delete|clear])", self.cmd_memory)
         self.cmd_registry.register("skills", "List available skills or enable/disable them (/skills [enable|disable] <name>)", self.cmd_skills)
         self.cmd_registry.register("tools", "Show tools or toggle tool context inclusion (/tools on|off)", self.cmd_tools)
-        self.cmd_registry.register("allowed_dirs", "List or add/remove allowed directories (/allowed_dirs [add|remove|clear] <path>)", self.cmd_allowed_dirs)
+        self.cmd_registry.register("dirs", "List or add/remove allowed directories (/dirs [add|remove|clear] <path>)", self.cmd_dirs)
         self.cmd_registry.register("mcps", "List/toggle MCP servers (/mcps [on|off] or /mcps [enable|disable] <server>)", self.cmd_mcps)
         self.cmd_registry.register("debug", "Toggle or set debug mode (/debug on|off)", self.cmd_debug)
         self.cmd_registry.register("exit", "Exit the AI Harness application", self.cmd_exit)
@@ -258,12 +259,12 @@ class AIHarness:
         else:
             console.print("[red]Usage: /skills enable <name> or /skills disable <name>[/red]")
 
-    async def cmd_allowed_dirs(self, args):
+    async def cmd_dirs(self, args):
         if not args:
             console.print("\n[bold green]Currently Allowed Directories:[/bold green]")
             for d in self.permission_manager.allowed_dirs:
                 console.print(f"  • [bold yellow]{d}[/bold yellow]")
-            console.print("\nUsage: [yellow]/allowed_dirs add <path>[/yellow] or [yellow]/allowed_dirs remove <path>[/yellow] or [yellow]/allowed_dirs clear[/yellow]\n")
+            console.print("\nUsage: [yellow]/dirs add <path>[/yellow] or [yellow]/dirs remove <path>[/yellow] or [yellow]/dirs clear[/yellow]\n")
             return
 
         action = args[0].lower()
@@ -282,10 +283,9 @@ class AIHarness:
             self.permission_manager.allowed_dirs = [str(os.getcwd())]
             console.print("[yellow]Reset allowed directories to Current Working Directory.[/yellow]")
         else:
-            console.print("[red]Usage: /allowed_dirs [add|remove|clear] <path>[/red]")
+            console.print("[red]Usage: /dirs [add|remove|clear] <path>[/red]")
 
     async def cmd_context(self, args):
-        # 1. Context Messages (Message [0] contains system prompt + skill instructions)
         console.print(f"\n[bold green]=== CONTEXT MESSAGES ({len(self.messages)} Messages) ===[/bold green]\n")
         for idx, msg in enumerate(self.messages):
             role = msg.get("role", "unknown")
@@ -308,7 +308,6 @@ class AIHarness:
 
             console.print()
 
-        # 2. Active Tool Schemas
         tools_state = "[bold green]ENABLED[/bold green]" if self.tools_enabled else "[bold red]DISABLED[/bold red]"
         console.print(f"[bold green]=== ACTIVE TOOL SCHEMAS ({tools_state}) ===[/bold green]\n")
         if self.tools_enabled:
@@ -328,7 +327,6 @@ class AIHarness:
             console.print("  [dim]Tools are disabled (/tools off). No schemas are sent to the model.[/dim]")
         console.print()
 
-        # 3. Connected MCP Servers and Tools
         global_mcp_str = "[bold green]ENABLED[/bold green]" if self.mcp_manager.global_enabled else "[bold red]DISABLED[/bold red]"
         console.print(f"[bold green]=== MCP SERVERS & TOOLS (Global MCP: {global_mcp_str}) ===[/bold green]\n")
         mcp_info = self.mcp_manager.get_server_info()
