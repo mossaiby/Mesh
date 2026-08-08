@@ -1,13 +1,14 @@
 from typing import AsyncGenerator, Dict, Any, Tuple
-from rich.console import Console, Group
+from rich.console import Group
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.text import Text
+from theme import console
 
 
 class StreamRenderer:
     def __init__(self):
-        self.console = Console()
+        self.console = console
 
     async def render_stream(
         self, 

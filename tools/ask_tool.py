@@ -1,12 +1,11 @@
 import asyncio
 import sys
 from typing import Dict, Any, List, Optional
-from rich.console import Console
 from rich.live import Live
 from rich.text import Text
 from tools.base import BaseTool
+from theme import console
 
-console = Console()
 
 
 def _read_single_key() -> str:
@@ -75,7 +74,7 @@ class AskUserTool(BaseTool):
     }
 
     async def execute(self, question: str, options: Optional[List[str]] = None, allow_custom: bool = True) -> Dict[str, Any]:
-        console.print(f"\n[bold yellow]❓ AI Decision Prompt:[/bold yellow] {question}")
+        console.print(f"\n[label]❓ AI Decision Prompt:[/label] {question}")
 
         # If no options provided, fallback to standard text input
         if not options:
@@ -95,7 +94,7 @@ class AskUserTool(BaseTool):
             lines = ["[dim]Use ↑/↓ Arrow Keys to navigate, Enter to select:[/dim]\n"]
             for idx, choice in enumerate(choices):
                 if idx == selected_idx:
-                    lines.append(f"  [bold cyan]❯ 🔘 {choice}[/bold cyan]")
+                    lines.append(f"  [accent]❯ 🔘 {choice}[/accent]")
                 else:
                     lines.append(f"    [dim]⚪ {choice}[/dim]")
             return Text.from_markup("\n".join(lines))
@@ -103,7 +102,7 @@ class AskUserTool(BaseTool):
         def interactive_menu() -> str:
             # Fallback for non-interactive / piped terminals
             if not sys.stdin.isatty():
-                console.print("[cyan]Options:[/cyan]")
+                console.print("[accent]Options:[/accent]")
                 for i, o in enumerate(choices, 1):
                     console.print(f"  {i}. {o}")
                 raw = input("Choice > ").strip()
@@ -132,10 +131,10 @@ class AskUserTool(BaseTool):
 
             selected_choice = choices[current_idx]
             if selected_choice == custom_marker:
-                console.print("[bold yellow]Custom Choice Selected:[/bold yellow]")
+                console.print("[label]Custom Choice Selected:[/label]")
                 return input("Custom Answer > ").strip()
             else:
-                console.print(f"[bold green]Selected:[/bold green] {selected_choice}")
+                console.print(f"[success]Selected:[/success] {selected_choice}")
                 return selected_choice
 
         loop = asyncio.get_running_loop()

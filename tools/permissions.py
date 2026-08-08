@@ -1,10 +1,9 @@
 import os
 from pathlib import Path
 from typing import List
-from rich.console import Console
 from tools.ask_tool import AskUserTool
+from theme import console
 
-console = Console()
 
 
 class PermissionManager:
@@ -42,7 +41,12 @@ class PermissionManager:
 
         resolved_target = str(Path(target_path).resolve())
         target_path_obj = Path(resolved_target)
-        target_dir = str(target_path_obj.parent if target_path_obj.suffix or not target_path_obj.exists() else target_path_obj)
+        # A target is treated as a directory only if it actually exists and is one.
+        # (Using a file's suffix as a stand-in for "is a directory" incorrectly
+        # classified extensionless existing files, e.g. Makefile/LICENSE/Dockerfile,
+        # as directories, causing "Always Allow" to add the file itself instead of
+        # its parent directory to the allow-list.)
+        target_dir = str(target_path_obj if target_path_obj.is_dir() else target_path_obj.parent)
 
         question = (
             f"Tool '{tool_name}' requested access to a path outside allowed directories:\n"
@@ -60,13 +64,13 @@ class PermissionManager:
 
         if choice.startswith("Always Allow"):
             self.add_dir(target_dir)
-            console.print(f"[bold green]Added '{target_dir}' to allowed directories.[/bold green]")
+            console.print(f"[success]Added '{target_dir}' to allowed directories.[/success]")
             return True
         elif choice == "Allow Once":
-            console.print(f"[yellow]Allowed access once for '{resolved_target}'.[/yellow]")
+            console.print(f"[warning]Allowed access once for '{resolved_target}'.[/warning]")
             return True
         else:
-            console.print(f"[red]Permission denied for '{resolved_target}'.[/red]")
+            console.print(f"[error]Permission denied for '{resolved_target}'.[/error]")
             return False
 
 

@@ -1,10 +1,9 @@
 import json
 from typing import Dict, Any, Optional
-from rich.console import Console
 from config import ConfigManager
 from providers.openai_provider import OpenAIProvider
+from theme import console
 
-console = Console()
 
 
 class SubAgentProxy:
@@ -39,7 +38,7 @@ class SubAgentProxy:
             return raw_str if (raw_str.startswith("{") or raw_str.startswith("[")) else json.dumps({"raw_output": raw_str})
 
         if self.debug_mode:
-            console.print(f"\n[bold magenta]🤖 [SUB-AGENT PROXY] Distilling '{tool_name}' output for intent:[/bold magenta] [italic]{intent}[/italic]")
+            console.print(f"\n[brand]🤖 [SUB-AGENT PROXY] Distilling '{tool_name}' output for intent:[/brand] [italic]{intent}[/italic]")
 
         messages = [
             {
@@ -79,22 +78,22 @@ class SubAgentProxy:
                     sub_reasoning += cval
                     if self.debug_mode:
                         if not printed_reasoning_header:
-                            console.print("\n[dim magenta]🧠 [SUB-AGENT REASONING]:[/dim magenta]")
+                            console.print("\n[brand]🧠 [SUB-AGENT REASONING]:[/brand]")
                             printed_reasoning_header = True
-                        console.print(f"[dim italic magenta]{cval}[/dim italic magenta]", end="")
+                        console.print(f"[brand italic]{cval}[/brand italic]", end="")
 
                 # 2. Sub-agent Content tokens
                 elif ctype == "content":
                     if printed_reasoning_header and self.debug_mode:
-                        console.print("\n[dim magenta]📝 [SUB-AGENT OUTPUT]:[/dim magenta]")
+                        console.print("\n[brand]📝 [SUB-AGENT OUTPUT]:[/brand]")
                         printed_reasoning_header = False
 
                     distilled += cval
                     if self.debug_mode:
-                        console.print(f"[dim magenta]{cval}[/dim magenta]", end="")
+                        console.print(f"[brand]{cval}[/brand]", end="")
 
             if self.debug_mode:
-                console.print("\n[bold magenta]🤖 [SUB-AGENT PROXY] Distillation Complete.[/bold magenta]\n")
+                console.print("\n[brand]🤖 [SUB-AGENT PROXY] Distillation Complete.[/brand]\n")
 
             if distilled.strip():
                 return json.dumps({
@@ -106,7 +105,7 @@ class SubAgentProxy:
             return raw_str if (raw_str.startswith("{") or raw_str.startswith("[")) else json.dumps({"raw_output": raw_str})
         except Exception as e:
             if self.debug_mode:
-                console.print(f"\n[bold red]🤖 [SUB-AGENT PROXY] Distillation Failed:[/bold red] {e}\n")
+                console.print(f"\n[error]🤖 [SUB-AGENT PROXY] Distillation Failed:[/error] {e}\n")
             return json.dumps({
                 "status": "partial_fallback",
                 "intent": intent,

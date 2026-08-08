@@ -58,8 +58,7 @@ class SkillRegistry:
             if enabled:
                 self.tool_registry.register(tool)
             else:
-                if tool.name in self.tool_registry._tools:
-                    del self.tool_registry._tools[tool.name]
+                self.tool_registry.unregister(tool.name)
         return True
 
     def get_combined_system_instructions(self) -> str:

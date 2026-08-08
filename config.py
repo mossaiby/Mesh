@@ -19,10 +19,10 @@ class ModelConfig(BaseModel):
     name: str
     provider: str
     model_id: str
-    system_prompt: Optional[str] = "You are a helpful text-based AI assistant inside an interactive terminal CLI harness."
+    system_prompt: Optional[str] = "You are a helpful text-based AI assistant running inside Mesh, an interactive terminal CLI."
 
 
-class HarnessConfig(BaseModel):
+class MeshConfig(BaseModel):
     active_model: str
     providers: Dict[str, ProviderConfig] = Field(default_factory=dict)
     models: Dict[str, ModelConfig] = Field(default_factory=dict)
@@ -31,14 +31,14 @@ class HarnessConfig(BaseModel):
 class ConfigManager:
     def __init__(self, filepath: str = "models.json"):
         self.filepath = filepath
-        self.config: HarnessConfig = self.load()
+        self.config: MeshConfig = self.load()
 
-    def load(self) -> HarnessConfig:
+    def load(self) -> MeshConfig:
         if not os.path.exists(self.filepath):
             raise FileNotFoundError(f"Configuration file {self.filepath} not found.")
         with open(self.filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return HarnessConfig(**data)
+        return MeshConfig(**data)
 
     def save(self) -> None:
         with open(self.filepath, "w", encoding="utf-8") as f:

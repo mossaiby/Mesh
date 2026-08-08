@@ -8,6 +8,7 @@ from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
 from tools.base import BaseTool
 from tools.registry import ToolRegistry
+from version import __version__
 
 
 class MCPServerConfig(BaseModel):
@@ -22,7 +23,7 @@ class MCPConfig(BaseModel):
 
 
 class MCPToolAdapter(BaseTool):
-    """Adapts a remote MCP tool into the local Harness BaseTool interface."""
+    """Adapts a remote MCP tool into Mesh's local BaseTool interface."""
     def __init__(self, server_name: str, name: str, description: str, parameters: Dict[str, Any], session):
         self.server_name = server_name
         self.name = name
@@ -90,7 +91,7 @@ class MCPClientSession:
             await self._send_request("initialize", {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": {"name": "AI-Harness", "version": "1.0.0"}
+                "clientInfo": {"name": "Mesh", "version": __version__}
             }, timeout=60.0)
 
             await self._send_notification("notifications/initialized", {})

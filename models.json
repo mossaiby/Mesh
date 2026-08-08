@@ -18,9 +18,9 @@
       "base_url": "https://openrouter.ai/api/v1",
       "api_key_env": "OPENROUTER_API_KEY",
       "default_headers": {
-        "HTTP-Referer": "https://github.com/ai-harness",
-        "X-Title": "Mesh AI Harness",
-        "X-Description": "An interactive terminal harness for AI models"
+        "HTTP-Referer": "https://github.com/mossaiby/Mesh",
+        "X-Title": "Mesh",
+        "X-Description": "Mesh - a modular, text-based AI CLI"
       }
     },
     "ollama": {
@@ -41,25 +41,25 @@
       "name": "Gemma 4 E4B",
       "provider": "lmstudio",
       "model_id": "google/gemma-4-e4b",
-      "system_prompt": "You are Gemma 4 E4B running locally via LM Studio, an intelligent AI assistant inside an interactive terminal harness."
+      "system_prompt": "You are Gemma 4 E4B running locally via LM Studio, an intelligent AI assistant running inside Mesh, an interactive terminal CLI."
     },
     "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic": {
       "name": "MiniCPM5 1B",
       "provider": "lmstudio",
       "model_id": "minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
-      "system_prompt": "You are MiniCPM 5 running locally via LM Studio, an intelligent AI assistant inside an interactive terminal harness."
+      "system_prompt": "You are MiniCPM 5 running locally via LM Studio, an intelligent AI assistant running inside Mesh, an interactive terminal CLI."
     },
     "openrouter:nvidia/nemotron-3-ultra-550b-a55b": {
       "name": "Nemotron 3 Ultra",
       "provider": "openrouter",
       "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
-      "system_prompt": "You are Nemotron 3 Ultra running remotely via openrouter.ai, an intelligent AI assistant inside an interactive terminal harness."
+      "system_prompt": "You are Nemotron 3 Ultra running remotely via openrouter.ai, an intelligent AI assistant running inside Mesh, an interactive terminal CLI."
     },
     "openrouter:nvidia/nemotron-3-super-120b-a12b": {
       "name": "Nemotron 3 Super",
       "provider": "openrouter",
       "model_id": "nvidia/nemotron-3-super-120b-a12b:free",
-      "system_prompt": "You are Nemotron 3 Super running remotely via openrouter.ai, an intelligent AI assistant inside an interactive terminal harness."
+      "system_prompt": "You are Nemotron 3 Super running remotely via openrouter.ai, an intelligent AI assistant running inside Mesh, an interactive terminal CLI."
     }
   }
 }

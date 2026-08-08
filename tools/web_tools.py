@@ -3,10 +3,9 @@ import urllib.parse
 from html import unescape
 from typing import Dict, Any, List, Optional
 import httpx
-from rich.console import Console
 from tools.base import BaseTool
+from theme import console
 
-console = Console()
 
 USER_AGENT = (
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -51,14 +50,26 @@ class WebSearchTool(BaseTool):
                 resp = await client.post(url, data=data, headers=headers)
                 html_text = resp.text
 
-            # Parse DuckDuckGo Lite HTML
-            link_matches = re.findall(r'<a[^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>', html_text, re.DOTALL)
+            # Parse DuckDuckGo Lite HTML. Scope the link regex to result-link
+            # anchors specifically (rather than every <a> tag on the page) so
+            # link_matches stays aligned, position-for-position, with
+            # snippet_matches -- otherwise unrelated anchors (nav, pagination,
+            # header) could shift the two lists out of sync and pair a title
+            # with the wrong snippet.
+            link_matches = re.findall(
+                r'<a[^>]*class=["\']result-link["\'][^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
+                html_text, re.DOTALL
+            )
             snippet_matches = re.findall(r'<td[^>]*class=["\']result-snippet["\'][^>]*>(.*?)</td>', html_text, re.DOTALL)
 
             valid_results: List[Dict[str, str]] = []
             seen_urls = set()
 
-            for url_str, raw_title in link_matches:
+            # Walk link_matches and snippet_matches together (they come from
+            # the same ordered sequence of result rows) so a title is always
+            # paired with the snippet from its own row, even if earlier rows
+            # get skipped as internal/duplicate links.
+            for orig_idx, (url_str, raw_title) in enumerate(link_matches):
                 # Extract clean target URL if wrapped in DuckDuckGo redirect
                 if "uddg=" in url_str:
                     parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url_str).query)
@@ -78,23 +89,23 @@ class WebSearchTool(BaseTool):
                 clean_title = unescape(re.sub(r'<[^>]+>', '', raw_title)).strip()
 
                 if clean_url and clean_title:
+                    snippet_text = ""
+                    if orig_idx < len(snippet_matches):
+                        snippet_text = unescape(re.sub(r'<[^>]+>', '', snippet_matches[orig_idx])).strip()
                     valid_results.append({
                         "title": clean_title,
-                        "url": clean_url
+                        "url": clean_url,
+                        "snippet": snippet_text
                     })
 
-            # Match snippets with filtered external result links
-            final_results: List[Dict[str, str]] = []
-            for idx, item in enumerate(valid_results[:limit]):
-                snippet_text = ""
-                if idx < len(snippet_matches):
-                    snippet_text = unescape(re.sub(r'<[^>]+>', '', snippet_matches[idx])).strip()
-
-                final_results.append({
+            final_results: List[Dict[str, str]] = [
+                {
                     "title": item["title"],
-                    "snippet": snippet_text or "No snippet available.",
+                    "snippet": item["snippet"] or "No snippet available.",
                     "url": item["url"]
-                })
+                }
+                for item in valid_results[:limit]
+            ]
 
             if not final_results:
                 return {

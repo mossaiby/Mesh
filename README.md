@@ -1,6 +1,8 @@
-# ⚡ Mesh AI Harness
+# ⚡ Mesh
 
-A modular, text-based AI CLI harness built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
+**v1.0.0**
+
+A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
 
 ---
 
@@ -20,6 +22,7 @@ A modular, text-based AI CLI harness built in Python. Designed for local and clo
 - **Directory Authorization & Security (`/dirs`)**: `PermissionManager` enforces directory boundaries. If a tool requests path access outside allowed directories, an interactive prompt asks the human user for access permission.
 - **Semantic Context Compaction (`/compact`)**: Summarizes older conversation context using the LLM without truncating system prompts or breaking active tool-call history pairs.
 - **Real-Time Token Streaming & CoT**: Live Markdown rendering with code syntax highlighting and toggleable Chain of Thought (CoT) reasoning displays (`/debug on|off`).
+- **Unified Theming**: A single shared, themed console (`theme.py`) applies one consistent, semantic color palette across every command, tool log, and prompt in the CLI.
 
 ---
 
@@ -31,7 +34,7 @@ A modular, text-based AI CLI harness built in Python. Designed for local and clo
                └────────────────────────────┬────────────────────────────┘
                                             │
                                   ┌─────────▼─────────┐
-                                  │   AI Harness CLI  │
+                                  │      Mesh CLI      │
                                   └─────────┬─────────┘
                                             │
         ┌───────────────────┬───────────────┼───────────────┬───────────────────┐
@@ -56,8 +59,8 @@ A modular, text-based AI CLI harness built in Python. Designed for local and clo
 Clone the repository and install dependencies:
 
 ```bash
-git clone https://github.com/your-username/mesh-ai-harness.git
-cd mesh-ai-harness
+git clone https://github.com/mossaiby/Mesh.git
+cd Mesh
 pip install -r requirements.txt
 ```
 
@@ -76,7 +79,7 @@ export OLLAMA_API_KEY="dummy"
 export LOCAL_API_KEY="dummy"
 ```
 
-### 4. Run the Harness
+### 4. Run Mesh
 
 ```bash
 python main.py
@@ -90,6 +93,7 @@ python main.py
 | :--- | :--- |
 | `/help` | List all available slash commands. |
 | `/status` | Display a detailed status overview of active models, tools, MCPs, skills, and memory. |
+| `/version` | Show the current Mesh version. |
 | `/models` | List all configured models and their provider endpoints. |
 | `/switch [key]` | Interactively switch models using arrow keys, or directly by model key. |
 | `/context` | Display conversation history, active tool schemas, and MCP statuses. |
@@ -198,9 +202,29 @@ When `/proxy on` is active:
 
 ---
 
+## 🎨 Unified Theming
+
+Mesh renders every command, prompt, and log line through a single shared, themed `rich.console.Console` instance defined in `theme.py`, instead of each module picking its own colors ad hoc. All output maps onto a small set of semantic styles:
+
+| Style | Meaning | Used for |
+| :--- | :--- | :--- |
+| `brand` | Mesh identity | Startup/shutdown banners |
+| `success` | Positive outcome | Enabled/connected states, successful operations |
+| `error` | Failure | Denials, disabled/disconnected states, exceptions |
+| `warning` | Caution | Hints, clears, destructive-ish actions |
+| `label` | Field name | Keys in `/status`, `/models`, `/dirs`, etc. |
+| `accent` | Highlight | Active selections, secondary emphasis |
+| `info` | Informational header | The assistant reply header |
+| `text` | Plain emphasis | Generic bolded values |
+| `muted` | De-emphasis | Secondary/contextual detail (maps to Rich's built-in `dim`) |
+
+Every module imports the shared instance — `from theme import console` — rather than instantiating its own `Console()`, so the palette can be changed in exactly one place (`theme.py`) and it updates everywhere consistently.
+
+---
+
 ## 🛡️ Security & Directory Permissions
 
-The harness includes a built-in `PermissionManager`. File tools (`read_file`, `write_file`, `edit_file`, `glob_files`, `run_shell_command`) validate paths against `/dirs`.
+Mesh includes a built-in `PermissionManager`. File tools (`read_file`, `write_file`, `edit_file`, `glob_files`, `run_shell_command`) validate paths against `/dirs`.
 
 If a tool attempts to access a path outside allowed directories, an interactive menu is displayed:
 
@@ -221,43 +245,57 @@ Use **`↑` / `↓` Arrow Keys** and **Enter** to make a selection.
 ## 📁 Project Structure
 
 ```text
-ai_harness/
+Mesh/
 ├── requirements.txt         # Project Python dependencies
-├── models.json              # Provider endpoints and model configurations
-├── mcps.json                # Model Context Protocol server definitions
-├── skills.json              # Declarative skills configuration
-├── memory.json              # Persistent key-value memory storage
-├── notes.md                 # Persistent Markdown notes
-├── config.py                # Configuration manager and Pydantic schemas
-├── subagent.py              # Sub-Agent Proxy distillation engine
-├── compaction.py            # Semantic context window compaction module
-├── main.py                  # Main CLI entry point and orchestration loop
+├── models.json               # Provider endpoints and model configurations
+├── mcps.json                 # Model Context Protocol server definitions
+├── skills.json                # Declarative skills configuration
+├── memory.json                # Persistent key-value memory storage
+├── notes.md                   # Persistent Markdown notes
+├── version.py                 # Single source of truth for the app version
+├── theme.py                   # Shared Rich theme & console instance
+├── config.py                  # Configuration manager and Pydantic schemas
+├── subagent.py                # Sub-Agent Proxy distillation engine
+├── compaction.py               # Semantic context window compaction module
+├── main.py                    # Main CLI entry point and orchestration loop
 ├── providers/
 │   ├── __init__.py
-│   └── openai_provider.py   # Async OpenAI-compatible client wrapper
+│   └── openai_provider.py     # Async OpenAI-compatible client wrapper
 ├── render/
 │   ├── __init__.py
-│   └── stream_renderer.py   # Rich Markdown & CoT streaming renderer
+│   └── stream_renderer.py     # Rich Markdown & CoT streaming renderer
 ├── tools/
-│   ├── __init__.py          # Tool exports
-│   ├── base.py              # BaseTool class with dynamic schema injection
-│   ├── registry.py          # Central tool execution and proxy dispatcher
-│   ├── permissions.py       # PermissionManager and directory authorization
-│   ├── native_tools.py      # File, glob, and shell command tools
-│   ├── web_tools.py         # Key-less web search (DDG) & web fetch tools
-│   ├── memory_tool.py       # Key-value memory tool
-│   ├── note_tool.py         # Markdown note manager tool
-│   ├── todo_tool.py         # Multi-step task tracking tool
-│   └── ask_tool.py          # Interactive human-in-the-loop decision tool
+│   ├── __init__.py            # Tool exports
+│   ├── base.py                # BaseTool class with dynamic schema injection
+│   ├── registry.py            # Central tool execution and proxy dispatcher
+│   ├── permissions.py         # PermissionManager and directory authorization
+│   ├── native_tools.py        # File, glob, and shell command tools
+│   ├── web_tools.py           # Key-less web search (DDG) & web fetch tools
+│   ├── memory_tool.py         # Key-value memory tool
+│   ├── note_tool.py           # Markdown note manager tool
+│   ├── todo_tool.py           # Multi-step task tracking tool
+│   └── ask_tool.py            # Interactive human-in-the-loop decision tool
 ├── commands/
 │   ├── __init__.py
-│   └── registry.py          # Slash command registry and dispatcher
+│   └── registry.py            # Slash command registry and dispatcher
+├── mcp/
+│   ├── __init__.py
+│   └── client.py               # Stdio JSON-RPC MCP client & manager
 └── skills/
     ├── __init__.py
-    ├── base.py              # Skill base class definition
-    ├── registry.py          # Skill manager and instruction composer
-    └── code_skill.py        # Python coding skill implementation
+    ├── base.py                 # Skill base class definition
+    ├── registry.py              # Skill manager and instruction composer
+    └── code_skill.py            # Python coding skill implementation
 ```
+
+---
+
+## 🩹 Changelog / Bug Fixes (v1.0.0)
+
+- **Missing `httpx` dependency**: `tools/web_tools.py` imports `httpx` for `web_search`/`web_fetch`, but it was never listed in `requirements.txt`, so a clean install would crash the first time either tool ran. Added to `requirements.txt`.
+- **Directory-permission misclassification**: `PermissionManager` used to guess "is this a directory?" from whether the path had a file suffix, which misclassified extensionless existing files (`Makefile`, `LICENSE`, `Dockerfile`, ...) as directories — approving "Always Allow" would add the *file itself* to the allow-list instead of its parent directory. Now uses `Path.is_dir()`.
+- **Web search title/snippet misalignment**: `web_search` matched result titles and snippets purely by their position in two independently-filtered lists, which could silently pair a title with the wrong snippet whenever unrelated links were filtered out. The link regex is now scoped to DuckDuckGo Lite's actual result-link anchors, and titles/snippets are paired by their original row index rather than by post-filter position.
+- **Inconsistent tool de-registration**: `SkillRegistry.set_skill_state` reached directly into `ToolRegistry`'s private `_tools` dict to remove a disabled skill's tools. Switched to the registry's public `unregister()` method.
 
 ---
 
