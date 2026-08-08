@@ -1,5 +1,6 @@
 from typing import Dict, Any, List
 from tools.base import BaseTool
+from theme import console
 
 
 class TodoTool(BaseTool):
@@ -10,8 +11,14 @@ class TodoTool(BaseTool):
         "properties": {
             "action": {
                 "type": "string",
-                "enum": ["add", "list", "complete", "clear"],
-                "description": "Action to perform on TODO list."
+                "enum": ["add", "list", "complete", "clear", "display"],
+                "description": (
+                    "Action to perform on TODO list. 'list' returns the raw TODO "
+                    "data to you (the model) as JSON for your own reasoning. "
+                    "'display' renders the current TODO list directly to the user "
+                    "in the terminal - use this whenever the user asks to see "
+                    "their TODOs/progress, or after meaningful plan changes."
+                )
             },
             "task": {
                 "type": "string",
@@ -28,6 +35,23 @@ class TodoTool(BaseTool):
     def __init__(self):
         self._todos: List[Dict[str, Any]] = []
 
+    def _render(self) -> None:
+        """Print the current TODO list to the user via the shared themed console."""
+        if not self._todos:
+            console.print("[muted]TODO list is empty.[/muted]")
+            return
+
+        console.print("\n[label]TODO List:[/label]")
+        for item in self._todos:
+            if item["completed"]:
+                console.print(f"  [success]✔[/success] [muted]{item['id']}. {item['task']}[/muted]")
+            else:
+                console.print(f"  [warning]○[/warning] [text]{item['id']}. {item['task']}[/text]")
+
+        total = len(self._todos)
+        done = sum(1 for i in self._todos if i["completed"])
+        console.print(f"[accent]{done}/{total} complete[/accent]\n")
+
     async def execute(self, action: str, task: str = "", task_id: int = 0) -> Dict[str, Any]:
         action_lower = action.lower()
 
@@ -40,6 +64,10 @@ class TodoTool(BaseTool):
 
         elif action_lower == "list":
             return {"todos": self._todos}
+
+        elif action_lower == "display":
+            self._render()
+            return {"status": "displayed", "todos": self._todos}
 
         elif action_lower == "complete":
             if task_id <= 0 or task_id > len(self._todos):
