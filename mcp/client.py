@@ -7,6 +7,7 @@ import subprocess
 from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, Field
 from tools.base import BaseTool
+from tools.registry import ToolRegistry
 
 
 class MCPServerConfig(BaseModel):
@@ -57,7 +58,6 @@ class MCPClientSession:
         if self.config.env:
             proc_env.update(self.config.env)
 
-        # Cross-platform Windows command resolution (.cmd / .bat wrappers like npx, uvx)
         cmd = self.config.command
         args = list(self.config.args)
 
@@ -86,17 +86,14 @@ class MCPClientSession:
         self._stderr_task = asyncio.create_task(self._read_stderr_loop())
 
         try:
-            # 1. Handshake Initialize (allows 60s for initial download & startup)
             await self._send_request("initialize", {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {"name": "AI-Harness", "version": "1.0.0"}
             }, timeout=60.0)
 
-            # 2. Send initialized notification
             await self._send_notification("notifications/initialized", {})
 
-            # 3. Discover available tools
             tools_res = await self._send_request("tools/list", {}, timeout=30.0)
             if "tools" in tools_res:
                 self.tools = tools_res["tools"]
@@ -156,7 +153,6 @@ class MCPClientSession:
                 if not line_str:
                     continue
                 
-                # Ignore non-JSON output (e.g. package installation logs)
                 if not (line_str.startswith("{") and line_str.endswith("}")):
                     continue
 
@@ -218,7 +214,6 @@ class MCPClientSession:
 
             try:
                 if sys.platform == "win32":
-                    # Forcibly terminate process tree on Windows (cmd.exe + child node/python)
                     subprocess.run(
                         ["taskkill", "/F", "/T", "/PID", str(self.process.pid)],
                         stdout=subprocess.DEVNULL,
@@ -236,10 +231,13 @@ class MCPClientSession:
 
 
 class MCPManager:
-    """Manages parsing of mcps.json, server sessions, and tool aggregation."""
+    """Manages parsing of mcps.json, server sessions, tool aggregation, and state toggles."""
     def __init__(self, filepath: str = "mcps.json"):
         self.filepath = filepath
         self.sessions: Dict[str, MCPClientSession] = {}
+        self.adapters: Dict[str, List[MCPToolAdapter]] = {}
+        self.enabled_servers: Dict[str, bool] = {}
+        self.global_enabled: bool = True
 
     def load_config(self) -> MCPConfig:
         if not os.path.exists(self.filepath):
@@ -248,14 +246,16 @@ class MCPManager:
             data = json.load(f)
         return MCPConfig(**data)
 
-    async def initialize_all(self) -> List[BaseTool]:
-        """Loads config, establishes MCP connections, and builds tool adapters."""
+    async def initialize_all(self, tool_registry: ToolRegistry) -> None:
+        """Loads config, establishes MCP connections, builds adapters, and registers them."""
         config = self.load_config()
-        all_tools: List[BaseTool] = []
 
         for name, server_cfg in config.mcpServers.items():
             session = MCPClientSession(name, server_cfg)
             self.sessions[name] = session
+            self.adapters[name] = []
+            self.enabled_servers[name] = True
+            
             success = await session.connect()
             if success:
                 for tool_def in session.tools:
@@ -266,9 +266,37 @@ class MCPManager:
                         parameters=tool_def.get("inputSchema", {"type": "object", "properties": {}}),
                         session=session
                     )
-                    all_tools.append(adapter)
+                    self.adapters[name].append(adapter)
+                    if self.global_enabled and self.enabled_servers[name]:
+                        tool_registry.register(adapter)
 
-        return all_tools
+    def set_global_state(self, enabled: bool, tool_registry: ToolRegistry) -> None:
+        """Globally enables or disables all MCP tools in the ToolRegistry."""
+        self.global_enabled = enabled
+        for server_name, adapter_list in self.adapters.items():
+            should_enable = enabled and self.enabled_servers.get(server_name, True)
+            for adapter in adapter_list:
+                if should_enable:
+                    tool_registry.register(adapter)
+                else:
+                    tool_registry.unregister(adapter.name)
+
+    def set_server_state(self, server_name: str, enabled: bool, tool_registry: ToolRegistry) -> bool:
+        """Enables or disables a specific MCP server's tools in the ToolRegistry."""
+        if server_name not in self.sessions:
+            return False
+
+        self.enabled_servers[server_name] = enabled
+        adapter_list = self.adapters.get(server_name, [])
+        should_enable = enabled and self.global_enabled
+
+        for adapter in adapter_list:
+            if should_enable:
+                tool_registry.register(adapter)
+            else:
+                tool_registry.unregister(adapter.name)
+
+        return True
 
     def get_server_info(self) -> Dict[str, Any]:
         """Provides status and tool metadata for the /mcps command."""
@@ -276,6 +304,7 @@ class MCPManager:
         for name, session in self.sessions.items():
             info[name] = {
                 "connected": session.is_connected,
+                "enabled": self.enabled_servers.get(name, True),
                 "error": session.error_message,
                 "command": session.config.command,
                 "args": session.config.args,

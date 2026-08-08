@@ -1,12 +1,30 @@
 import asyncio
 import sys
+import os
 from rich.console import Console
+from rich.markdown import Markdown
 from config import ConfigManager
 from providers.openai_provider import OpenAIProvider
 from render.stream_renderer import StreamRenderer
-from tools.registry import ToolRegistry, CalculatorTool
+from tools import (
+    ToolRegistry,
+    CalculatorTool,
+    MemoryTool,
+    NoteTool,
+    AskUserTool,
+    TodoTool,
+    PermissionManager,
+    ReadFileTool,
+    WriteFileTool,
+    EditFileTool,
+    GlobTool,
+    ShellTool,
+)
+from tools.note_tool import _read_notes, _write_notes, _append_notes
+from tools.memory_tool import _load_memory, _save_memory
 from commands.registry import CommandRegistry
 from mcp.client import MCPManager
+from skills import SkillRegistry, PythonCodingSkill
 
 console = Console()
 
@@ -16,29 +34,67 @@ class AIHarness:
         self.config_mgr = ConfigManager()
         self.renderer = StreamRenderer()
         self.tool_registry = ToolRegistry()
+        self.permission_manager = PermissionManager()
+        self.skill_registry = SkillRegistry(self.tool_registry)
         self.cmd_registry = CommandRegistry()
         self.mcp_manager = MCPManager()
         self.debug_mode: bool = False
         self.tools_enabled: bool = True
         
-        # Load initial model and set model-specific system prompt from models.json
-        model_cfg, _ = self.config_mgr.get_active_model_and_provider()
-        initial_sys = model_cfg.system_prompt or "You are a helpful text-based AI assistant."
-        self.messages = [{"role": "system", "content": initial_sys}]
-        
         self.setup_defaults()
 
-    def setup_defaults(self):
-        self.tool_registry.register(CalculatorTool())
+        model_cfg, _ = self.config_mgr.get_active_model_and_provider()
+        self.update_system_message(model_cfg.system_prompt)
+
+    def update_system_message(self, base_prompt: str = None):
+        if not base_prompt:
+            model_cfg, _ = self.config_mgr.get_active_model_and_provider()
+            base_prompt = model_cfg.system_prompt or "You are a helpful text-based AI assistant."
+
+        skill_instructions = self.skill_registry.get_combined_system_instructions()
+        full_sys = base_prompt
+        if skill_instructions:
+            full_sys += f"\n\nActive Skills Instructions:\n{skill_instructions}"
+
+        sys_idx = next((i for i, m in enumerate(self.messages) if m.get("role") == "system"), None) if hasattr(self, "messages") else None
         
+        if sys_idx is not None:
+            self.messages[sys_idx]["content"] = full_sys
+        else:
+            self.messages = [{"role": "system", "content": full_sys}]
+
+    def setup_defaults(self):
+        # 1. Register Base Tools with PermissionManager
+        self.tool_registry.register(CalculatorTool())
+        self.tool_registry.register(MemoryTool())
+        self.tool_registry.register(NoteTool())
+        self.tool_registry.register(AskUserTool())
+        self.tool_registry.register(TodoTool())
+        self.tool_registry.register(ReadFileTool(self.permission_manager))
+        self.tool_registry.register(WriteFileTool(self.permission_manager))
+        self.tool_registry.register(EditFileTool(self.permission_manager))
+        self.tool_registry.register(GlobTool(self.permission_manager))
+        self.tool_registry.register(ShellTool(self.permission_manager))
+        
+        # 2. Register Skills & Load skills.json
+        self.skill_registry.register(PythonCodingSkill())
+        self.skill_registry.load_from_file()
+
+        # 3. Slash Commands
         self.cmd_registry.register("help", "Show available slash commands", self.cmd_help)
         self.cmd_registry.register("models", "List configured models and providers", self.cmd_models)
         self.cmd_registry.register("switch", "Switch active model (e.g., /switch llama3-openrouter)", self.cmd_switch)
         self.cmd_registry.register("clear", "Clear conversation context window", self.cmd_clear)
+        self.cmd_registry.register("compact", "Semantically summarize older conversation context (/compact)", self.cmd_compact)
+        self.cmd_registry.register("retry", "Retry the last LLM response turn (/retry)", self.cmd_retry)
         self.cmd_registry.register("context", "Display context window, tool schemas, and MCP status", self.cmd_context)
         self.cmd_registry.register("system", "Show or set system prompt (/system [text] or /system clear)", self.cmd_system)
+        self.cmd_registry.register("note", "Manage or view Markdown notes (/note, /note append <text>, /note clear)", self.cmd_note)
+        self.cmd_registry.register("memory", "Manage key-value memories (/memory [save|get|delete|clear])", self.cmd_memory)
+        self.cmd_registry.register("skills", "List available skills or enable/disable them (/skills [enable|disable] <name>)", self.cmd_skills)
         self.cmd_registry.register("tools", "Show tools or toggle tool context inclusion (/tools on|off)", self.cmd_tools)
-        self.cmd_registry.register("mcps", "List available MCP servers and exposed tools (/mcps)", self.cmd_mcps)
+        self.cmd_registry.register("allowed_dirs", "List or add/remove allowed directories (/allowed_dirs [add|remove|clear] <path>)", self.cmd_allowed_dirs)
+        self.cmd_registry.register("mcps", "List/toggle MCP servers (/mcps [on|off] or /mcps [enable|disable] <server>)", self.cmd_mcps)
         self.cmd_registry.register("debug", "Toggle or set debug mode (/debug on|off)", self.cmd_debug)
         self.cmd_registry.register("exit", "Exit the AI Harness application", self.cmd_exit)
 
@@ -67,25 +123,169 @@ class AIHarness:
         try:
             self.config_mgr.set_active_model(args[0])
             model_cfg, _ = self.config_mgr.get_active_model_and_provider()
-            
-            if model_cfg.system_prompt:
-                sys_idx = next((i for i, m in enumerate(self.messages) if m.get("role") == "system"), None)
-                if sys_idx is not None:
-                    self.messages[sys_idx]["content"] = model_cfg.system_prompt
-                else:
-                    self.messages.insert(0, {"role": "system", "content": model_cfg.system_prompt})
-
+            self.update_system_message(model_cfg.system_prompt)
             console.print(f"[green]Switched active model to: {args[0]}[/green]")
         except ValueError as e:
             console.print(f"[red]{e}[/red]")
 
     async def cmd_clear(self, args):
-        system_msgs = [m for m in self.messages if m.get("role") == "system"]
-        self.messages = system_msgs
-        console.print("[yellow]Conversation context cleared (system prompt preserved).[/yellow]")
+        self.update_system_message()
+        console.print("[yellow]Conversation context cleared (system prompt and skills preserved).[/yellow]")
+
+    async def cmd_compact(self, args):
+        console.print("[yellow]Analyzing and compacting conversation history...[/yellow]")
+        new_messages, success, details = await compact_messages(self.messages, self.config_mgr)
+        if success:
+            self.messages = new_messages
+            console.print(f"[bold green]Compaction Successful![/bold green] {details}")
+        else:
+            console.print(f"[yellow]{details}[/yellow]")
+
+    async def cmd_retry(self, args):
+        last_user_idx = None
+        for i in range(len(self.messages) - 1, -1, -1):
+            if self.messages[i].get("role") == "user":
+                last_user_idx = i
+                break
+
+        if last_user_idx is None:
+            console.print("[yellow]No user message found in context to retry.[/yellow]")
+            return
+
+        self.messages = self.messages[:last_user_idx + 1]
+        console.print("[yellow]Retrying last completion turn...[/yellow]")
+        await self.process_inference()
+
+    async def cmd_note(self, args):
+        if not args:
+            notes = _read_notes()
+            if not notes.strip():
+                console.print("[dim]notes.md is currently empty.[/dim]")
+            else:
+                console.print("\n[bold green]=== Current Notes (notes.md) ===[/bold green]\n")
+                console.print(Markdown(notes))
+                console.print()
+            console.print("Usage: [yellow]/note[/yellow], [yellow]/note append <text>[/yellow], or [yellow]/note clear[/yellow]\n")
+            return
+
+        subcmd = args[0].lower()
+        if subcmd == "clear":
+            _write_notes("")
+            console.print("[yellow]notes.md cleared.[/yellow]")
+        elif subcmd == "append":
+            text_to_append = " ".join(args[1:]).strip()
+            if not text_to_append:
+                console.print("[red]Usage: /note append <text>[/red]")
+                return
+            _append_notes(text_to_append)
+            console.print("[green]Appended text to notes.md.[/green]")
+        else:
+            text_to_append = " ".join(args).strip()
+            _append_notes(text_to_append)
+            console.print("[green]Appended text to notes.md.[/green]")
+
+    async def cmd_memory(self, args):
+        mem = _load_memory()
+
+        if not args:
+            console.print("\n[bold green]=== Saved Memory Items (memory.json) ===[/bold green]\n")
+            if not mem:
+                console.print("  [dim]No memory keys saved.[/dim]")
+            else:
+                for k, v in mem.items():
+                    console.print(f"  • [bold yellow]{k}[/bold yellow]: {v}")
+            console.print("\nUsage: [yellow]/memory[/yellow], [yellow]/memory save <key> <value>[/yellow], [yellow]/memory get <key>[/yellow], [yellow]/memory delete <key>[/yellow], or [yellow]/memory clear[/yellow]\n")
+            return
+
+        subcmd = args[0].lower()
+
+        if subcmd == "save" and len(args) >= 3:
+            key = args[1]
+            val = " ".join(args[2:]).strip()
+            mem[key] = val
+            _save_memory(mem)
+            console.print(f"[green]Saved memory key '{key}'.[/green]")
+
+        elif subcmd == "get" and len(args) >= 2:
+            key = args[1]
+            if key in mem:
+                console.print(f"[bold yellow]{key}:[/bold yellow] {mem[key]}")
+            else:
+                console.print(f"[red]Memory key '{key}' not found.[/red]")
+
+        elif subcmd == "delete" and len(args) >= 2:
+            key = args[1]
+            if key in mem:
+                del mem[key]
+                _save_memory(mem)
+                console.print(f"[yellow]Deleted memory key '{key}'.[/yellow]")
+            else:
+                console.print(f"[red]Memory key '{key}' not found.[/red]")
+
+        elif subcmd == "clear":
+            _save_memory({})
+            console.print("[yellow]Cleared all persistent memories from memory.json.[/yellow]")
+
+        else:
+            console.print("[red]Usage: /memory [save|get|delete|clear] <key> [value][/red]")
+
+    async def cmd_skills(self, args):
+        skills = self.skill_registry.list_skills()
+        if not args:
+            console.print("\n[bold green]Registered Skills:[/bold green]")
+            if not skills:
+                console.print("  [dim]No skills registered.[/dim]")
+            for name, skill in skills.items():
+                status = "[bold green]ENABLED[/bold green]" if skill.enabled else "[bold red]DISABLED[/bold red]"
+                console.print(f"• [bold yellow]{name}[/bold yellow] [{status}]: {skill.description}")
+                tools = skill.get_tools()
+                if tools:
+                    tool_names = ", ".join([t.name for t in tools])
+                    console.print(f"  [dim]Tools provided: {tool_names}[/dim]")
+            console.print("\nUsage: [yellow]/skills enable <name>[/yellow] or [yellow]/skills disable <name>[/yellow]\n")
+            return
+
+        action = args[0].lower()
+        if action in ["enable", "disable"] and len(args) > 1:
+            target = args[1]
+            enable_flag = (action == "enable")
+            success = self.skill_registry.set_skill_state(target, enable_flag)
+            if success:
+                self.update_system_message()
+                console.print(f"[green]Skill '{target}' set to {action}d.[/green]")
+            else:
+                console.print(f"[red]Skill '{target}' not found.[/red]")
+        else:
+            console.print("[red]Usage: /skills enable <name> or /skills disable <name>[/red]")
+
+    async def cmd_allowed_dirs(self, args):
+        if not args:
+            console.print("\n[bold green]Currently Allowed Directories:[/bold green]")
+            for d in self.permission_manager.allowed_dirs:
+                console.print(f"  • [bold yellow]{d}[/bold yellow]")
+            console.print("\nUsage: [yellow]/allowed_dirs add <path>[/yellow] or [yellow]/allowed_dirs remove <path>[/yellow] or [yellow]/allowed_dirs clear[/yellow]\n")
+            return
+
+        action = args[0].lower()
+        if action == "add" and len(args) > 1:
+            target_path = " ".join(args[1:])
+            added = self.permission_manager.add_dir(target_path)
+            console.print(f"[bold green]Added directory to allowed list:[/bold green] {added}")
+        elif action == "remove" and len(args) > 1:
+            target_path = " ".join(args[1:])
+            removed = self.permission_manager.remove_dir(target_path)
+            if removed:
+                console.print(f"[yellow]Removed directory from allowed list:[/yellow] {target_path}")
+            else:
+                console.print(f"[red]Directory not found in allowed list:[/red] {target_path}")
+        elif action == "clear":
+            self.permission_manager.allowed_dirs = [str(os.getcwd())]
+            console.print("[yellow]Reset allowed directories to Current Working Directory.[/yellow]")
+        else:
+            console.print("[red]Usage: /allowed_dirs [add|remove|clear] <path>[/red]")
 
     async def cmd_context(self, args):
-        # 1. Messages / Conversation Window
+        # 1. Context Messages (Message [0] contains system prompt + skill instructions)
         console.print(f"\n[bold green]=== CONTEXT MESSAGES ({len(self.messages)} Messages) ===[/bold green]\n")
         for idx, msg in enumerate(self.messages):
             role = msg.get("role", "unknown")
@@ -108,7 +308,7 @@ class AIHarness:
 
             console.print()
 
-        # 2. Active Tool Schemas (Sent in API Request)
+        # 2. Active Tool Schemas
         tools_state = "[bold green]ENABLED[/bold green]" if self.tools_enabled else "[bold red]DISABLED[/bold red]"
         console.print(f"[bold green]=== ACTIVE TOOL SCHEMAS ({tools_state}) ===[/bold green]\n")
         if self.tools_enabled:
@@ -128,14 +328,16 @@ class AIHarness:
             console.print("  [dim]Tools are disabled (/tools off). No schemas are sent to the model.[/dim]")
         console.print()
 
-        # 3. Connected MCP Servers and Exposing Tools
-        console.print("[bold green]=== MCP SERVERS & TOOLS ===[/bold green]\n")
+        # 3. Connected MCP Servers and Tools
+        global_mcp_str = "[bold green]ENABLED[/bold green]" if self.mcp_manager.global_enabled else "[bold red]DISABLED[/bold red]"
+        console.print(f"[bold green]=== MCP SERVERS & TOOLS (Global MCP: {global_mcp_str}) ===[/bold green]\n")
         mcp_info = self.mcp_manager.get_server_info()
         if mcp_info:
             for name, details in mcp_info.items():
                 status = "[bold green]CONNECTED[/bold green]" if details["connected"] else "[bold red]DISCONNECTED[/bold red]"
+                enabled_str = "[bold green]ENABLED[/bold green]" if details["enabled"] else "[bold red]DISABLED[/bold red]"
                 cmd_str = f"{details['command']} {' '.join(details['args'])}" if details['command'] else "N/A"
-                console.print(f"• [bold yellow]{name}[/bold yellow] [{status}] — [dim]{cmd_str}[/dim]")
+                console.print(f"• [bold yellow]{name}[/bold yellow] [{status}] [{enabled_str}] — [dim]{cmd_str}[/dim]")
                 
                 tools = details.get("tools", [])
                 if tools:
@@ -202,12 +404,39 @@ class AIHarness:
             console.print("[dim]No MCP servers configured in mcps.json.[/dim]")
             return
 
-        console.print("\n[bold green]Configured MCP Servers & Tools:[/bold green]\n")
+        if args:
+            action = args[0].lower()
+            if action == "on":
+                self.mcp_manager.set_global_state(True, self.tool_registry)
+                console.print("[bold green]All MCP tools globally ENABLED.[/bold green]")
+                return
+            elif action == "off":
+                self.mcp_manager.set_global_state(False, self.tool_registry)
+                console.print("[yellow]All MCP tools globally DISABLED.[/yellow]")
+                return
+            elif action in ["enable", "disable"] and len(args) > 1:
+                target = args[1]
+                enable_flag = (action == "enable")
+                success = self.mcp_manager.set_server_state(target, enable_flag, self.tool_registry)
+                if success:
+                    state_str = "enabled" if enable_flag else "disabled"
+                    console.print(f"[green]MCP Server '{target}' tools {state_str}.[/green]")
+                else:
+                    console.print(f"[red]MCP Server '{target}' not found.[/red]")
+                return
+            else:
+                console.print("[red]Usage: /mcps [on|off] or /mcps [enable|disable] <server_name>[/red]")
+                return
+
+        global_str = "[bold green]ENABLED[/bold green]" if self.mcp_manager.global_enabled else "[bold red]DISABLED[/bold red]"
+        console.print(f"\n[bold green]Configured MCP Servers (Global MCP Status: {global_str}):[/bold green]\n")
+
         for name, details in info.items():
             status = "[bold green]CONNECTED[/bold green]" if details["connected"] else "[bold red]DISCONNECTED[/bold red]"
+            enabled_str = "[bold green]ENABLED[/bold green]" if details["enabled"] else "[bold red]DISABLED[/bold red]"
             cmd_str = f"{details['command']} {' '.join(details['args'])}" if details['command'] else "N/A"
             
-            console.print(f"• [bold yellow]{name}[/bold yellow] [{status}] — Command: [dim]{cmd_str}[/dim]")
+            console.print(f"• [bold yellow]{name}[/bold yellow] [{status}] [{enabled_str}] — Command: [dim]{cmd_str}[/dim]")
             
             if details["error"]:
                 console.print(f"  [dim red]Error: {details['error']}[/dim red]")
@@ -224,6 +453,8 @@ class AIHarness:
             else:
                 console.print("  [dim]No tools exposed.[/dim]")
             console.print()
+
+        console.print("Usage: [yellow]/mcps [on|off][/yellow] or [yellow]/mcps [enable|disable] <server_name>[/yellow]\n")
 
     async def cmd_debug(self, args):
         if not args:
@@ -252,9 +483,7 @@ class AIHarness:
     async def run(self):
         console.print("[bold magenta]AI Harness CLI Started.[/bold magenta] Initializing MCP servers...")
         
-        mcp_tools = await self.mcp_manager.initialize_all()
-        for t in mcp_tools:
-            self.tool_registry.register(t)
+        await self.mcp_manager.initialize_all(self.tool_registry)
 
         console.print("[bold magenta]Ready.[/bold magenta] Type [yellow]/help[/yellow] for commands or start chatting.\n")
         
@@ -289,9 +518,14 @@ class AIHarness:
 
         while current_turn < max_turns:
             current_turn += 1
-            model_cfg, provider_cfg = self.config_mgr.get_active_model_and_provider()
-            provider = OpenAIProvider(model_cfg, provider_cfg)
             
+            try:
+                model_cfg, provider_cfg = self.config_mgr.get_active_model_and_provider()
+            except Exception as e:
+                console.print(f"[bold red]Configuration Error:[/bold red] {e}")
+                return
+
+            provider = OpenAIProvider(model_cfg, provider_cfg)
             schemas = self.tool_registry.get_schemas() if self.tools_enabled else None
 
             console.print(f"\n[bold blue]Assistant ({model_cfg.name} via {provider_cfg.name})[/bold blue] >")
@@ -317,10 +551,19 @@ class AIHarness:
                     else:
                         yield chunk
 
-            response_text, reasoning_text = await self.renderer.render_stream(
-                chunk_generator(), 
-                debug_mode=self.debug_mode
-            )
+            try:
+                response_text, reasoning_text = await self.renderer.render_stream(
+                    chunk_generator(), 
+                    debug_mode=self.debug_mode
+                )
+            except Exception as e:
+                console.print(
+                    f"\n[bold red]API/Provider Error ({provider_cfg.name}):[/bold red] "
+                    f"Could not connect to [dim]{provider_cfg.base_url}[/dim].\n"
+                    f"[dim red]Details: {str(e)}[/dim red]\n"
+                    f"[yellow]Tip: Ensure your local server (e.g. LM Studio / Ollama) is running, or switch models using /switch.[/yellow]"
+                )
+                return
 
             assistant_msg = {"role": "assistant"}
             if response_text:

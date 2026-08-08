@@ -10,6 +10,10 @@ class ToolRegistry:
     def register(self, tool: BaseTool) -> None:
         self._tools[tool.name] = tool
 
+    def unregister(self, tool_name: str) -> None:
+        if tool_name in self._tools:
+            del self._tools[tool_name]
+
     def get_schemas(self) -> List[Dict[str, Any]]:
         return [tool.to_openai_schema() for tool in self._tools.values()]
 

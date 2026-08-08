@@ -1,15 +1,17 @@
 {
-  "active_model": "gemma-4-e4b-lmstudio",
+  "active_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
   "providers": {
     "openai": {
       "name": "OpenAI Official",
       "base_url": "https://api.openai.com/v1",
-      "api_key_env": "OPENAI_API_KEY"
+      "api_key_env": "OPENAI_API_KEY",
+      "default_headers": null
     },
     "groq": {
       "name": "Groq Cloud",
       "base_url": "https://api.groq.com/openai/v1",
-      "api_key_env": "GROQ_API_KEY"
+      "api_key_env": "GROQ_API_KEY",
+      "default_headers": null
     },
     "openrouter": {
       "name": "OpenRouter",
@@ -17,50 +19,47 @@
       "api_key_env": "OPENROUTER_API_KEY",
       "default_headers": {
         "HTTP-Referer": "https://github.com/ai-harness",
-        "X-Title": "AI Harness CLI"
+        "X-Title": "Mesh AI Harness",
+        "X-Description": "An interactive terminal harness for AI models"
       }
     },
     "ollama": {
       "name": "Local Ollama",
       "base_url": "http://localhost:11434/v1",
-      "api_key_env": "OLLAMA_API_KEY"
+      "api_key_env": "OLLAMA_API_KEY",
+      "default_headers": null
     },
     "lmstudio": {
       "name": "Local LM Studio",
       "base_url": "http://localhost:1234/v1",
-      "api_key_env": "LOCAL_API_KEY"
+      "api_key_env": "LOCAL_API_KEY",
+      "default_headers": null
     }
   },
   "models": {
-    "gpt-4o": {
-      "name": "GPT-4o",
-      "provider": "openai",
-      "model_id": "gpt-4o",
-      "system_prompt": "You are GPT-4o, an advanced AI assistant inside an interactive terminal harness."
-    },
-    "llama3-groq": {
-      "name": "Llama 3 70B (via Groq)",
-      "provider": "groq",
-      "model_id": "llama-3.3-70b-versatile",
-      "system_prompt": "You are Llama 3 70B running on Groq LPU acceleration, a fast and helpful AI assistant."
-    },
-    "llama3-openrouter": {
-      "name": "Llama 3 70B (via OpenRouter)",
-      "provider": "openrouter",
-      "model_id": "meta-llama/llama-3.3-70b-instruct",
-      "system_prompt": "You are Llama 3 70B routed via OpenRouter, an intelligent AI assistant."
-    },
-    "llama3-ollama": {
-      "name": "Llama 3 8B (Local Ollama)",
-      "provider": "ollama",
-      "model_id": "llama3:latest",
-      "system_prompt": "You are a local Llama 3 model running offline via Ollama."
-    },
-    "gemma-4-e4b-lmstudio": {
-      "name": "Gemma 4 E4B (Local LM Studio)",
+    "lmstudio:gemma-4-e4b": {
+      "name": "Gemma 4 E4B",
       "provider": "lmstudio",
       "model_id": "google/gemma-4-e4b",
       "system_prompt": "You are Gemma 4 E4B running locally via LM Studio, an intelligent AI assistant inside an interactive terminal harness."
+    },
+    "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic": {
+      "name": "MiniCPM5 1B",
+      "provider": "lmstudio",
+      "model_id": "minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
+      "system_prompt": "You are MiniCPM 5 running locally via LM Studio, an intelligent AI assistant inside an interactive terminal harness."
+    },
+    "openrouter:nvidia/nemotron-3-ultra-550b-a55b": {
+      "name": "Nemotron 3 Ultra",
+      "provider": "openrouter",
+      "model_id": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "system_prompt": "You are Nemotron 3 Ultra running remotely via openrouter.ai, an intelligent AI assistant inside an interactive terminal harness."
+    },
+    "openrouter:nvidia/nemotron-3-super-120b-a12b": {
+      "name": "Nemotron 3 Super",
+      "provider": "openrouter",
+      "model_id": "nvidia/nemotron-3-super-120b-a12b:free",
+      "system_prompt": "You are Nemotron 3 Super running remotely via openrouter.ai, an intelligent AI assistant inside an interactive terminal harness."
     }
   }
 }

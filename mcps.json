@@ -1,22 +1,4 @@
 {
   "mcpServers": {
-    "filesystem": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@modelcontextprotocol/server-filesystem",
-        "."
-      ]
-    },
-    "sqlite": {
-      "command": "uvx",
-      "args": [
-        "--with",
-        "mcp<1.0.0",
-        "mcp-server-sqlite",
-        "--db-path",
-        "./data.db"
-      ]
-    }
   }
 }

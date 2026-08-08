@@ -1,0 +1,14 @@
+{
+  "skills": {
+    "python_coding": {
+      "enabled": true,
+      "description": "Python code execution and developer-focused reasoning guidelines.",
+      "system_instruction": "You possess the Python Coding Skill. When writing code, prefer concise, idiomatic Python. You can execute snippets directly using the execute_python tool."
+    },
+    "technical_writer": {
+      "enabled": true,
+      "description": "Formats technical responses into clean, structured Markdown documentation.",
+      "system_instruction": "Structure your answers with clean Markdown headings, concise code blocks, and bulleted summaries."
+    }
+  }
+}
