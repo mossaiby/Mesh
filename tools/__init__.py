@@ -5,6 +5,7 @@ from tools.note_tool import NoteTool
 from tools.ask_tool import AskUserTool
 from tools.todo_tool import TodoTool
 from tools.permissions import PermissionManager, default_permission_manager
+from tools.web_tools import WebSearchTool, WebFetchTool
 from tools.native_tools import (
     ReadFileTool,
     WriteFileTool,
@@ -23,6 +24,8 @@ __all__ = [
     "TodoTool",
     "PermissionManager",
     "default_permission_manager",
+    "WebSearchTool",
+    "WebFetchTool",
     "ReadFileTool",
     "WriteFileTool",
     "EditFileTool",

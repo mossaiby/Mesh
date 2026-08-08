@@ -23,7 +23,7 @@ class ToolRegistry:
 
     async def execute(self, tool_name: str, arguments_json: str) -> str:
         if tool_name not in self._tools:
-            return f"Error: Tool '{tool_name}' not registered."
+            return json.dumps({"error": f"Tool '{tool_name}' not registered."})
         
         tool = self._tools[tool_name]
 
@@ -50,9 +50,13 @@ class ToolRegistry:
                     raw_result=result_str
                 )
 
+            # Ensure valid JSON string returned for non-proxied tools or when proxy is disabled
+            if not (result_str.startswith("{") or result_str.startswith("[")):
+                return json.dumps({"result": result_str})
+
             return result_str
         except Exception as e:
-            return f"Error executing tool '{tool_name}': {str(e)}"
+            return json.dumps({"error": f"Error executing tool '{tool_name}': {str(e)}"})
 
 
 class CalculatorTool(BaseTool):

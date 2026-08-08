@@ -2,7 +2,9 @@ import asyncio
 import sys
 import os
 from rich.console import Console
+from rich.live import Live
 from rich.markdown import Markdown
+from rich.text import Text
 from config import ConfigManager
 from providers.openai_provider import OpenAIProvider
 from render.stream_renderer import StreamRenderer
@@ -14,12 +16,15 @@ from tools import (
     AskUserTool,
     TodoTool,
     PermissionManager,
+    WebSearchTool,
+    WebFetchTool,
     ReadFileTool,
     WriteFileTool,
     EditFileTool,
     GlobTool,
     ShellTool,
 )
+from tools.ask_tool import _read_single_key
 from tools.note_tool import _read_notes, _write_notes, _append_notes
 from tools.memory_tool import _load_memory, _save_memory
 from commands.registry import CommandRegistry
@@ -44,6 +49,7 @@ class AIHarness:
         self.cmd_registry = CommandRegistry()
         self.mcp_manager = MCPManager()
         self.debug_mode: bool = False
+        self.subagent_proxy.debug_mode = self.debug_mode
         self.tools_enabled: bool = True
         
         self.setup_defaults()
@@ -75,6 +81,8 @@ class AIHarness:
         self.tool_registry.register(NoteTool())
         self.tool_registry.register(AskUserTool())
         self.tool_registry.register(TodoTool())
+        self.tool_registry.register(WebSearchTool())
+        self.tool_registry.register(WebFetchTool())
         self.tool_registry.register(ReadFileTool(self.permission_manager))
         self.tool_registry.register(WriteFileTool(self.permission_manager))
         self.tool_registry.register(EditFileTool(self.permission_manager))
@@ -87,8 +95,9 @@ class AIHarness:
 
         # 3. Slash Commands
         self.cmd_registry.register("help", "Show available slash commands", self.cmd_help)
+        self.cmd_registry.register("status", "Show current AI Harness status overview (/status)", self.cmd_status)
         self.cmd_registry.register("models", "List configured models and providers", self.cmd_models)
-        self.cmd_registry.register("switch", "Switch active model (e.g., /switch llama3-openrouter)", self.cmd_switch)
+        self.cmd_registry.register("switch", "Switch active model interactively or by key (/switch [key])", self.cmd_switch)
         self.cmd_registry.register("clear", "Clear conversation context window", self.cmd_clear)
         self.cmd_registry.register("compact", "Semantically summarize older conversation context (/compact)", self.cmd_compact)
         self.cmd_registry.register("retry", "Retry the last LLM response turn (/retry)", self.cmd_retry)
@@ -109,6 +118,37 @@ class AIHarness:
         for cmd, desc in self.cmd_registry.list_commands().items():
             console.print(f"  [bold yellow]{cmd}[/bold yellow] - {desc}")
 
+    async def cmd_status(self, args):
+        model_cfg, provider_cfg = self.config_mgr.get_active_model_and_provider()
+        sys_idx = next((i for i, m in enumerate(self.messages) if m.get("role") == "system"), None)
+        sys_prompt = self.messages[sys_idx]["content"] if sys_idx is not None else "None"
+        
+        console.print("\n[bold green]=== AI HARNESS STATUS ===[/bold green]\n")
+        console.print(f"• [bold yellow]Active Model:[/bold yellow] {model_cfg.name} ({self.config_mgr.config.active_model})")
+        console.print(f"  [dim]Provider: {provider_cfg.name} | Base URL: {provider_cfg.base_url} | Model ID: {model_cfg.model_id}[/dim]")
+        
+        tools_state = "[bold green]ENABLED[/bold green]" if self.tools_enabled else "[bold red]DISABLED[/bold red]"
+        proxy_state = "[bold green]ON[/bold green]" if self.subagent_proxy.enabled else "[bold red]OFF[/bold red]"
+        debug_state = "[bold green]ON[/bold green]" if self.debug_mode else "[bold red]OFF[/bold red]"
+        
+        schemas = self.tool_registry.get_schemas()
+        console.print(f"• [bold yellow]Tools:[/bold yellow] {tools_state} ({len(schemas)} active schemas)")
+        console.print(f"• [bold yellow]Sub-Agent Proxy Distillation:[/bold yellow] {proxy_state}")
+        console.print(f"• [bold yellow]Debug Mode:[/bold yellow] {debug_state}")
+        
+        skills = self.skill_registry.list_skills()
+        active_skills_count = sum(1 for s in skills.values() if s.enabled)
+        console.print(f"• [bold yellow]Skills:[/bold yellow] {active_skills_count}/{len(skills)} active")
+        
+        mcp_info = self.mcp_manager.get_server_info()
+        connected_mcp_count = sum(1 for details in mcp_info.values() if details["connected"])
+        global_mcp_state = "[bold green]ENABLED[/bold green]" if self.mcp_manager.global_enabled else "[bold red]DISABLED[/bold red]"
+        console.print(f"• [bold yellow]MCP Servers:[/bold yellow] {global_mcp_state} ({connected_mcp_count}/{len(mcp_info)} connected)")
+        
+        console.print(f"• [bold yellow]Allowed Directories:[/bold yellow] {len(self.permission_manager.allowed_dirs)} directories")
+        console.print(f"• [bold yellow]Context Window:[/bold yellow] {len(self.messages)} messages stored")
+        console.print(f"• [bold yellow]System Prompt Length:[/bold yellow] {len(sys_prompt)} chars (~{len(sys_prompt.split())} words)\n")
+
     async def cmd_models(self, args):
         active = self.config_mgr.config.active_model
         console.print("[bold green]Configured Models:[/bold green]")
@@ -123,16 +163,79 @@ class AIHarness:
             )
 
     async def cmd_switch(self, args):
-        if not args:
-            console.print("[red]Usage: /switch <model_key>[/red]")
+        models_dict = self.config_mgr.config.models
+        if not models_dict:
+            console.print("[red]No models configured in models.json.[/red]")
             return
+
+        model_keys = list(models_dict.keys())
+
+        if args:
+            target_key = args[0]
+            if target_key not in models_dict:
+                console.print(f"[red]Model key '{target_key}' not found in models.json.[/red]")
+                return
+            selected_key = target_key
+        else:
+            active_key = self.config_mgr.config.active_model
+            current_idx = model_keys.index(active_key) if active_key in model_keys else 0
+
+            def render_switch_menu(selected_idx: int):
+                lines = ["\n[bold green]Select a Model to Switch to:[/bold green]", "[dim]Use ↑/↓ Arrow Keys to navigate, Enter to select:[/dim]\n"]
+                for idx, key in enumerate(model_keys):
+                    cfg = models_dict[key]
+                    provider_cfg = self.config_mgr.config.providers.get(cfg.provider)
+                    p_name = provider_cfg.name if provider_cfg else cfg.provider
+                    
+                    is_active = (key == active_key)
+                    active_tag = " [bold cyan](active)[/bold cyan]" if is_active else ""
+                    
+                    item_text = f"{cfg.name} ({key}) via {p_name}{active_tag}"
+                    
+                    if idx == selected_idx:
+                        lines.append(f"  [bold cyan]❯ 🔘 {item_text}[/bold cyan]")
+                    else:
+                        lines.append(f"    [dim]⚪ {item_text}[/dim]")
+                return Text.from_markup("\n".join(lines))
+
+            def interactive_switch():
+                if not sys.stdin.isatty():
+                    console.print("[cyan]Available Models:[/cyan]")
+                    for idx, k in enumerate(model_keys, 1):
+                        console.print(f"  {idx}. {k}")
+                    raw = input("Choice > ").strip()
+                    if raw.isdigit() and 1 <= int(raw) <= len(model_keys):
+                        return model_keys[int(raw) - 1]
+                    return raw
+
+                nonlocal current_idx
+                with Live(render_switch_menu(current_idx), console=console, auto_refresh=False, vertical_overflow="visible") as live:
+                    while True:
+                        live.update(render_switch_menu(current_idx), refresh=True)
+                        try:
+                            key = _read_single_key()
+                        except Exception:
+                            break
+
+                        if key == "up":
+                            current_idx = (current_idx - 1) % len(model_keys)
+                        elif key == "down":
+                            current_idx = (current_idx + 1) % len(model_keys)
+                        elif key == "enter":
+                            break
+
+                return model_keys[current_idx]
+
+            loop = asyncio.get_running_loop()
+            selected_key = await loop.run_in_executor(None, interactive_switch)
+
         try:
-            self.config_mgr.set_active_model(args[0])
-            model_cfg, _ = self.config_mgr.get_active_model_and_provider()
+            self.config_mgr.set_active_model(selected_key)
+            model_cfg, provider_cfg = self.config_mgr.get_active_model_and_provider()
             self.update_system_message(model_cfg.system_prompt)
-            console.print(f"[green]Switched active model to: {args[0]}[/green]")
-        except ValueError as e:
-            console.print(f"[red]{e}[/red]")
+            console.print(f"[green]Switched active model to: [bold yellow]{selected_key}[/bold yellow] ({model_cfg.name} via {provider_cfg.name})[/green]")
+        except Exception as e:
+            console.print(f"[red]Error switching model: {e}[/red]")
 
     async def cmd_clear(self, args):
         self.update_system_message()
@@ -487,9 +590,11 @@ class AIHarness:
         arg = args[0].lower()
         if arg == "on":
             self.debug_mode = True
+            self.subagent_proxy.debug_mode = True
             console.print("[bold green]Debug mode enabled.[/bold green] CoT and Tool execution details will be shown.")
         elif arg == "off":
             self.debug_mode = False
+            self.subagent_proxy.debug_mode = False
             console.print("[yellow]Debug mode disabled.[/yellow] CoT will be hidden.")
         else:
             console.print("[red]Invalid debug option. Use '/debug on' or '/debug off'.[/red]")

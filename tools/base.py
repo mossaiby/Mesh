@@ -17,7 +17,13 @@ class BaseTool(ABC):
     def to_openai_schema(self, inject_intent: bool = True) -> Dict[str, Any]:
         schema_params = copy.deepcopy(self.parameters)
         
-        # Inject required _intent parameter for proxied tools
+        # Ensure _intent is explicitly purged when intent injection is disabled
+        if "properties" in schema_params and "_intent" in schema_params["properties"]:
+            del schema_params["properties"]["_intent"]
+        if "required" in schema_params and "_intent" in schema_params["required"]:
+            schema_params["required"].remove("_intent")
+
+        # Inject required _intent parameter ONLY if tool is proxied AND intent injection is enabled
         if self.is_proxied and inject_intent:
             props = schema_params.get("properties", {})
             props["_intent"] = {
