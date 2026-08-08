@@ -26,6 +26,7 @@ from commands.registry import CommandRegistry
 from mcp.client import MCPManager
 from skills import SkillRegistry, PythonCodingSkill
 from compaction import compact_messages
+from subagent import SubAgentProxy
 
 console = Console()
 
@@ -35,6 +36,9 @@ class AIHarness:
         self.config_mgr = ConfigManager()
         self.renderer = StreamRenderer()
         self.tool_registry = ToolRegistry()
+        self.subagent_proxy = SubAgentProxy(self.config_mgr)
+        self.tool_registry.subagent_proxy = self.subagent_proxy
+        
         self.permission_manager = PermissionManager()
         self.skill_registry = SkillRegistry(self.tool_registry)
         self.cmd_registry = CommandRegistry()
@@ -94,6 +98,7 @@ class AIHarness:
         self.cmd_registry.register("memory", "Manage key-value memories (/memory [save|get|delete|clear])", self.cmd_memory)
         self.cmd_registry.register("skills", "List available skills or enable/disable them (/skills [enable|disable] <name>)", self.cmd_skills)
         self.cmd_registry.register("tools", "Show tools or toggle tool context inclusion (/tools on|off)", self.cmd_tools)
+        self.cmd_registry.register("proxy", "Toggle sub-agent tool proxy distillation (/proxy on|off)", self.cmd_proxy)
         self.cmd_registry.register("dirs", "List or add/remove allowed directories (/dirs [add|remove|clear] <path>)", self.cmd_dirs)
         self.cmd_registry.register("mcps", "List/toggle MCP servers (/mcps [on|off] or /mcps [enable|disable] <server>)", self.cmd_mcps)
         self.cmd_registry.register("debug", "Toggle or set debug mode (/debug on|off)", self.cmd_debug)
@@ -285,6 +290,22 @@ class AIHarness:
         else:
             console.print("[red]Usage: /dirs [add|remove|clear] <path>[/red]")
 
+    async def cmd_proxy(self, args):
+        if not args:
+            state_str = "[bold green]ON[/bold green]" if self.subagent_proxy.enabled else "[bold red]OFF[/bold red]"
+            console.print(f"Sub-agent tool proxy distillation is currently {state_str}.\nUsage: [yellow]/proxy on[/yellow] or [yellow]/proxy off[/yellow]")
+            return
+
+        arg = args[0].lower()
+        if arg == "on":
+            self.subagent_proxy.enabled = True
+            console.print("[bold green]Sub-agent tool proxy distillation ENABLED.[/bold green]")
+        elif arg == "off":
+            self.subagent_proxy.enabled = False
+            console.print("[yellow]Sub-agent tool proxy distillation DISABLED.[/yellow]")
+        else:
+            console.print("[red]Invalid option. Use '/proxy on' or '/proxy off'.[/red]")
+
     async def cmd_context(self, args):
         console.print(f"\n[bold green]=== CONTEXT MESSAGES ({len(self.messages)} Messages) ===[/bold green]\n")
         for idx, msg in enumerate(self.messages):
@@ -309,7 +330,8 @@ class AIHarness:
             console.print()
 
         tools_state = "[bold green]ENABLED[/bold green]" if self.tools_enabled else "[bold red]DISABLED[/bold red]"
-        console.print(f"[bold green]=== ACTIVE TOOL SCHEMAS ({tools_state}) ===[/bold green]\n")
+        proxy_state = "[bold green]ON[/bold green]" if self.subagent_proxy.enabled else "[bold red]OFF[/bold red]"
+        console.print(f"[bold green]=== ACTIVE TOOL SCHEMAS ({tools_state} | Proxy Distillation: {proxy_state}) ===[/bold green]\n")
         if self.tools_enabled:
             schemas = self.tool_registry.get_schemas()
             if schemas:
@@ -382,7 +404,9 @@ class AIHarness:
                 console.print("  [dim]No tools registered.[/dim]")
             for s in schemas:
                 fn = s.get("function", {})
-                console.print(f"  • [bold yellow]{fn.get('name')}[/bold yellow]: {fn.get('description')}")
+                name = fn.get("name", "unnamed")
+                desc = fn.get("description", "No description")
+                console.print(f"  • [bold yellow]{name}[/bold yellow]: {desc}")
             console.print("\nUsage: [yellow]/tools on[/yellow] or [yellow]/tools off[/yellow]")
             return
 

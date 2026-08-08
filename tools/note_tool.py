@@ -30,6 +30,7 @@ def _append_notes(content: str) -> None:
 class NoteTool(BaseTool):
     name = "note_manager"
     description = "Keeps, updates, appends to, or reads persistent project/session notes in Markdown format."
+    is_proxied = True
     parameters = {
         "type": "object",
         "properties": {

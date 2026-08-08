@@ -1,5 +1,5 @@
 {
-  "active_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
+  "active_model": "lmstudio:gemma-4-e4b",
   "providers": {
     "openai": {
       "name": "OpenAI Official",

@@ -29,6 +29,7 @@ class MCPToolAdapter(BaseTool):
         self.description = description or f"MCP tool from server '{server_name}'"
         self.parameters = parameters or {"type": "object", "properties": {}}
         self.session = session
+        self.is_proxied = True  # Remote MCP tools route through SubAgentProxy
 
     async def execute(self, **kwargs) -> Any:
         return await self.session.call_tool(self.name, kwargs)

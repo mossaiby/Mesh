@@ -9,6 +9,7 @@ from tools.permissions import PermissionManager, default_permission_manager
 class ReadFileTool(BaseTool):
     name = "read_file"
     description = "Reads text content from a file with optional line range."
+    is_proxied = True
     parameters = {
         "type": "object",
         "properties": {
@@ -50,6 +51,7 @@ class ReadFileTool(BaseTool):
 class WriteFileTool(BaseTool):
     name = "write_file"
     description = "Writes content to a file (creates parent directories if needed)."
+    is_proxied = True
     parameters = {
         "type": "object",
         "properties": {
@@ -80,6 +82,7 @@ class WriteFileTool(BaseTool):
 class EditFileTool(BaseTool):
     name = "edit_file"
     description = "Edits a file by replacing old string matches with new string."
+    is_proxied = True
     parameters = {
         "type": "object",
         "properties": {
@@ -119,6 +122,7 @@ class EditFileTool(BaseTool):
 class GlobTool(BaseTool):
     name = "glob_files"
     description = "Finds files matching a glob pattern (e.g., '**/*.py')."
+    is_proxied = True
     parameters = {
         "type": "object",
         "properties": {
@@ -146,6 +150,7 @@ class GlobTool(BaseTool):
 class ShellTool(BaseTool):
     name = "run_shell_command"
     description = "Runs a shell command in the system environment and returns stdout/stderr."
+    is_proxied = True
     parameters = {
         "type": "object",
         "properties": {

@@ -1,3 +1,4 @@
+import copy
 from abc import ABC, abstractmethod
 from typing import Dict, Any
 
@@ -6,17 +7,34 @@ class BaseTool(ABC):
     name: str
     description: str
     parameters: Dict[str, Any]
+    is_proxied: bool = False  # Set to True for heavy tools that benefit from sub-agent distillation
 
     @abstractmethod
     async def execute(self, **kwargs) -> Any:
+        """Execute tool logic and return result as serializable dict/str."""
         pass
 
-    def to_openai_schema(self) -> Dict[str, Any]:
+    def to_openai_schema(self, inject_intent: bool = True) -> Dict[str, Any]:
+        schema_params = copy.deepcopy(self.parameters)
+        
+        # Inject required _intent parameter for proxied tools
+        if self.is_proxied and inject_intent:
+            props = schema_params.get("properties", {})
+            props["_intent"] = {
+                "type": "string",
+                "description": "The exact goal, purpose, or reason for this tool call and what specific information you need."
+            }
+            schema_params["properties"] = props
+            required = schema_params.get("required", [])
+            if "_intent" not in required:
+                required.append("_intent")
+            schema_params["required"] = required
+
         return {
             "type": "function",
             "function": {
                 "name": self.name,
                 "description": self.description,
-                "parameters": self.parameters
+                "parameters": schema_params
             }
         }
