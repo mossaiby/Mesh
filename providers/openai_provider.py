@@ -33,6 +33,12 @@ class OpenAIProvider:
         }
         if tools:
             kwargs["tools"] = tools
+            # Explicitly request "auto" tool choice. This is the implicit
+            # default per the OpenAI spec when omitted, but several local
+            # OpenAI-compatible backends (llama.cpp server, LM Studio, etc.)
+            # don't reliably switch on tool-calling/grammar-constrained
+            # decoding unless tool_choice is present in the request body.
+            kwargs["tool_choice"] = "auto"
 
         response_stream = await self.client.chat.completions.create(**kwargs)
 

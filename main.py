@@ -3,6 +3,8 @@ import sys
 import os
 from rich.live import Live
 from rich.markdown import Markdown
+from rich.markup import escape
+from rich.table import Table
 from rich.text import Text
 from config import ConfigManager
 from providers.openai_provider import OpenAIProvider
@@ -28,8 +30,9 @@ from tools.note_tool import _read_notes, _write_notes, _append_notes
 from tools.memory_tool import _load_memory, _save_memory
 from commands.registry import CommandRegistry
 from mcp.client import MCPManager
-from skills import SkillRegistry, PythonCodingSkill
+from skills import SkillRegistry, PythonCodingSkill, DeclarativeSkill
 from compaction import compact_messages
+from dream import dream_extract
 from subagent import SubAgentProxy
 from theme import console
 from version import __version__
@@ -93,29 +96,41 @@ class Mesh:
 
         # 3. Slash Commands
         self.cmd_registry.register("help", "Show available slash commands", self.cmd_help)
-        self.cmd_registry.register("status", "Show current Mesh status overview (/status)", self.cmd_status)
+        self.cmd_registry.register("status", "Show current Mesh status overview", self.cmd_status)
         self.cmd_registry.register("models", "List configured models and providers", self.cmd_models)
-        self.cmd_registry.register("switch", "Switch active model interactively or by key (/switch [key])", self.cmd_switch)
-        self.cmd_registry.register("clear", "Clear conversation context window", self.cmd_clear)
-        self.cmd_registry.register("compact", "Semantically summarize older conversation context (/compact)", self.cmd_compact)
-        self.cmd_registry.register("retry", "Retry the last LLM response turn (/retry)", self.cmd_retry)
+        self.cmd_registry.register("switch", "Switch active model interactively, or directly: /switch <model_key>", self.cmd_switch)
+        self.cmd_registry.register("clear", "Clear the conversation context window", self.cmd_clear)
+        self.cmd_registry.register("compact", "Semantically summarize older conversation context", self.cmd_compact)
+        self.cmd_registry.register("dream", "Analyze the conversation and extract candidate notes, memory facts, and skills", self.cmd_dream)
+        self.cmd_registry.register("retry", "Retry the last LLM response turn", self.cmd_retry)
         self.cmd_registry.register("context", "Display context window, tool schemas, and MCP status", self.cmd_context)
-        self.cmd_registry.register("system", "Show or set system prompt (/system [text] or /system clear)", self.cmd_system)
-        self.cmd_registry.register("note", "Manage or view Markdown notes (/note, /note append <text>, /note clear)", self.cmd_note)
-        self.cmd_registry.register("memory", "Manage key-value memories (/memory [save|get|delete|clear])", self.cmd_memory)
-        self.cmd_registry.register("skills", "List available skills or enable/disable them (/skills [enable|disable] <name>)", self.cmd_skills)
-        self.cmd_registry.register("tools", "Show tools or toggle tool context inclusion (/tools on|off)", self.cmd_tools)
-        self.cmd_registry.register("proxy", "Toggle sub-agent tool proxy distillation (/proxy on|off)", self.cmd_proxy)
-        self.cmd_registry.register("dirs", "List or add/remove allowed directories (/dirs [add|remove|clear] <path>)", self.cmd_dirs)
-        self.cmd_registry.register("mcps", "List/toggle MCP servers (/mcps [on|off] or /mcps [enable|disable] <server>)", self.cmd_mcps)
-        self.cmd_registry.register("debug", "Toggle or set debug mode (/debug on|off)", self.cmd_debug)
-        self.cmd_registry.register("version", "Show the current Mesh version (/version)", self.cmd_version)
+        self.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", self.cmd_system)
+        self.cmd_registry.register("note", "View notes, or edit them: /note append <text> | /note clear", self.cmd_note)
+        self.cmd_registry.register("memory", "View memory, or edit it: /memory save <key> <value> | /memory get <key> | /memory delete <key> | /memory clear", self.cmd_memory)
+        self.cmd_registry.register("skills", "List skills, or toggle one: /skills enable <name> | /skills disable <name>", self.cmd_skills)
+        self.cmd_registry.register("tools", "List registered tools, or toggle inclusion: /tools on | /tools off", self.cmd_tools)
+        self.cmd_registry.register("proxy", "Toggle sub-agent tool proxy distillation: /proxy on | /proxy off", self.cmd_proxy)
+        self.cmd_registry.register("dirs", "List allowed directories, or edit them: /dirs add <path> | /dirs remove <path> | /dirs clear", self.cmd_dirs)
+        self.cmd_registry.register("mcps", "List MCP servers, or toggle them: /mcps on | /mcps off | /mcps enable <server> | /mcps disable <server>", self.cmd_mcps)
+        self.cmd_registry.register("debug", "Toggle debug mode (CoT & tool traces): /debug on | /debug off", self.cmd_debug)
+        self.cmd_registry.register("version", "Show the current Mesh version", self.cmd_version)
         self.cmd_registry.register("exit", "Exit Mesh", self.cmd_exit)
 
     async def cmd_help(self, args):
-        console.print("[success]Available Slash Commands:[/success]")
+        console.print("\n[success]Available Slash Commands:[/success]\n")
+
+        table = Table(show_header=False, box=None, padding=(0, 1, 0, 2))
+        table.add_column("Command", style="label", no_wrap=True)
+        # Descriptions are rendered as plain Text (not markup) so literal
+        # characters like [key] or <path> in usage hints are shown exactly
+        # as written instead of being parsed as Rich style tags and dropped.
+        table.add_column("Description")
+
         for cmd, desc in self.cmd_registry.list_commands().items():
-            console.print(f"  [label]{cmd}[/label] - {desc}")
+            table.add_row(cmd, Text(desc))
+
+        console.print(table)
+        console.print()
 
     async def cmd_version(self, args):
         console.print(f"[brand]Mesh[/brand] version [accent]{__version__}[/accent]")
@@ -251,6 +266,98 @@ class Mesh:
         else:
             console.print(f"[warning]{details}[/warning]")
 
+    async def cmd_dream(self, args):
+        console.print("[brand]\U0001F4A4 Dreaming...[/brand] [dim]Analyzing the conversation for reusable notes, memories, and skills.[/dim]")
+
+        extraction, error = await dream_extract(self.messages, self.config_mgr)
+        if error:
+            console.print(f"[warning]{error}[/warning]")
+            return
+
+        notes = extraction["notes"]
+        memory_items = extraction["memory"]
+        skills = extraction["skills"]
+
+        if not notes and not memory_items and not skills:
+            console.print("[dim]Nothing worth extracting from this conversation.[/dim]")
+            return
+
+        def prompt_selection() -> str:
+            try:
+                return input("Selection > ").strip()
+            except (EOFError, KeyboardInterrupt):
+                return ""
+
+        def resolve_indices(raw: str, count: int) -> set:
+            raw = raw.lower().strip()
+            if raw in ("all", "a", "y", "yes"):
+                return set(range(count))
+            if raw in ("none", "n", "no", "", "skip"):
+                return set()
+            indices = set()
+            for part in raw.replace(" ", "").split(","):
+                if part.isdigit():
+                    idx = int(part) - 1
+                    if 0 <= idx < count:
+                        indices.add(idx)
+            return indices
+
+        loop = asyncio.get_running_loop()
+        applied_notes = applied_memory = applied_skills = 0
+
+        if notes:
+            console.print(f"\n[label]\U0001F4DD Candidate Notes ({len(notes)}):[/label]")
+            for i, n in enumerate(notes, 1):
+                console.print(f"  {i}. {n}")
+            console.print("[dim]Enter numbers to save (e.g. 1,3), 'all', or 'none':[/dim]")
+            raw = await loop.run_in_executor(None, prompt_selection)
+            chosen = resolve_indices(raw, len(notes))
+            for i in sorted(chosen):
+                _append_notes(f"- {notes[i]}")
+            applied_notes = len(chosen)
+
+        if memory_items:
+            console.print(f"\n[label]\U0001F9E0 Candidate Memory Facts ({len(memory_items)}):[/label]")
+            for i, m in enumerate(memory_items, 1):
+                console.print(f"  {i}. [accent]{m['key']}[/accent] = {m['value']}")
+            console.print("[dim]Enter numbers to save (e.g. 1,3), 'all', or 'none':[/dim]")
+            raw = await loop.run_in_executor(None, prompt_selection)
+            chosen = resolve_indices(raw, len(memory_items))
+            if chosen:
+                mem = _load_memory()
+                for i in chosen:
+                    mem[memory_items[i]["key"]] = memory_items[i]["value"]
+                _save_memory(mem)
+            applied_memory = len(chosen)
+
+        if skills:
+            console.print(f"\n[label]\U0001F6E0\uFE0F  Candidate Skills ({len(skills)}):[/label]")
+            existing_names = set(self.skill_registry.list_skills().keys())
+            for i, s in enumerate(skills, 1):
+                dup_tag = " [warning](exists - will be overwritten)[/warning]" if s["name"] in existing_names else ""
+                console.print(f"  {i}. [accent]{s['name']}[/accent]{dup_tag} - {s['description']}")
+            console.print("[dim]Enter numbers to save (e.g. 1,3), 'all', or 'none':[/dim]")
+            raw = await loop.run_in_executor(None, prompt_selection)
+            chosen = resolve_indices(raw, len(skills))
+            for i in chosen:
+                s = skills[i]
+                decl = DeclarativeSkill(
+                    name=s["name"],
+                    description=s["description"] or "Skill extracted via /dream.",
+                    system_instruction=s["system_instruction"],
+                    enabled=True
+                )
+                self.skill_registry.register(decl)
+            if chosen:
+                self.skill_registry.save_to_file()
+                self.update_system_message()
+            applied_skills = len(chosen)
+
+        console.print(
+            f"\n[success]Dream complete.[/success] Saved {applied_notes} note(s), "
+            f"{applied_memory} memory fact(s), and {applied_skills} skill(s)."
+        )
+
     async def cmd_retry(self, args):
         last_user_idx = None
         for i in range(len(self.messages) - 1, -1, -1):
@@ -337,7 +444,7 @@ class Mesh:
             console.print("[warning]Cleared all persistent memories from memory.json.[/warning]")
 
         else:
-            console.print("[error]Usage: /memory [save|get|delete|clear] <key> [value][/error]")
+            console.print("[error]Usage: /memory save <key> <value> | /memory get <key> | /memory delete <key> | /memory clear[/error]")
 
     async def cmd_skills(self, args):
         skills = self.skill_registry.list_skills()
@@ -347,7 +454,7 @@ class Mesh:
                 console.print("  [dim]No skills registered.[/dim]")
             for name, skill in skills.items():
                 status = "[success]ENABLED[/success]" if skill.enabled else "[error]DISABLED[/error]"
-                console.print(f"• [label]{name}[/label] [{status}]: {skill.description}")
+                console.print(f"• [label]{name}[/label] ({status}): {escape(skill.description)}")
                 tools = skill.get_tools()
                 if tools:
                     tool_names = ", ".join([t.name for t in tools])
@@ -392,7 +499,7 @@ class Mesh:
             self.permission_manager.allowed_dirs = [str(os.getcwd())]
             console.print("[warning]Reset allowed directories to Current Working Directory.[/warning]")
         else:
-            console.print("[error]Usage: /dirs [add|remove|clear] <path>[/error]")
+            console.print("[error]Usage: /dirs add <path> | /dirs remove <path> | /dirs clear[/error]")
 
     async def cmd_proxy(self, args):
         if not args:
@@ -445,7 +552,7 @@ class Mesh:
                     desc = fn.get("description", "No description")
                     params = fn.get("parameters", {}).get("properties", {})
                     param_keys = ", ".join(params.keys()) if params else "none"
-                    console.print(f"• [label]{name}[/label]: {desc}")
+                    console.print(f"• [label]{name}[/label]: {escape(desc)}")
                     console.print(f"  [dim]Parameters: ({param_keys})[/dim]")
             else:
                 console.print("  [dim]No tools currently registered.[/dim]")
@@ -461,7 +568,7 @@ class Mesh:
                 status = "[success]CONNECTED[/success]" if details["connected"] else "[error]DISCONNECTED[/error]"
                 enabled_str = "[success]ENABLED[/success]" if details["enabled"] else "[error]DISABLED[/error]"
                 cmd_str = f"{details['command']} {' '.join(details['args'])}" if details['command'] else "N/A"
-                console.print(f"• [label]{name}[/label] [{status}] [{enabled_str}] — [dim]{cmd_str}[/dim]")
+                console.print(f"• [label]{name}[/label] ({status}) ({enabled_str}) — [dim]{escape(cmd_str)}[/dim]")
                 
                 tools = details.get("tools", [])
                 if tools:
@@ -510,7 +617,7 @@ class Mesh:
                 fn = s.get("function", {})
                 name = fn.get("name", "unnamed")
                 desc = fn.get("description", "No description")
-                console.print(f"  • [label]{name}[/label]: {desc}")
+                console.print(f"  • [label]{name}[/label]: {escape(desc)}")
             console.print("\nUsage: [warning]/tools on[/warning] or [warning]/tools off[/warning]")
             return
 
@@ -551,7 +658,7 @@ class Mesh:
                     console.print(f"[error]MCP Server '{target}' not found.[/error]")
                 return
             else:
-                console.print("[error]Usage: /mcps [on|off] or /mcps [enable|disable] <server_name>[/error]")
+                console.print("[error]Usage: /mcps on | /mcps off | /mcps enable <server_name> | /mcps disable <server_name>[/error]")
                 return
 
         global_str = "[success]ENABLED[/success]" if self.mcp_manager.global_enabled else "[error]DISABLED[/error]"
@@ -562,7 +669,7 @@ class Mesh:
             enabled_str = "[success]ENABLED[/success]" if details["enabled"] else "[error]DISABLED[/error]"
             cmd_str = f"{details['command']} {' '.join(details['args'])}" if details['command'] else "N/A"
             
-            console.print(f"• [label]{name}[/label] [{status}] [{enabled_str}] — Command: [dim]{cmd_str}[/dim]")
+            console.print(f"• [label]{name}[/label] ({status}) ({enabled_str}) — Command: [dim]{escape(cmd_str)}[/dim]")
             
             if details["error"]:
                 console.print(f"  [error]Error: {details['error']}[/error]")
@@ -574,13 +681,13 @@ class Mesh:
                     desc = t.get("description", "No description")
                     properties = t.get("inputSchema", {}).get("properties", {})
                     args_summary = ", ".join(properties.keys()) if properties else "none"
-                    console.print(f"    - [text]{t['name']}[/text]: {desc}")
+                    console.print(f"    - [text]{t['name']}[/text]: {escape(desc)}")
                     console.print(f"      [dim]Arguments: ({args_summary})[/dim]")
             else:
                 console.print("  [dim]No tools exposed.[/dim]")
             console.print()
 
-        console.print("Usage: [warning]/mcps [on|off][/warning] or [warning]/mcps [enable|disable] <server_name>[/warning]\n")
+        console.print("Usage: [warning]/mcps on[/warning] | [warning]/mcps off[/warning] | [warning]/mcps enable <server_name>[/warning] | [warning]/mcps disable <server_name>[/warning]\n")
 
     async def cmd_debug(self, args):
         if not args:
@@ -720,14 +827,14 @@ class Mesh:
 
             for tool_call in tool_calls_to_run:
                 if self.debug_mode:
-                    console.print(f"\n[brand]🔧 [DEBUG] Tool Execution Request:[/brand] {tool_call['name']}({tool_call['args']})")
+                    console.print(f"\n[brand]🔧 DEBUG - Tool Execution Request:[/brand] {tool_call['name']}({tool_call['args']})")
                 else:
                     console.print(f"\n[accent]⚡ Tool Execution Request: {tool_call['name']}({tool_call['args']})[/accent]")
 
                 tool_result = await self.tool_registry.execute(tool_call["name"], tool_call["args"])
 
                 if self.debug_mode:
-                    console.print(f"[brand]🔧 [DEBUG] Tool Execution Result:[/brand]\n{tool_result}")
+                    console.print(f"[brand]🔧 DEBUG - Tool Execution Result:[/brand]\n{tool_result}")
                 
                 self.messages.append({
                     "role": "tool",

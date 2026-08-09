@@ -1,7 +1,7 @@
 import re
 import urllib.parse
 from html import unescape
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 import httpx
 from tools.base import BaseTool
 from theme import console
@@ -50,16 +50,27 @@ class WebSearchTool(BaseTool):
                 resp = await client.post(url, data=data, headers=headers)
                 html_text = resp.text
 
-            # Parse DuckDuckGo Lite HTML. Scope the link regex to result-link
-            # anchors specifically (rather than every <a> tag on the page) so
+            # Parse DuckDuckGo Lite HTML. Scope matching to anchors carrying
+            # the result-link class (rather than every <a> tag on the page) so
             # link_matches stays aligned, position-for-position, with
             # snippet_matches -- otherwise unrelated anchors (nav, pagination,
             # header) could shift the two lists out of sync and pair a title
             # with the wrong snippet.
-            link_matches = re.findall(
-                r'<a[^>]*class=["\']result-link["\'][^>]*href=["\']([^"\']+)["\'][^>]*>(.*?)</a>',
-                html_text, re.DOTALL
-            )
+            #
+            # NOTE: DuckDuckGo Lite's real markup is
+            # <a rel="nofollow" href="..." class="result-link">Title</a> --
+            # href comes *before* class. Attribute order in HTML is not
+            # guaranteed, so we match each whole <a ...>...</a> tag first and
+            # then pull out class/href independently, rather than requiring
+            # one attribute to appear before the other in a single regex.
+            link_matches: List[Tuple[str, str]] = []
+            for attrs, inner_html in re.findall(r'<a\s+([^>]*)>(.*?)</a>', html_text, re.DOTALL):
+                if "result-link" not in attrs:
+                    continue
+                href_match = re.search(r'href=["\']([^"\']+)["\']', attrs)
+                if href_match:
+                    link_matches.append((href_match.group(1), inner_html))
+
             snippet_matches = re.findall(r'<td[^>]*class=["\']result-snippet["\'][^>]*>(.*?)</td>', html_text, re.DOTALL)
 
             valid_results: List[Dict[str, str]] = []

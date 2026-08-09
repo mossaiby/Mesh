@@ -21,6 +21,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
   - **Session State**: `memory` (persistent JSON key-value store), `note_manager` (persistent `notes.md` manager), and `todo_manager` (multi-step task tracking).
 - **Directory Authorization & Security (`/dirs`)**: `PermissionManager` enforces directory boundaries. If a tool requests path access outside allowed directories, an interactive prompt asks the human user for access permission.
 - **Semantic Context Compaction (`/compact`)**: Summarizes older conversation context using the LLM without truncating system prompts or breaking active tool-call history pairs.
+- **Dream Extraction (`/dream`)**: Runs a dedicated analysis pass over the current conversation to surface durable notes, key-value memory facts, and reusable Skills worth keeping - with an interactive review before anything is persisted.
 - **Real-Time Token Streaming & CoT**: Live Markdown rendering with code syntax highlighting and toggleable Chain of Thought (CoT) reasoning displays (`/debug on|off`).
 - **Unified Theming**: A single shared, themed console (`theme.py`) applies one consistent, semantic color palette across every command, tool log, and prompt in the CLI.
 
@@ -106,6 +107,7 @@ python main.py
 | `/note [append|clear] [text]` | View, append to, or clear persistent project notes (`notes.md`). |
 | `/memory [save|get|delete|clear]` | View or manage persistent key-value items (`memory.json`). |
 | `/compact` | Semantically compact older conversation history using the LLM. |
+| `/dream` | Analyze the conversation and interactively extract candidate notes, memory facts, and reusable skills. |
 | `/retry` | Re-run the last completion turn (strips the last assistant/tool response). |
 | `/debug [on|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent logs. |
 | `/clear` | Clear conversation history while keeping system prompt and skills intact. |
@@ -201,6 +203,19 @@ When `/proxy on` is active:
 
 ---
 
+## \U0001F4A4 Dream Extraction (`/dream`)
+
+`/dream` runs a dedicated, out-of-band analysis pass (implemented in `dream.py`) over the current conversation - separate from the main chat loop - to surface durable knowledge that's easy to lose once the session ends:
+
+1. **Transcript Analysis**: The full conversation (minus the system prompt) is sent to the active model with a focused extraction prompt asking it to return structured JSON only.
+2. **Three Categories**: The model identifies candidate **notes** (durable facts/decisions worth logging), **memory** (small key-value facts worth recalling automatically next session), and **skills** (a workflow that was clearly repeated, or that you explicitly asked Mesh to remember).
+3. **Interactive Review**: Each category is listed with numbered items. You choose which ones to keep per category (`all`, `none`, or specific numbers like `1,3`) - nothing is written until you confirm.
+4. **Persistence**: Accepted notes are appended to `notes.md`, accepted memory facts are merged into `memory.json`, and accepted skills are registered live (so they take effect immediately) and written to `skills.json` as `DeclarativeSkill` entries.
+
+`/dream` is conservative by design - it won't invent a skill from a single one-off request, only from a pattern that actually recurred or that you asked to be remembered.
+
+---
+
 ## 🎨 Unified Theming
 
 Mesh renders every command, prompt, and log line through a single shared, themed `rich.console.Console` instance defined in `theme.py`, instead of each module picking its own colors ad hoc. All output maps onto a small set of semantic styles:
@@ -256,6 +271,7 @@ Mesh/
 ├── config.py                  # Configuration manager and Pydantic schemas
 ├── subagent.py                # Sub-Agent Proxy distillation engine
 ├── compaction.py               # Semantic context window compaction module
+├── dream.py                    # /dream conversation analysis & knowledge extraction
 ├── main.py                    # Main CLI entry point and orchestration loop
 ├── providers/
 │   ├── __init__.py

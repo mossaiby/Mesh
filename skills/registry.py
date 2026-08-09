@@ -47,6 +47,30 @@ class SkillRegistry:
             for tool in skill.get_tools():
                 self.tool_registry.register(tool)
 
+    def save_to_file(self) -> None:
+        """Persists all currently registered DeclarativeSkills back to skills.json,
+        preserving any keys already present in the file (e.g. skills authored
+        directly by hand rather than through this registry)."""
+        data: Dict = {"skills": {}}
+        if os.path.exists(self.filepath):
+            try:
+                with open(self.filepath, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+            except Exception:
+                data = {"skills": {}}
+
+        data.setdefault("skills", {})
+        for name, skill in self._skills.items():
+            if isinstance(skill, DeclarativeSkill):
+                data["skills"][name] = {
+                    "enabled": skill.enabled,
+                    "description": skill.description,
+                    "system_instruction": skill.system_instruction
+                }
+
+        with open(self.filepath, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+
     def set_skill_state(self, name: str, enabled: bool) -> bool:
         if name not in self._skills:
             return False

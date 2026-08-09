@@ -1,5 +1,5 @@
-from skills.base import BaseSkill
+from skills.base import BaseSkill, DeclarativeSkill
 from skills.registry import SkillRegistry
 from skills.code_skill import PythonCodingSkill
 
-__all__ = ["BaseSkill", "SkillRegistry", "PythonCodingSkill"]
+__all__ = ["BaseSkill", "DeclarativeSkill", "SkillRegistry", "PythonCodingSkill"]
