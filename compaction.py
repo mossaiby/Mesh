@@ -3,6 +3,34 @@ from config import ConfigManager
 from providers.openai_provider import OpenAIProvider
 
 
+# Rough, provider-agnostic token estimate (~4 characters per token). This is
+# intentionally simple rather than tied to a specific tokenizer (e.g.
+# tiktoken), since Mesh talks to many different backends/model families
+# whose actual tokenizers differ - the goal here is just a reasonably
+# conservative trigger for auto-compaction, not exact accounting.
+CHARS_PER_TOKEN = 4
+
+
+def estimate_tokens(messages: List[Dict[str, Any]]) -> int:
+    """Estimates the total token count of a message list from its raw
+    character length (content + tool calls + tool results), including a
+    small fixed overhead per message for role/formatting metadata."""
+    total_chars = 0
+    for msg in messages:
+        content = msg.get("content") or ""
+        if content:
+            total_chars += len(content)
+
+        tool_calls = msg.get("tool_calls")
+        if tool_calls:
+            total_chars += len(str(tool_calls))
+
+        # ~4 chars of overhead per message for role markers/formatting
+        total_chars += 4
+
+    return max(1, total_chars // CHARS_PER_TOKEN)
+
+
 def find_safe_split_index(chat_msgs: List[Dict[str, Any]], min_keep: int = 2) -> int:
     """
     Finds a safe index to split chat_msgs so that tool call/result
@@ -108,4 +136,47 @@ async def compact_messages(
         f"Compacted {compacted_count} old messages into 1 summary. "
         f"Total messages reduced from {orig_count} to {new_count}."
     )
+    return new_messages, True, details
+
+
+async def maybe_auto_compact(
+    messages: List[Dict[str, Any]],
+    config_mgr: ConfigManager,
+    min_keep: int = 2
+) -> Tuple[List[Dict[str, Any]], bool, str]:
+    """
+    Checks the current conversation's estimated token usage against the
+    active model's context window and, if auto-compaction is enabled and
+    usage exceeds the configured threshold, runs compact_messages().
+
+    Returns (messages, compacted, details). `messages` is the (possibly
+    unchanged) message list to use going forward; `compacted` is True only
+    if compaction actually ran and succeeded; `details` is empty unless
+    compaction ran.
+    """
+    cfg = config_mgr.config
+    if not cfg.auto_compact:
+        return messages, False, ""
+
+    try:
+        model_cfg, _ = config_mgr.get_active_model_and_provider()
+    except Exception:
+        return messages, False, ""
+
+    context_window = max(1, model_cfg.context_window)
+    threshold = min(max(cfg.auto_compact_threshold, 0.0), 1.0)
+    trigger_at = int(context_window * threshold)
+
+    estimated = estimate_tokens(messages)
+    if estimated < trigger_at:
+        return messages, False, ""
+
+    new_messages, success, details = await compact_messages(messages, config_mgr, min_keep=min_keep)
+    if not success:
+        # Not enough history to safely compact yet (e.g. still early in the
+        # conversation) - just proceed uncompacted rather than erroring out.
+        return messages, False, ""
+
+    usage_pct = int((estimated / context_window) * 100)
+    details = f"Auto-compacted at ~{usage_pct}% of context window ({estimated}/{context_window} est. tokens). {details}"
     return new_messages, True, details

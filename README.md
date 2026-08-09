@@ -21,6 +21,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
   - **Session State**: `memory` (persistent JSON key-value store), `note_manager` (persistent `notes.md` manager), and `todo_manager` (multi-step task tracking).
 - **Directory Authorization & Security (`/dirs`)**: `PermissionManager` enforces directory boundaries. If a tool requests path access outside allowed directories, an interactive prompt asks the human user for access permission.
 - **Semantic Context Compaction (`/compact`)**: Summarizes older conversation context using the LLM without truncating system prompts or breaking active tool-call history pairs.
+- **Auto-Compaction (`/autocompact`)**: Automatically triggers `/compact` once the conversation's estimated token usage crosses a configurable percentage of the active model's context window - no manual intervention needed, even in long agentic sessions.
 - **Dream Extraction (`/dream`)**: Runs a dedicated analysis pass over the current conversation to surface durable notes, key-value memory facts, and reusable Skills worth keeping - with an interactive review before anything is persisted.
 - **Real-Time Token Streaming & CoT**: Live Markdown rendering with code syntax highlighting and toggleable Chain of Thought (CoT) reasoning displays (`/debug on|off`).
 - **Unified Theming**: A single shared, themed console (`theme.py`) applies one consistent, semantic color palette across every command, tool log, and prompt in the CLI.
@@ -107,6 +108,7 @@ python main.py
 | `/note [append|clear] [text]` | View, append to, or clear persistent project notes (`notes.md`). |
 | `/memory [save|get|delete|clear]` | View or manage persistent key-value items (`memory.json`). |
 | `/compact` | Semantically compact older conversation history using the LLM. |
+| `/autocompact [on\|off\|threshold <0-100>]` | View or configure automatic compaction, which triggers `/compact` once estimated token usage crosses the threshold. |
 | `/dream` | Analyze the conversation and interactively extract candidate notes, memory facts, and reusable skills. |
 | `/retry` | Re-run the last completion turn (strips the last assistant/tool response). |
 | `/debug [on|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent logs. |
@@ -120,10 +122,14 @@ python main.py
 ### `models.json`
 Defines provider REST endpoints and model configurations, plus a single global system prompt shared by every model. Mesh always talks to whichever model is active with the same base instructions - switching models (`/switch`) changes only the endpoint/model ID, never the assistant's persona or instructions. Use `/system` to view or temporarily override the prompt for the current session.
 
+`auto_compact` and `auto_compact_threshold` control Auto-Compaction (see below) globally. Each model entry's `context_window` (in tokens) tells Mesh how much room that specific model has, so the same threshold behaves correctly across models with very different context sizes.
+
 ```json
 {
   "active_model": "llama3-groq",
   "system_prompt": "You are a helpful, intelligent AI assistant running inside Mesh, an interactive terminal CLI.",
+  "auto_compact": true,
+  "auto_compact_threshold": 0.75,
   "providers": {
     "groq": {
       "name": "Groq Cloud",
@@ -140,12 +146,14 @@ Defines provider REST endpoints and model configurations, plus a single global s
     "llama3-groq": {
       "name": "Llama 3 70B (Groq)",
       "provider": "groq",
-      "model_id": "llama-3.3-70b-versatile"
+      "model_id": "llama-3.3-70b-versatile",
+      "context_window": 128000
     },
     "gemma-4-e4b-lmstudio": {
       "name": "Gemma 4 E4B (Local)",
       "provider": "lmstudio",
-      "model_id": "google/gemma-4-e4b"
+      "model_id": "google/gemma-4-e4b",
+      "context_window": 8192
     }
   }
 }
@@ -203,7 +211,7 @@ When `/proxy on` is active:
 
 ---
 
-## \U0001F4A4 Dream Extraction (`/dream`)
+## 💤 Dream Extraction (`/dream`)
 
 `/dream` runs a dedicated, out-of-band analysis pass (implemented in `dream.py`) over the current conversation - separate from the main chat loop - to surface durable knowledge that's easy to lose once the session ends:
 
@@ -213,6 +221,19 @@ When `/proxy on` is active:
 4. **Persistence**: Accepted notes are appended to `notes.md`, accepted memory facts are merged into `memory.json`, and accepted skills are registered live (so they take effect immediately) and written to `skills.json` as `DeclarativeSkill` entries.
 
 `/dream` is conservative by design - it won't invent a skill from a single one-off request, only from a pattern that actually recurred or that you asked to be remembered.
+
+---
+
+## 🗜️ Auto-Compaction (`/autocompact`)
+
+Long-running agentic sessions can quietly fill up a model's context window with tool output and history. Auto-compaction watches for that and steps in automatically:
+
+1. **Token Estimation**: Before every model call, Mesh estimates the current conversation's token usage from a provider-agnostic character-based heuristic (`compaction.py::estimate_tokens`) - deliberately simple so it works reasonably across very different model families rather than being tied to one tokenizer.
+2. **Threshold Check**: That estimate is compared against `auto_compact_threshold` (default `0.75`, i.e. 75%) of the active model's `context_window` (set per model in `models.json`).
+3. **Automatic Compaction**: If usage crosses the threshold, Mesh runs the same summarization pass used by `/compact` - preserving the system prompt and the most recent messages while summarizing everything older - before sending the next request, and prints a short notice so you know it happened.
+4. **Per-Model Awareness**: Because `context_window` is set per model, the same global threshold correctly triggers earlier for a small local model (e.g. a 4K-context 1B model) and later for a large hosted one (e.g. a 128K-context model), without any manual tuning when you `/switch`.
+
+Use `/autocompact` (no args) to see current status, `/autocompact on`/`off` to toggle it, and `/autocompact threshold <0-100>` to adjust the trigger percentage. You can always still run `/compact` manually regardless of this setting.
 
 ---
 
@@ -312,6 +333,7 @@ Mesh/
 - **Web search title/snippet misalignment**: `web_search` matched result titles and snippets purely by their position in two independently-filtered lists, which could silently pair a title with the wrong snippet whenever unrelated links were filtered out. The link regex is now scoped to DuckDuckGo Lite's actual result-link anchors, and titles/snippets are paired by their original row index rather than by post-filter position.
 - **Inconsistent tool de-registration**: `SkillRegistry.set_skill_state` reached directly into `ToolRegistry`'s private `_tools` dict to remove a disabled skill's tools. Switched to the registry's public `unregister()` method.
 - **Consolidated system prompt**: Each model in `models.json` used to carry its own near-duplicate `system_prompt`. Replaced with a single global `system_prompt` on the top-level config, so the assistant's persona and instructions stay consistent across `/switch`, and there's one place to edit instead of one per model.
+- **Added Auto-Compaction**: Mesh previously only compacted context on manual `/compact`. Long sessions could silently overflow a model's context window with no warning. Added automatic, threshold-based compaction (`/autocompact`) driven by a new per-model `context_window` field and global `auto_compact`/`auto_compact_threshold` settings in `models.json`.
 
 ---
 

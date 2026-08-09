@@ -31,7 +31,7 @@ from tools.memory_tool import _load_memory, _save_memory
 from commands.registry import CommandRegistry
 from mcp.client import MCPManager
 from skills import SkillRegistry, PythonCodingSkill, DeclarativeSkill
-from compaction import compact_messages
+from compaction import compact_messages, maybe_auto_compact, estimate_tokens
 from dream import dream_extract
 from subagent import SubAgentProxy
 from theme import console
@@ -101,6 +101,7 @@ class Mesh:
         self.cmd_registry.register("switch", "Switch active model interactively, or directly: /switch <model_key>", self.cmd_switch)
         self.cmd_registry.register("clear", "Clear the conversation context window", self.cmd_clear)
         self.cmd_registry.register("compact", "Semantically summarize older conversation context", self.cmd_compact)
+        self.cmd_registry.register("autocompact", "View or set auto-compaction: /autocompact on | /autocompact off | /autocompact threshold <0-100>", self.cmd_autocompact)
         self.cmd_registry.register("dream", "Analyze the conversation and extract candidate notes, memory facts, and skills", self.cmd_dream)
         self.cmd_registry.register("retry", "Retry the last LLM response turn", self.cmd_retry)
         self.cmd_registry.register("context", "Display context window, tool schemas, and MCP status", self.cmd_context)
@@ -163,7 +164,19 @@ class Mesh:
         console.print(f"• [label]MCP Servers:[/label] {global_mcp_state} ({connected_mcp_count}/{len(mcp_info)} connected)")
         
         console.print(f"• [label]Allowed Directories:[/label] {len(self.permission_manager.allowed_dirs)} directories")
-        console.print(f"• [label]Context Window:[/label] {len(self.messages)} messages stored")
+
+        est_tokens = estimate_tokens(self.messages)
+        window = max(1, model_cfg.context_window)
+        usage_pct = int((est_tokens / window) * 100)
+        autocompact_state = "[success]ON[/success]" if self.config_mgr.config.auto_compact else "[error]OFF[/error]"
+        console.print(
+            f"• [label]Context Window:[/label] {len(self.messages)} messages, "
+            f"~{est_tokens}/{window} est. tokens ({usage_pct}%)"
+        )
+        console.print(
+            f"• [label]Auto-Compaction:[/label] {autocompact_state} "
+            f"(triggers at {int(self.config_mgr.config.auto_compact_threshold * 100)}%)"
+        )
         console.print(f"• [label]System Prompt Length:[/label] {len(sys_prompt)} chars (~{len(sys_prompt.split())} words)\n")
 
     async def cmd_models(self, args):
@@ -176,7 +189,8 @@ class Mesh:
             mark = "[accent]*[/accent]" if key == active else " "
             console.print(
                 f"{mark} [label]{key}[/label] -> {model_cfg.name} via "
-                f"[brand]{provider_name}[/brand] ([dim]{model_cfg.model_id}[/dim])"
+                f"[brand]{provider_name}[/brand] ([dim]{model_cfg.model_id}[/dim]) "
+                f"[dim]— {model_cfg.context_window} token context window[/dim]"
             )
 
     async def cmd_switch(self, args):
@@ -265,6 +279,45 @@ class Mesh:
             console.print(f"[success]Compaction Successful![/success] {details}")
         else:
             console.print(f"[warning]{details}[/warning]")
+
+    async def cmd_autocompact(self, args):
+        cfg = self.config_mgr.config
+
+        if not args:
+            state_str = "[success]ON[/success]" if cfg.auto_compact else "[error]OFF[/error]"
+            try:
+                model_cfg, _ = self.config_mgr.get_active_model_and_provider()
+                window_info = f" (active model context window: {model_cfg.context_window} tokens)"
+            except Exception:
+                window_info = ""
+            console.print(
+                f"Auto-compaction is currently {state_str}, triggering at "
+                f"[accent]{int(cfg.auto_compact_threshold * 100)}%[/accent] of the active model's "
+                f"context window{window_info}."
+            )
+            console.print("Usage: [warning]/autocompact on[/warning] | [warning]/autocompact off[/warning] | [warning]/autocompact threshold <0-100>[/warning]")
+            return
+
+        action = args[0].lower()
+        if action == "on":
+            cfg.auto_compact = True
+            console.print("[success]Auto-compaction ENABLED.[/success]")
+        elif action == "off":
+            cfg.auto_compact = False
+            console.print("[warning]Auto-compaction DISABLED.[/warning]")
+        elif action == "threshold" and len(args) > 1:
+            try:
+                pct = float(args[1])
+            except ValueError:
+                console.print("[error]Threshold must be a number between 0 and 100.[/error]")
+                return
+            if not (0 < pct <= 100):
+                console.print("[error]Threshold must be between 0 and 100.[/error]")
+                return
+            cfg.auto_compact_threshold = pct / 100.0
+            console.print(f"[success]Auto-compaction threshold set to {pct:.0f}% of the context window.[/success]")
+        else:
+            console.print("[error]Usage: /autocompact on | /autocompact off | /autocompact threshold <0-100>[/error]")
 
     async def cmd_dream(self, args):
         console.print("[brand]\U0001F4A4 Dreaming...[/brand] [dim]Analyzing the conversation for reusable notes, memories, and skills.[/dim]")
@@ -753,12 +806,16 @@ class Mesh:
 
         while current_turn < max_turns:
             current_turn += 1
-            
+
             try:
                 model_cfg, provider_cfg = self.config_mgr.get_active_model_and_provider()
             except Exception as e:
                 console.print(f"[error]Configuration Error:[/error] {e}")
                 return
+
+            self.messages, auto_compacted, compact_details = await maybe_auto_compact(self.messages, self.config_mgr)
+            if auto_compacted:
+                console.print(f"[warning]\U0001F5DC\uFE0F  {compact_details}[/warning]")
 
             provider = OpenAIProvider(model_cfg, provider_cfg)
             schemas = self.tool_registry.get_schemas() if self.tools_enabled else None

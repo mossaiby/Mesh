@@ -19,11 +19,14 @@ class ModelConfig(BaseModel):
     name: str
     provider: str
     model_id: str
+    context_window: int = 8192
 
 
 class MeshConfig(BaseModel):
     active_model: str
     system_prompt: str = "You are a helpful text-based AI assistant running inside Mesh, an interactive terminal CLI."
+    auto_compact: bool = True
+    auto_compact_threshold: float = 0.75
     providers: Dict[str, ProviderConfig] = Field(default_factory=dict)
     models: Dict[str, ModelConfig] = Field(default_factory=dict)
 
