@@ -27,6 +27,7 @@ from tools import (
     DelegateTaskTool,
 )
 import delegation
+import memory_search
 from tools.ask_tool import _read_single_key
 from tools.note_tool import _read_notes, _write_notes, _append_notes
 from tools.memory_tool import _load_memory, _save_memory
@@ -80,7 +81,7 @@ class Mesh:
     def setup_defaults(self):
         # 1. Register Base Tools with PermissionManager
         self.tool_registry.register(CalculatorTool())
-        self.tool_registry.register(MemoryTool())
+        self.tool_registry.register(MemoryTool(self.config_mgr))
         self.tool_registry.register(NoteTool())
         self.tool_registry.register(AskUserTool())
         self.tool_registry.register(TodoTool())
@@ -111,7 +112,7 @@ class Mesh:
         self.cmd_registry.register("context", "Display context window, tool schemas, and MCP status", self.cmd_context)
         self.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", self.cmd_system)
         self.cmd_registry.register("note", "View notes, or edit them: /note append <text> | /note clear", self.cmd_note)
-        self.cmd_registry.register("memory", "View memory, or edit it: /memory save <key> <value> | /memory get <key> | /memory delete <key> | /memory clear", self.cmd_memory)
+        self.cmd_registry.register("memory", "View memory, or edit it: /memory save <key> <value> | /memory get <key> | /memory search <query> | /memory delete <key> | /memory clear", self.cmd_memory)
         self.cmd_registry.register("skills", "List skills, or toggle one: /skills enable <name> | /skills disable <name>", self.cmd_skills)
         self.cmd_registry.register("tools", "List registered tools, or toggle inclusion: /tools on | /tools off", self.cmd_tools)
         self.cmd_registry.register("proxy", "Toggle sub-agent tool proxy distillation: /proxy on | /proxy off", self.cmd_proxy)
@@ -497,7 +498,7 @@ class Mesh:
             else:
                 for k, v in mem.items():
                     console.print(f"  • [label]{k}[/label]: {v}")
-            console.print("\nUsage: [warning]/memory[/warning], [warning]/memory save <key> <value>[/warning], [warning]/memory get <key>[/warning], [warning]/memory delete <key>[/warning], or [warning]/memory clear[/warning]\n")
+            console.print("\nUsage: [warning]/memory[/warning], [warning]/memory save <key> <value>[/warning], [warning]/memory get <key>[/warning], [warning]/memory search <query>[/warning], [warning]/memory delete <key>[/warning], or [warning]/memory clear[/warning]\n")
             return
 
         subcmd = args[0].lower()
@@ -516,6 +517,25 @@ class Mesh:
             else:
                 console.print(f"[error]Memory key '{key}' not found.[/error]")
 
+        elif subcmd == "search" and len(args) >= 2:
+            query = " ".join(args[1:]).strip()
+            result = await memory_search.semantic_memory_search(query, mem, self.config_mgr, verbose=True)
+
+            if result["status"] == "empty":
+                console.print("[dim]Memory is empty - nothing to search.[/dim]")
+            elif result["status"] == "error":
+                console.print(f"[error]Search failed:[/error] {result.get('error', 'Unknown error')}")
+            else:
+                matches = result["matches"]
+                if result.get("answer"):
+                    console.print(f"\n[success]Answer:[/success] {result['answer']}")
+                if matches:
+                    console.print("\n[label]Matching memory entries:[/label]")
+                    for m in matches:
+                        console.print(f"  • [accent]{m['key']}[/accent]: {m['value']}  [dim]({m['why']})[/dim]")
+                elif not result.get("answer"):
+                    console.print("[dim]No relevant memory entries found.[/dim]")
+
         elif subcmd == "delete" and len(args) >= 2:
             key = args[1]
             if key in mem:
@@ -530,7 +550,7 @@ class Mesh:
             console.print("[warning]Cleared all persistent memories from memory.json.[/warning]")
 
         else:
-            console.print("[error]Usage: /memory save <key> <value> | /memory get <key> | /memory delete <key> | /memory clear[/error]")
+            console.print("[error]Usage: /memory save <key> <value> | /memory get <key> | /memory search <query> | /memory delete <key> | /memory clear[/error]")
 
     async def cmd_skills(self, args):
         skills = self.skill_registry.list_skills()

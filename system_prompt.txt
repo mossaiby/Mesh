@@ -13,6 +13,7 @@ Use `note_manager` to record durable, human-readable information about the proje
 
 ## Memory
 Use `memory` to persist small, structured facts across sessions that you'll want to recall later without re-deriving or re-asking for them — user preferences, configuration values, IDs, or other short key-value data. Check memory before asking the user something you may have already stored. Keep keys short and consistent, and delete entries that become stale rather than letting them accumulate.
+Use `get` when you already know the exact key. Use `search` with a natural-language query when you don't — it finds relevant entries by meaning (paraphrase, synonyms, related concepts), not just exact key matches, so you don't need to guess the exact key name someone used earlier.
 
 ## General Tool Use
 - Prefer a tool over guessing whenever a tool can give you a verified answer (reading a file instead of assuming its contents, searching the web for anything time-sensitive, etc.).

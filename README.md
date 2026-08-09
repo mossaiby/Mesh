@@ -19,7 +19,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
   - **System Shell**: `run_shell_command` with execution timeouts.
   - **Zero-Key Web Search & Fetch**: `web_search` (DuckDuckGo search without API keys) and `web_fetch` (clean HTML-to-text extraction).
   - **Human-in-the-Loop**: `ask_user` with interactive arrow-key option selection and free-form input.
-  - **Session State**: `memory` (persistent JSON key-value store), `note_manager` (persistent `notes.md` manager), and `todo_manager` (dependency-aware, multi-step task tracking - tasks can declare `depends_on` other tasks, and `next` surfaces what's actually unblocked).
+  - **Session State**: `memory` (persistent JSON key-value store, with `search` for meaning-based recall via a dedicated sub-agent call rather than exact keys or embeddings), `note_manager` (persistent `notes.md` manager), and `todo_manager` (dependency-aware, multi-step task tracking - tasks can declare `depends_on` other tasks, and `next` surfaces what's actually unblocked).
 - **Directory Authorization & Security (`/dirs`)**: `PermissionManager` enforces directory boundaries. If a tool requests path access outside allowed directories, an interactive prompt asks the human user for access permission.
 - **Semantic Context Compaction (`/compact`)**: Summarizes older conversation context using the LLM without truncating system prompts or breaking active tool-call history pairs.
 - **Auto-Compaction (`/autocompact`)**: Automatically triggers `/compact` once the conversation's estimated token usage crosses a configurable percentage of the active model's context window - no manual intervention needed, even in long agentic sessions.
@@ -107,7 +107,7 @@ python main.py
 | `/dirs [add\|remove\|clear] <path>` | Manage authorized directory paths for file and shell operations. |
 | `/mcps [on\|off]` | View connected MCP servers or toggle MCP tools globally/per-server. |
 | `/note [append\|clear] [text]` | View, append to, or clear persistent project notes (`notes.md`). |
-| `/memory [save\|get\|delete\|clear]` | View or manage persistent key-value items (`memory.json`). |
+| `/memory [save\|get\|search\|delete\|clear]` | View or manage persistent key-value items (`memory.json`); `search` recalls by meaning via a sub-agent call. |
 | `/compact` | Semantically compact older conversation history using the LLM. |
 | `/autocompact [on\|off\|threshold <0-100>]` | View or configure automatic compaction, which triggers `/compact` once estimated token usage crosses the threshold. |
 | `/dream` | Analyze the conversation and interactively extract candidate notes, memory facts, and reusable skills. |
@@ -210,6 +210,19 @@ When `/proxy on` is active:
 4. **Context Optimization**: The main LLM receives a clean, structured JSON summary instead of thousands of lines of raw file content or build logs.
 
 *Note: Short outputs (under 4 lines / 300 characters) and lightweight tools (`calculator`, `memory`) automatically bypass distillation for zero-latency execution.*
+
+---
+
+## 🧠 Semantic Memory Search (`memory` → `search`)
+
+Memory recall doesn't rely on exact keys or an embedding/vector index. `memory search <query>` (implemented in `memory_search.py`) uses the same "small, focused sub-agent call" pattern as `/dream`, `/compact`, and `delegate_task`: the full memory store plus a natural-language query are sent to the active model with instructions to find relevant entries by meaning, not keyword overlap, and return them as structured JSON with a short synthesized answer.
+
+This was chosen deliberately over cosine-similarity search:
+- **No embedding infrastructure required** - works uniformly across every backend Mesh talks to, including local servers that don't expose an embeddings endpoint at all.
+- **Short key-value pairs are a weak fit for embeddings** - a one-line fact like `ci_provider: GitHub Actions` doesn't embed distinctively; an LLM's judgment handles paraphrase, synonyms, and "the value answers this even though the key shares no words with it" far better than vector distance on short strings.
+- **No index to build or keep in sync** - the memory store is read fresh on every search, so there's nothing that can go stale.
+
+`get` still exists for the common case where you already know the exact key - `search` is for when you don't.
 
 ---
 
@@ -320,6 +333,7 @@ Mesh/
 ├── config.py                  # Configuration manager and Pydantic schemas
 ├── subagent.py                # Sub-Agent Proxy distillation engine
 ├── delegation.py               # Task Delegation engine (independent of Sub-Agent Proxy)
+├── memory_search.py             # Sub-agent-based semantic memory search (memory -> search)
 ├── compaction.py               # Semantic context window compaction module
 ├── dream.py                    # /dream conversation analysis & knowledge extraction
 ├── main.py                    # Main CLI entry point and orchestration loop
@@ -366,6 +380,7 @@ Mesh/
 - **Added Auto-Compaction**: Mesh previously only compacted context on manual `/compact`. Long sessions could silently overflow a model's context window with no warning. Added automatic, threshold-based compaction (`/autocompact`) driven by a new per-model `context_window` field and global `auto_compact`/`auto_compact_threshold` settings in `models.json`.
 - **Added Task Delegation**: New `delegate_task` tool and `delegation.py` engine let the main model hand off a self-contained multi-step task to an autonomous sub-agent with its own tool loop, separate from and unaffected by Sub-Agent Proxy (`/proxy`). Also added `/delegate <task>` for manual testing.
 - **Added Dependency-Aware TODOs**: `todo_manager` previously tracked a flat list with no notion of ordering constraints. Added an optional `depends_on` field on `add`, dependency-gated `complete`, a new `next` action to surface unblocked work, and richer `display` rendering (done/ready/blocked, with blocking task IDs shown).
+- **Added Semantic Memory Search**: `memory` previously only supported exact-key lookup via `get`. Added a `search` action (`memory_search.py`) that recalls entries by meaning using a dedicated sub-agent call - chosen over embedding/cosine-similarity search since it needs no vector infrastructure and handles short key-value pairs more reliably.
 
 ---
 
