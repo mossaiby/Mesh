@@ -12,6 +12,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 - **Interactive Model Switcher (`/switch`)**: Switch active models on the fly using a cross-platform arrow-key selection menu or command arguments.
 - **Sub-Agent Proxy Architecture (`/proxy`)**: Reduces context window noise. Heavy tools (`read_file`, `shell`, `web_search`, MCP tools) require an `_intent` parameter. A dedicated sub-agent distills raw outputs into concise, structured JSON before handing them back to the main LLM.
 - **Task Delegation (`delegate_task`)**: A separate capability from `/proxy` - the main model can hand off a whole self-contained task to an autonomous sub-agent, which runs its own multi-step tool loop independently and reports back one final summary, instead of the main model babysitting every step.
+- **Self-Healing Tool-Error Recovery (`/selfheal`)**: Failed tool calls get one automatic recovery attempt before the model ever sees the error - transient failures (timeouts, rate limits) are mechanically retried with no model call, and failures likely caused by malformed arguments are diagnosed and retried once by a focused repair sub-agent.
 - **Model Context Protocol (MCP) (`/mcps`)**: Native stdio JSON-RPC MCP client supporting `mcps.json`. Dynamically discovers and executes tools from external MCP servers (SQLite, Filesystem, GitHub, etc.) with global and per-server toggles.
 - **Modular Skills Subsystem (`/skills`)**: Package specialized system prompts and tools into reusable skills. Supports dynamic loading from `skills.json` or custom Python classes.
 - **Rich Native Tool Suite**:
@@ -37,7 +38,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
                └────────────────────────────┬────────────────────────────┘
                                             │
                                   ┌─────────▼─────────┐
-                                  │      Mesh CLI      │
+                                  │      Mesh CLI     │
                                   └─────────┬─────────┘
                                             │
         ┌───────────────────┬───────────────┼───────────────┬───────────────────┐
@@ -104,6 +105,7 @@ python main.py
 | `/skills [enable\|disable] <name>` | List registered skills or enable/disable specific skills. |
 | `/tools [on\|off]` | View registered tools or toggle tool inclusion/execution globally. |
 | `/proxy [on\|off]` | Toggle Sub-Agent Proxy tool output distillation on or off. |
+| `/selfheal [on\|off]` | Toggle automatic tool-error recovery (mechanical retry + LLM-assisted argument repair) on or off. |
 | `/dirs [add\|remove\|clear] <path>` | Manage authorized directory paths for file and shell operations. |
 | `/mcps [on\|off]` | View connected MCP servers or toggle MCP tools globally/per-server. |
 | `/note [append\|clear] [text]` | View, append to, or clear persistent project notes (`notes.md`). |
@@ -210,6 +212,19 @@ When `/proxy on` is active:
 4. **Context Optimization**: The main LLM receives a clean, structured JSON summary instead of thousands of lines of raw file content or build logs.
 
 *Note: Short outputs (under 4 lines / 300 characters) and lightweight tools (`calculator`, `memory`) automatically bypass distillation for zero-latency execution.*
+
+---
+
+## 🩹 Self-Healing Tool-Error Recovery (`/selfheal`)
+
+Every tool call - from the main agent, `delegate_task` sub-agents, and `/proxy` distillation alike, since they all go through the same `ToolRegistry.execute()` - gets a best-effort automatic recovery attempt before a failure is ever handed back to the model. This is implemented in `self_heal.py` and is independent of Sub-Agent Proxy above; it never masks a real failure, it only adds a couple of cheap recovery attempts in front of one.
+
+Two layers, tried in order:
+
+1. **Mechanical retry (no model call)** - if the error looks transient (`timeout`, `connection reset`, `rate limit`, `503`, etc.), the exact same call is retried a couple of times with a short delay. This also covers an unknown-tool-name typo (e.g. the model calls `todo_manger`): it's corrected to the closest registered tool name via string similarity, with no LLM involved at all.
+2. **LLM-assisted argument repair (one attempt)** - if the failure survives mechanical retry, a small focused sub-agent call (same pattern as `/dream`/`/compact`/`memory search`) is shown the tool's schema, the arguments that failed, and the error message, and asked to propose corrected arguments - but only if it's confident the fix is purely structural (wrong type, invalid enum value, malformed JSON, a typo'd parameter). It's explicitly told not to guess at things it can't know, like the actual correct file path for a "file not found" error - those are passed through untouched.
+
+A few things are deliberately never auto-healed: permission-denied results (a security boundary, not a bug), and arguments to `run_shell_command`/`ask_user` are never auto-corrected and blindly re-run. When healing does change the outcome, the tool result includes a `_self_healed` note so both you and the model can see it happened.
 
 ---
 
@@ -334,6 +349,7 @@ Mesh/
 ├── subagent.py                # Sub-Agent Proxy distillation engine
 ├── delegation.py               # Task Delegation engine (independent of Sub-Agent Proxy)
 ├── memory_search.py             # Sub-agent-based semantic memory search (memory -> search)
+├── self_heal.py                 # Self-healing tool-error recovery (mechanical retry + LLM repair)
 ├── compaction.py               # Semantic context window compaction module
 ├── dream.py                    # /dream conversation analysis & knowledge extraction
 ├── main.py                    # Main CLI entry point and orchestration loop
@@ -381,6 +397,7 @@ Mesh/
 - **Added Task Delegation**: New `delegate_task` tool and `delegation.py` engine let the main model hand off a self-contained multi-step task to an autonomous sub-agent with its own tool loop, separate from and unaffected by Sub-Agent Proxy (`/proxy`). Also added `/delegate <task>` for manual testing.
 - **Added Dependency-Aware TODOs**: `todo_manager` previously tracked a flat list with no notion of ordering constraints. Added an optional `depends_on` field on `add`, dependency-gated `complete`, a new `next` action to surface unblocked work, and richer `display` rendering (done/ready/blocked, with blocking task IDs shown).
 - **Added Semantic Memory Search**: `memory` previously only supported exact-key lookup via `get`. Added a `search` action (`memory_search.py`) that recalls entries by meaning using a dedicated sub-agent call - chosen over embedding/cosine-similarity search since it needs no vector infrastructure and handles short key-value pairs more reliably.
+- **Added Self-Healing Tool-Error Recovery**: Failed tool calls previously went straight back to the model with no recovery attempt. Added `self_heal.py` and wired it into `ToolRegistry.execute()` (shared by the main loop, `delegate_task` sub-agents, and `/proxy` distillation): transient errors get mechanically retried with no model call, unknown tool-name typos are auto-corrected, and structurally-fixable argument errors get one LLM-assisted repair attempt. New `/selfheal on\|off` toggle.
 
 ---
 

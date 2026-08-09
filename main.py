@@ -37,6 +37,7 @@ from skills import SkillRegistry, PythonCodingSkill, DeclarativeSkill
 from compaction import compact_messages, maybe_auto_compact, estimate_tokens
 from dream import dream_extract
 from subagent import SubAgentProxy
+from self_heal import SelfHealer
 from theme import console
 from version import __version__
 
@@ -49,6 +50,8 @@ class Mesh:
         self.tool_registry = ToolRegistry()
         self.subagent_proxy = SubAgentProxy(self.config_mgr)
         self.tool_registry.subagent_proxy = self.subagent_proxy
+        self.self_healer = SelfHealer(self.config_mgr)
+        self.tool_registry.self_healer = self.self_healer
         
         self.permission_manager = PermissionManager()
         self.skill_registry = SkillRegistry(self.tool_registry)
@@ -116,6 +119,7 @@ class Mesh:
         self.cmd_registry.register("skills", "List skills, or toggle one: /skills enable <name> | /skills disable <name>", self.cmd_skills)
         self.cmd_registry.register("tools", "List registered tools, or toggle inclusion: /tools on | /tools off", self.cmd_tools)
         self.cmd_registry.register("proxy", "Toggle sub-agent tool proxy distillation: /proxy on | /proxy off", self.cmd_proxy)
+        self.cmd_registry.register("selfheal", "Toggle automatic tool-error recovery: /selfheal on | /selfheal off", self.cmd_selfheal)
         self.cmd_registry.register("dirs", "List allowed directories, or edit them: /dirs add <path> | /dirs remove <path> | /dirs clear", self.cmd_dirs)
         self.cmd_registry.register("mcps", "List MCP servers, or toggle them: /mcps on | /mcps off | /mcps enable <server> | /mcps disable <server>", self.cmd_mcps)
         self.cmd_registry.register("debug", "Toggle debug mode (CoT & tool traces): /debug on | /debug off", self.cmd_debug)
@@ -152,11 +156,13 @@ class Mesh:
         
         tools_state = "[success]ENABLED[/success]" if self.tools_enabled else "[error]DISABLED[/error]"
         proxy_state = "[success]ON[/success]" if self.subagent_proxy.enabled else "[error]OFF[/error]"
+        selfheal_state = "[success]ON[/success]" if self.self_healer.enabled else "[error]OFF[/error]"
         debug_state = "[success]ON[/success]" if self.debug_mode else "[error]OFF[/error]"
         
         schemas = self.tool_registry.get_schemas()
         console.print(f"• [label]Tools:[/label] {tools_state} ({len(schemas)} active schemas)")
         console.print(f"• [label]Sub-Agent Proxy Distillation:[/label] {proxy_state}")
+        console.print(f"• [label]Self-Healing Tool-Error Recovery:[/label] {selfheal_state}")
         console.print(f"• [label]Debug Mode:[/label] {debug_state}")
         
         skills = self.skill_registry.list_skills()
@@ -622,6 +628,26 @@ class Mesh:
             console.print("[warning]Sub-agent tool proxy distillation DISABLED.[/warning]")
         else:
             console.print("[error]Invalid option. Use '/proxy on' or '/proxy off'.[/error]")
+
+    async def cmd_selfheal(self, args):
+        if not args:
+            state_str = "[success]ON[/success]" if self.self_healer.enabled else "[error]OFF[/error]"
+            console.print(
+                f"Self-healing tool-error recovery is currently {state_str} "
+                f"(mechanical retries: {self.self_healer.mechanical_retries}).\n"
+                f"Usage: [warning]/selfheal on[/warning] or [warning]/selfheal off[/warning]"
+            )
+            return
+
+        arg = args[0].lower()
+        if arg == "on":
+            self.self_healer.enabled = True
+            console.print("[success]Self-healing tool-error recovery ENABLED.[/success]")
+        elif arg == "off":
+            self.self_healer.enabled = False
+            console.print("[warning]Self-healing tool-error recovery DISABLED.[/warning]")
+        else:
+            console.print("[error]Invalid option. Use '/selfheal on' or '/selfheal off'.[/error]")
 
     async def cmd_context(self, args):
         console.print(f"\n[success]=== CONTEXT MESSAGES ({len(self.messages)} Messages) ===[/success]\n")
