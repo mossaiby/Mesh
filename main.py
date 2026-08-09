@@ -24,7 +24,9 @@ from tools import (
     EditFileTool,
     GlobTool,
     ShellTool,
+    DelegateTaskTool,
 )
+import delegation
 from tools.ask_tool import _read_single_key
 from tools.note_tool import _read_notes, _write_notes, _append_notes
 from tools.memory_tool import _load_memory, _save_memory
@@ -89,6 +91,7 @@ class Mesh:
         self.tool_registry.register(EditFileTool(self.permission_manager))
         self.tool_registry.register(GlobTool(self.permission_manager))
         self.tool_registry.register(ShellTool(self.permission_manager))
+        self.tool_registry.register(DelegateTaskTool(self.tool_registry, self.config_mgr))
         
         # 2. Register Skills & Load skills.json
         self.skill_registry.register(PythonCodingSkill())
@@ -103,6 +106,7 @@ class Mesh:
         self.cmd_registry.register("compact", "Semantically summarize older conversation context", self.cmd_compact)
         self.cmd_registry.register("autocompact", "View or set auto-compaction: /autocompact on | /autocompact off | /autocompact threshold <0-100>", self.cmd_autocompact)
         self.cmd_registry.register("dream", "Analyze the conversation and extract candidate notes, memory facts, and skills", self.cmd_dream)
+        self.cmd_registry.register("delegate", "Delegate a self-contained task to an autonomous sub-agent: /delegate <task description>", self.cmd_delegate)
         self.cmd_registry.register("retry", "Retry the last LLM response turn", self.cmd_retry)
         self.cmd_registry.register("context", "Display context window, tool schemas, and MCP status", self.cmd_context)
         self.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", self.cmd_system)
@@ -410,6 +414,35 @@ class Mesh:
             f"\n[success]Dream complete.[/success] Saved {applied_notes} note(s), "
             f"{applied_memory} memory fact(s), and {applied_skills} skill(s)."
         )
+
+    async def cmd_delegate(self, args):
+        if not args:
+            console.print("[error]Usage: /delegate <task description>[/error]")
+            return
+
+        task = " ".join(args)
+        result = await delegation.run_delegated_task(
+            task=task,
+            tool_registry=self.tool_registry,
+            config_mgr=self.config_mgr,
+        )
+
+        status = result.get("status")
+        turns_used = result.get("turns_used", 0)
+        n_calls = len(result.get("tool_calls", []))
+
+        if status == "success":
+            console.print(
+                f"\n[success]Sub-agent report[/success] "
+                f"[dim]({turns_used} turn(s), {n_calls} tool call(s)):[/dim]\n{result['report']}\n"
+            )
+        elif status == "max_turns_reached":
+            console.print(
+                f"\n[warning]{result['report']}[/warning] "
+                f"[dim]({n_calls} tool call(s) made)[/dim]\n"
+            )
+        else:
+            console.print(f"\n[error]Delegation failed:[/error] {result.get('error', 'Unknown error')}\n")
 
     async def cmd_retry(self, args):
         last_user_idx = None

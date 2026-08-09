@@ -11,6 +11,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 - **Multi-Provider OpenAI Compatibility**: Seamlessly connect to OpenAI, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint via `models.json`.
 - **Interactive Model Switcher (`/switch`)**: Switch active models on the fly using a cross-platform arrow-key selection menu or command arguments.
 - **Sub-Agent Proxy Architecture (`/proxy`)**: Reduces context window noise. Heavy tools (`read_file`, `shell`, `web_search`, MCP tools) require an `_intent` parameter. A dedicated sub-agent distills raw outputs into concise, structured JSON before handing them back to the main LLM.
+- **Task Delegation (`delegate_task`)**: A separate capability from `/proxy` - the main model can hand off a whole self-contained task to an autonomous sub-agent, which runs its own multi-step tool loop independently and reports back one final summary, instead of the main model babysitting every step.
 - **Model Context Protocol (MCP) (`/mcps`)**: Native stdio JSON-RPC MCP client supporting `mcps.json`. Dynamically discovers and executes tools from external MCP servers (SQLite, Filesystem, GitHub, etc.) with global and per-server toggles.
 - **Modular Skills Subsystem (`/skills`)**: Package specialized system prompts and tools into reusable skills. Supports dynamic loading from `skills.json` or custom Python classes.
 - **Rich Native Tool Suite**:
@@ -36,7 +37,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
                └────────────────────────────┬────────────────────────────┘
                                             │
                                   ┌─────────▼─────────┐
-                                  │      Mesh CLI     │
+                                  │      Mesh CLI      │
                                   └─────────┬─────────┘
                                             │
         ┌───────────────────┬───────────────┼───────────────┬───────────────────┐
@@ -110,6 +111,7 @@ python main.py
 | `/compact` | Semantically compact older conversation history using the LLM. |
 | `/autocompact [on\|off\|threshold <0-100>]` | View or configure automatic compaction, which triggers `/compact` once estimated token usage crosses the threshold. |
 | `/dream` | Analyze the conversation and interactively extract candidate notes, memory facts, and reusable skills. |
+| `/delegate <task>` | Manually hand a self-contained task to an autonomous sub-agent and print its final report. |
 | `/retry` | Re-run the last completion turn (strips the last assistant/tool response). |
 | `/debug [on\|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent logs. |
 | `/clear` | Clear conversation history while keeping system prompt and skills intact. |
@@ -211,6 +213,21 @@ When `/proxy on` is active:
 
 ---
 
+## 🧑‍🚀 Task Delegation (`delegate_task`)
+
+Task Delegation is a separate capability from Sub-Agent Proxy above, implemented independently in `delegation.py` and `tools/delegate_tool.py`. Where `/proxy` distills the *output* of a single tool call the main model already decided to make, `delegate_task` lets the main model hand off an entire multi-step task and get out of the loop until it's done:
+
+1. **Hand-off**: The main model calls the `delegate_task` tool with a self-contained task description (e.g. *"investigate why the build is failing and report what's wrong"*).
+2. **Independent Sub-Agent Loop**: A fresh sub-agent conversation is created with its own system prompt and its own bounded tool-calling loop (default up to 6 turns, capped at 10) - it plans, calls tools, reads results, and iterates entirely on its own.
+3. **Tool Access**: The sub-agent shares the same live `ToolRegistry` as the main agent (so it can read/write files, run shell commands, search the web, use notes/memory, etc.), minus `delegate_task` itself (no recursive delegation chains) and `ask_user` (there's no live user for it to interact with mid-task).
+4. **Final Report Only**: Once the sub-agent stops calling tools, its final message becomes a single structured result - `{status, report, tool_calls, turns_used}` - handed back to the main model. The main model never sees the sub-agent's intermediate turns, only the outcome.
+
+Because the sub-agent's tool schemas are always built with intent-injection disabled, its tool calls never carry an `_intent` argument - so `delegate_task` never routes through `SubAgentProxy`/`/proxy`, regardless of whether `/proxy` is on or off. The two features compose but don't interfere with each other.
+
+You can also trigger delegation directly for testing via `/delegate <task description>`, without needing the main model to decide to call the tool.
+
+---
+
 ## 💤 Dream Extraction (`/dream`)
 
 `/dream` runs a dedicated, out-of-band analysis pass (implemented in `dream.py`) over the current conversation - separate from the main chat loop - to surface durable knowledge that's easy to lose once the session ends:
@@ -291,6 +308,7 @@ Mesh/
 ├── theme.py                   # Shared Rich theme & console instance
 ├── config.py                  # Configuration manager and Pydantic schemas
 ├── subagent.py                # Sub-Agent Proxy distillation engine
+├── delegation.py               # Task Delegation engine (independent of Sub-Agent Proxy)
 ├── compaction.py               # Semantic context window compaction module
 ├── dream.py                    # /dream conversation analysis & knowledge extraction
 ├── main.py                    # Main CLI entry point and orchestration loop
@@ -310,7 +328,8 @@ Mesh/
 │   ├── memory_tool.py         # Key-value memory tool
 │   ├── note_tool.py           # Markdown note manager tool
 │   ├── todo_tool.py           # Multi-step task tracking tool
-│   └── ask_tool.py            # Interactive human-in-the-loop decision tool
+│   ├── ask_tool.py            # Interactive human-in-the-loop decision tool
+│   └── delegate_tool.py       # delegate_task tool (Task Delegation)
 ├── commands/
 │   ├── __init__.py
 │   └── registry.py            # Slash command registry and dispatcher
@@ -334,6 +353,7 @@ Mesh/
 - **Inconsistent tool de-registration**: `SkillRegistry.set_skill_state` reached directly into `ToolRegistry`'s private `_tools` dict to remove a disabled skill's tools. Switched to the registry's public `unregister()` method.
 - **Consolidated system prompt**: Each model in `models.json` used to carry its own near-duplicate `system_prompt`. Replaced with a single global `system_prompt` on the top-level config, so the assistant's persona and instructions stay consistent across `/switch`, and there's one place to edit instead of one per model.
 - **Added Auto-Compaction**: Mesh previously only compacted context on manual `/compact`. Long sessions could silently overflow a model's context window with no warning. Added automatic, threshold-based compaction (`/autocompact`) driven by a new per-model `context_window` field and global `auto_compact`/`auto_compact_threshold` settings in `models.json`.
+- **Added Task Delegation**: New `delegate_task` tool and `delegation.py` engine let the main model hand off a self-contained multi-step task to an autonomous sub-agent with its own tool loop, separate from and unaffected by Sub-Agent Proxy (`/proxy`). Also added `/delegate <task>` for manual testing.
 
 ---
 

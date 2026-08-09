@@ -13,6 +13,7 @@ from tools.native_tools import (
     GlobTool,
     ShellTool
 )
+from tools.delegate_tool import DelegateTaskTool
 
 __all__ = [
     "BaseTool",
@@ -31,4 +32,5 @@ __all__ = [
     "EditFileTool",
     "GlobTool",
     "ShellTool",
+    "DelegateTaskTool",
 ]
