@@ -36,7 +36,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
                └────────────────────────────┬────────────────────────────┘
                                             │
                                   ┌─────────▼─────────┐
-                                  │      Mesh CLI      │
+                                  │      Mesh CLI     │
                                   └─────────┬─────────┘
                                             │
         ┌───────────────────┬───────────────┼───────────────┬───────────────────┐
@@ -100,18 +100,18 @@ python main.py
 | `/switch [key]` | Interactively switch models using arrow keys, or directly by model key. |
 | `/context` | Display conversation history, active tool schemas, and MCP statuses. |
 | `/system [text]` | Display, update, or clear (`/system clear`) the current system prompt. |
-| `/skills [enable|disable] <name>` | List registered skills or enable/disable specific skills. |
-| `/tools [on|off]` | View registered tools or toggle tool inclusion/execution globally. |
-| `/proxy [on|off]` | Toggle Sub-Agent Proxy tool output distillation on or off. |
-| `/dirs [add|remove|clear] <path>` | Manage authorized directory paths for file and shell operations. |
-| `/mcps [on|off]` | View connected MCP servers or toggle MCP tools globally/per-server. |
-| `/note [append|clear] [text]` | View, append to, or clear persistent project notes (`notes.md`). |
-| `/memory [save|get|delete|clear]` | View or manage persistent key-value items (`memory.json`). |
+| `/skills [enable\|disable] <name>` | List registered skills or enable/disable specific skills. |
+| `/tools [on\|off]` | View registered tools or toggle tool inclusion/execution globally. |
+| `/proxy [on\|off]` | Toggle Sub-Agent Proxy tool output distillation on or off. |
+| `/dirs [add\|remove\|clear] <path>` | Manage authorized directory paths for file and shell operations. |
+| `/mcps [on\|off]` | View connected MCP servers or toggle MCP tools globally/per-server. |
+| `/note [append\|clear] [text]` | View, append to, or clear persistent project notes (`notes.md`). |
+| `/memory [save\|get\|delete\|clear]` | View or manage persistent key-value items (`memory.json`). |
 | `/compact` | Semantically compact older conversation history using the LLM. |
 | `/autocompact [on\|off\|threshold <0-100>]` | View or configure automatic compaction, which triggers `/compact` once estimated token usage crosses the threshold. |
 | `/dream` | Analyze the conversation and interactively extract candidate notes, memory facts, and reusable skills. |
 | `/retry` | Re-run the last completion turn (strips the last assistant/tool response). |
-| `/debug [on|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent logs. |
+| `/debug [on\|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent logs. |
 | `/clear` | Clear conversation history while keeping system prompt and skills intact. |
 | `/exit` | Safely close MCP process connections and exit. |
 
