@@ -19,7 +19,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
   - **System Shell**: `run_shell_command` with execution timeouts.
   - **Zero-Key Web Search & Fetch**: `web_search` (DuckDuckGo search without API keys) and `web_fetch` (clean HTML-to-text extraction).
   - **Human-in-the-Loop**: `ask_user` with interactive arrow-key option selection and free-form input.
-  - **Session State**: `memory` (persistent JSON key-value store), `note_manager` (persistent `notes.md` manager), and `todo_manager` (multi-step task tracking).
+  - **Session State**: `memory` (persistent JSON key-value store), `note_manager` (persistent `notes.md` manager), and `todo_manager` (dependency-aware, multi-step task tracking - tasks can declare `depends_on` other tasks, and `next` surfaces what's actually unblocked).
 - **Directory Authorization & Security (`/dirs`)**: `PermissionManager` enforces directory boundaries. If a tool requests path access outside allowed directories, an interactive prompt asks the human user for access permission.
 - **Semantic Context Compaction (`/compact`)**: Summarizes older conversation context using the LLM without truncating system prompts or breaking active tool-call history pairs.
 - **Auto-Compaction (`/autocompact`)**: Automatically triggers `/compact` once the conversation's estimated token usage crosses a configurable percentage of the active model's context window - no manual intervention needed, even in long agentic sessions.
@@ -213,6 +213,17 @@ When `/proxy on` is active:
 
 ---
 
+## 🕸️ Dependency-Aware TODOs (`todo_manager`)
+
+`todo_manager` (`tools/todo_tool.py`) tracks a TODO list as a small DAG rather than a flat sequence, so the model (and the user, via `/dream`'s and `display`'s rendering) can see which work is actually independent versus which is waiting on something else:
+
+- **`add`** accepts an optional `depends_on: [id, ...]` list. A task can only depend on IDs that already exist, which makes the dependency graph acyclic by construction - there's no separate cycle-detection step needed.
+- **`complete`** is gated: completing a task whose dependencies aren't finished yet returns an error naming exactly which task(s) are blocking it, instead of silently marking it done out of order.
+- **`next`** returns only the tasks that are ready right now (incomplete, with every dependency already completed) - useful for identifying independent branches that could be worked on in either order, or delegated out via `delegate_task`, instead of assuming the list must be done top-to-bottom.
+- **`display`** renders each task's live status: ✔ done, ▶ ready, or ⏳ blocked (with the specific blocking task IDs shown), including transitive blocking (a task waiting on a task that's itself still blocked).
+
+---
+
 ## 🧑‍🚀 Task Delegation (`delegate_task`)
 
 Task Delegation is a separate capability from Sub-Agent Proxy above, implemented independently in `delegation.py` and `tools/delegate_tool.py`. Where `/proxy` distills the *output* of a single tool call the main model already decided to make, `delegate_task` lets the main model hand off an entire multi-step task and get out of the loop until it's done:
@@ -354,6 +365,7 @@ Mesh/
 - **Consolidated system prompt**: Each model in `models.json` used to carry its own near-duplicate `system_prompt`. Replaced with a single global `system_prompt` on the top-level config, so the assistant's persona and instructions stay consistent across `/switch`, and there's one place to edit instead of one per model.
 - **Added Auto-Compaction**: Mesh previously only compacted context on manual `/compact`. Long sessions could silently overflow a model's context window with no warning. Added automatic, threshold-based compaction (`/autocompact`) driven by a new per-model `context_window` field and global `auto_compact`/`auto_compact_threshold` settings in `models.json`.
 - **Added Task Delegation**: New `delegate_task` tool and `delegation.py` engine let the main model hand off a self-contained multi-step task to an autonomous sub-agent with its own tool loop, separate from and unaffected by Sub-Agent Proxy (`/proxy`). Also added `/delegate <task>` for manual testing.
+- **Added Dependency-Aware TODOs**: `todo_manager` previously tracked a flat list with no notion of ordering constraints. Added an optional `depends_on` field on `add`, dependency-gated `complete`, a new `next` action to surface unblocked work, and richer `display` rendering (done/ready/blocked, with blocking task IDs shown).
 
 ---
 
