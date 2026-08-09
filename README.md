@@ -13,6 +13,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 - **Sub-Agent Proxy Architecture (`/proxy`)**: Reduces context window noise. Heavy tools (`read_file`, `shell`, `web_search`, MCP tools) require an `_intent` parameter. A dedicated sub-agent distills raw outputs into concise, structured JSON before handing them back to the main LLM.
 - **Task Delegation (`delegate_task`)**: A separate capability from `/proxy` - the main model can hand off a whole self-contained task to an autonomous sub-agent, which runs its own multi-step tool loop independently and reports back one final summary, instead of the main model babysitting every step.
 - **Self-Healing Tool-Error Recovery (`/selfheal`)**: Failed tool calls get one automatic recovery attempt before the model ever sees the error - transient failures (timeouts, rate limits) are mechanically retried with no model call, and failures likely caused by malformed arguments are diagnosed and retried once by a focused repair sub-agent.
+- **Pinned Session Goal (`/goal`)**: A single objective (with optional success criteria) that's folded directly into the live system prompt rather than a chat message, so it stays visible to the model across `/compact`, `/switch`, and `/clear` - the one thing in a session that's designed to never get summarized away.
 - **Model Context Protocol (MCP) (`/mcps`)**: Native stdio JSON-RPC MCP client supporting `mcps.json`. Dynamically discovers and executes tools from external MCP servers (SQLite, Filesystem, GitHub, etc.) with global and per-server toggles.
 - **Modular Skills Subsystem (`/skills`)**: Package specialized system prompts and tools into reusable skills. Supports dynamic loading from `skills.json` or custom Python classes.
 - **Rich Native Tool Suite**:
@@ -114,6 +115,7 @@ python main.py
 | `/autocompact [on\|off\|threshold <0-100>]` | View or configure automatic compaction, which triggers `/compact` once estimated token usage crosses the threshold. |
 | `/dream` | Analyze the conversation and interactively extract candidate notes, memory facts, and reusable skills. |
 | `/delegate <task>` | Manually hand a self-contained task to an autonomous sub-agent and print its final report. |
+| `/goal <text> [\| criterion \| ...]` | View, set (with optional success criteria), or manage the pinned session goal; `/goal done <#>` marks a criterion complete, `/goal clear` removes it. |
 | `/retry` | Re-run the last completion turn (strips the last assistant/tool response). |
 | `/debug [on\|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent logs. |
 | `/clear` | Clear conversation history while keeping system prompt and skills intact. |
@@ -252,6 +254,20 @@ This was chosen deliberately over cosine-similarity search:
 
 ---
 
+## 🎯 Pinned Session Goal (`goal_manager` / `/goal`)
+
+`todo_manager` tracks the *how* - the individual steps. `goal_manager` (`tools/goal_tool.py`) tracks the *why* - a single overall objective for the session, with optional `success_criteria` defining what "done" actually looks like.
+
+What makes this different from just telling the model the goal in a chat message: once set, the goal is folded directly into the live system prompt (via the same `update_system_message()` path used for skill instructions), not left sitting in conversation history. That means it's designed to survive the things that would otherwise bury or discard it:
+
+- **`/compact`** summarizes old chat messages, but never touches the system prompt - the goal stays exact, not paraphrased into a summary.
+- **`/switch`** changes the active model, but `update_system_message()` is rebuilt fresh each time regardless of which model is active - the goal carries over.
+- **`/clear`** wipes the conversation history entirely by design, but explicitly preserves the system prompt - the goal survives a full context reset.
+
+Actions: `set` (replaces any existing goal), `get` (raw JSON for the model), `display` (renders to the user), `complete_criterion`, and `clear`. The model can set and update it itself via the `goal_manager` tool; `/goal <text> | <criterion 1> | <criterion 2>` sets it manually, `/goal done <#>` marks a criterion met, and `/goal` alone shows the current state.
+
+---
+
 ## 🧑‍🚀 Task Delegation (`delegate_task`)
 
 Task Delegation is a separate capability from Sub-Agent Proxy above, implemented independently in `delegation.py` and `tools/delegate_tool.py`. Where `/proxy` distills the *output* of a single tool call the main model already decided to make, `delegate_task` lets the main model hand off an entire multi-step task and get out of the loop until it's done:
@@ -370,7 +386,8 @@ Mesh/
 │   ├── note_tool.py           # Markdown note manager tool
 │   ├── todo_tool.py           # Multi-step task tracking tool
 │   ├── ask_tool.py            # Interactive human-in-the-loop decision tool
-│   └── delegate_tool.py       # delegate_task tool (Task Delegation)
+│   ├── delegate_tool.py       # delegate_task tool (Task Delegation)
+│   └── goal_tool.py           # goal_manager tool (Pinned Session Goal)
 ├── commands/
 │   ├── __init__.py
 │   └── registry.py            # Slash command registry and dispatcher
@@ -398,6 +415,7 @@ Mesh/
 - **Added Dependency-Aware TODOs**: `todo_manager` previously tracked a flat list with no notion of ordering constraints. Added an optional `depends_on` field on `add`, dependency-gated `complete`, a new `next` action to surface unblocked work, and richer `display` rendering (done/ready/blocked, with blocking task IDs shown).
 - **Added Semantic Memory Search**: `memory` previously only supported exact-key lookup via `get`. Added a `search` action (`memory_search.py`) that recalls entries by meaning using a dedicated sub-agent call - chosen over embedding/cosine-similarity search since it needs no vector infrastructure and handles short key-value pairs more reliably.
 - **Added Self-Healing Tool-Error Recovery**: Failed tool calls previously went straight back to the model with no recovery attempt. Added `self_heal.py` and wired it into `ToolRegistry.execute()` (shared by the main loop, `delegate_task` sub-agents, and `/proxy` distillation): transient errors get mechanically retried with no model call, unknown tool-name typos are auto-corrected, and structurally-fixable argument errors get one LLM-assisted repair attempt. New `/selfheal on\|off` toggle.
+- **Added Pinned Session Goal**: New `goal_manager` tool and `/goal` command track a single objective (with optional success criteria) that's folded directly into the live system prompt rather than left in chat history - unlike a todo item or a chat message, it survives `/compact`, `/switch`, and `/clear` by construction.
 
 ---
 

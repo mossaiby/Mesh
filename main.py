@@ -25,6 +25,7 @@ from tools import (
     GlobTool,
     ShellTool,
     DelegateTaskTool,
+    GoalTool,
 )
 import delegation
 import memory_search
@@ -74,6 +75,10 @@ class Mesh:
         if skill_instructions:
             full_sys += f"\n\nActive Skills Instructions:\n{skill_instructions}"
 
+        goal_section = self.goal_tool.as_system_prompt_section() if hasattr(self, "goal_tool") else ""
+        if goal_section:
+            full_sys += f"\n\n{goal_section}"
+
         sys_idx = next((i for i, m in enumerate(self.messages) if m.get("role") == "system"), None) if hasattr(self, "messages") else None
         
         if sys_idx is not None:
@@ -96,6 +101,8 @@ class Mesh:
         self.tool_registry.register(GlobTool(self.permission_manager))
         self.tool_registry.register(ShellTool(self.permission_manager))
         self.tool_registry.register(DelegateTaskTool(self.tool_registry, self.config_mgr))
+        self.goal_tool = GoalTool(on_change=lambda: self.update_system_message())
+        self.tool_registry.register(self.goal_tool)
         
         # 2. Register Skills & Load skills.json
         self.skill_registry.register(PythonCodingSkill())
@@ -111,6 +118,7 @@ class Mesh:
         self.cmd_registry.register("autocompact", "View or set auto-compaction: /autocompact on | /autocompact off | /autocompact threshold <0-100>", self.cmd_autocompact)
         self.cmd_registry.register("dream", "Analyze the conversation and extract candidate notes, memory facts, and skills", self.cmd_dream)
         self.cmd_registry.register("delegate", "Delegate a self-contained task to an autonomous sub-agent: /delegate <task description>", self.cmd_delegate)
+        self.cmd_registry.register("goal", "View, set, or manage the pinned session goal: /goal <text> [| criterion 1 | criterion 2 ...] | /goal done <criterion #> | /goal clear", self.cmd_goal)
         self.cmd_registry.register("retry", "Retry the last LLM response turn", self.cmd_retry)
         self.cmd_registry.register("context", "Display context window, tool schemas, and MCP status", self.cmd_context)
         self.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", self.cmd_system)
@@ -188,7 +196,14 @@ class Mesh:
             f"• [label]Auto-Compaction:[/label] {autocompact_state} "
             f"(triggers at {int(self.config_mgr.config.auto_compact_threshold * 100)}%)"
         )
-        console.print(f"• [label]System Prompt Length:[/label] {len(sys_prompt)} chars (~{len(sys_prompt.split())} words)\n")
+        console.print(f"• [label]System Prompt Length:[/label] {len(sys_prompt)} chars (~{len(sys_prompt.split())} words)")
+
+        if self.goal_tool.has_goal():
+            snapshot = self.goal_tool.snapshot()
+            crit_str = f", {snapshot['criteria_complete']}/{snapshot['criteria_total']} criteria met" if snapshot["criteria_total"] else ""
+            console.print(f"• [label]Goal:[/label] {snapshot['goal']}{crit_str}\n")
+        else:
+            console.print("• [label]Goal:[/label] [muted]none set[/muted]\n")
 
     async def cmd_models(self, args):
         active = self.config_mgr.config.active_model
@@ -450,6 +465,44 @@ class Mesh:
             )
         else:
             console.print(f"\n[error]Delegation failed:[/error] {result.get('error', 'Unknown error')}\n")
+
+    async def cmd_goal(self, args):
+        if not args:
+            self.goal_tool.render(console)
+            return
+
+        subcmd = args[0].lower()
+
+        if subcmd == "clear":
+            await self.goal_tool.execute("clear")
+            console.print("[warning]Goal cleared.[/warning]")
+
+        elif subcmd == "done" and len(args) >= 2:
+            try:
+                idx = int(args[1])
+            except ValueError:
+                console.print("[error]Usage: /goal done <criterion number>[/error]")
+                return
+            result = await self.goal_tool.execute("complete_criterion", criterion_index=idx)
+            if "error" in result:
+                console.print(f"[error]{result['error']}[/error]")
+            else:
+                console.print(f"[success]Marked criterion #{idx} complete.[/success]")
+                self.goal_tool.render(console)
+
+        else:
+            # Anything else is treated as the goal text itself, optionally
+            # followed by success criteria separated by '|', e.g.
+            # /goal Ship the export feature | CSV export works | Tests pass
+            raw = " ".join(args)
+            parts = [p.strip() for p in raw.split("|")]
+            goal_text, criteria = parts[0], [p for p in parts[1:] if p]
+
+            result = await self.goal_tool.execute("set", goal=goal_text, success_criteria=criteria)
+            if "error" in result:
+                console.print(f"[error]{result['error']}[/error]")
+            else:
+                self.goal_tool.render(console)
 
     async def cmd_retry(self, args):
         last_user_idx = None
