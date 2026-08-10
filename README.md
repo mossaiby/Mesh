@@ -12,6 +12,8 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 - **Interactive Model Switcher (`/switch`)**: Switch active models on the fly using a cross-platform arrow-key selection menu or command arguments.
 - **Sub-Agent Proxy Architecture (`/proxy`)**: Reduces context window noise. Heavy tools (`read_file`, `shell`, `web_search`, MCP tools) require an `_intent` parameter. A dedicated sub-agent distills raw outputs into concise, structured JSON before handing them back to the main LLM.
 - **Recursive Task Delegation (`delegate_task`)**: A separate capability from `/proxy` - the main model can hand off a whole self-contained task to an autonomous sub-agent, which runs its own multi-step tool loop independently and reports back one final summary. Sub-agents can delegate further sub-tasks themselves (up to a user-configurable depth, default 2), and multiple delegations in one turn run concurrently - real parallel work-splitting, not just one level of hand-off.
+- **Advisor (`consult_advisor`)**: A tool-free, single-shot "second opinion" the model can consult before committing to a risky or ambiguous plan - optionally from a different configured model than the one driving the conversation, for a genuinely independent perspective rather than the same model re-asked.
+- **Tool-Call Safety Guard (`/guard`)**: Shell commands, file writes/edits, and MCP tool calls are automatically risk-assessed by a dedicated (ideally cheap/local) model before they run - low risk proceeds, medium risk asks for permission (or auto-approves in autonomous mode), high risk is blocked outright regardless of mode.
 - **Self-Healing Tool-Error Recovery (`/selfheal`)**: Failed tool calls get one automatic recovery attempt before the model ever sees the error - transient failures (timeouts, rate limits) are mechanically retried with no model call, and failures likely caused by malformed arguments are diagnosed and retried once by a focused repair sub-agent.
 - **Pinned Session Goal (`/goal`)**: A single objective (with optional success criteria) that's folded directly into the live system prompt rather than a chat message, so it stays visible to the model across `/compact`, `/switch`, and `/clear` - the one thing in a session that's designed to never get summarized away.
 - **Model Context Protocol (MCP) (`/mcps`)**: Native stdio JSON-RPC MCP client supporting `mcps.json`. Dynamically discovers and executes tools from external MCP servers (SQLite, Filesystem, GitHub, etc.) with global and per-server toggles.
@@ -116,6 +118,8 @@ python main.py
 | `/dream` | Analyze the conversation and interactively extract candidate notes, memory facts, and reusable skills. |
 | `/delegate <task>` \| `/delegate depth [<n>]` | Manually hand a task to an autonomous sub-agent and print its final report; view or set the recursive delegation depth limit. |
 | `/goal <text> [\| criterion \| ...]` | View, set (with optional success criteria), or manage the pinned session goal; `/goal done <#>` marks a criterion complete, `/goal clear` removes it. |
+| `/advisor <question>` | Manually consult the advisor for a second opinion and print its response. |
+| `/guard [on\|off]` | View or configure the tool-call safety guard: `/guard mode [supervised\|autonomous]`, `/guard model [<key>]`, `/guard trust <tool>`. |
 | `/retry` | Re-run the last completion turn (strips the last assistant/tool response). |
 | `/debug [on\|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent logs. |
 | `/clear` | Clear conversation history while keeping system prompt and skills intact. |
@@ -128,7 +132,7 @@ python main.py
 ### `models.json`
 Defines provider REST endpoints and model configurations, plus a single global system prompt shared by every model. Mesh always talks to whichever model is active with the same base instructions - switching models (`/switch`) changes only the endpoint/model ID, never the assistant's persona or instructions. Use `/system` to view or temporarily override the prompt for the current session.
 
-`auto_compact` and `auto_compact_threshold` control Auto-Compaction (see below) globally. `max_delegation_depth` controls how many levels deep recursive Task Delegation (see below) may go. Each model entry's `context_window` (in tokens) tells Mesh how much room that specific model has, so the same threshold behaves correctly across models with very different context sizes.
+`auto_compact` and `auto_compact_threshold` control Auto-Compaction (see below) globally. `max_delegation_depth` controls how many levels deep recursive Task Delegation (see below) may go. `advisor_model` and `guard_*` configure the Advisor and Safety Guard (see below) - both can point at a different model key than `active_model`, so a second opinion or a risk check doesn't have to come from the same model doing the work. Each model entry's `context_window` (in tokens) tells Mesh how much room that specific model has, so the same threshold behaves correctly across models with very different context sizes.
 
 ```json
 {
@@ -137,6 +141,10 @@ Defines provider REST endpoints and model configurations, plus a single global s
   "auto_compact": true,
   "auto_compact_threshold": 0.75,
   "max_delegation_depth": 2,
+  "advisor_model": null,
+  "guard_enabled": true,
+  "guard_model": "lmstudio:local-1b-model",
+  "guard_autonomy": "supervised",
   "providers": {
     "groq": {
       "name": "Groq Cloud",
@@ -215,6 +223,38 @@ When `/proxy on` is active:
 4. **Context Optimization**: The main LLM receives a clean, structured JSON summary instead of thousands of lines of raw file content or build logs.
 
 *Note: Short outputs (under 4 lines / 300 characters) and lightweight tools (`calculator`, `memory`) automatically bypass distillation for zero-latency execution.*
+
+---
+
+## 🛡️ Tool-Call Safety Guard (`/guard`)
+
+`SafetyGuard` (`guard.py`) risk-assesses tool calls flagged `requires_guard = True` - `run_shell_command`, `write_file`, `edit_file`, and every MCP tool - before they're allowed to execute. It's wired into `ToolRegistry.execute()`, the same single choke point used by self-healing, so it automatically covers the main agent, `delegate_task` sub-agents at every recursion depth, and calls made through `/proxy` alike.
+
+This is deliberately a *different* check from `PermissionManager`'s directory allow-list: permissions ask "is this **path** somewhere I'm allowed to touch" (a boundary check); the guard asks "is this call's actual **content** dangerous, regardless of where it happens" (a semantic risk check). A `write_file` call to an already-allowed path can still carry destructive content; a shell command can be dangerous no matter what directory it runs in. Both checks can fire independently on the same call.
+
+1. **Risk assessment**: A dedicated model - configured separately via `guard_model`, so it can be a small/cheap/local model rather than whatever (possibly large, possibly per-token-billed) model is driving the conversation - looks at the tool name and its exact arguments and classifies risk as `low` / `medium` / `high`.
+2. **Verdict**:
+   - **low -> allow**: proceeds immediately, no friction for routine work.
+   - **medium -> ask**: in `supervised` mode (default), the same interactive picker `PermissionManager` uses pops up - *Allow Once* / *Always Allow this tool for the session* / *Deny*. In `autonomous` mode, it proceeds automatically instead.
+   - **high -> deny**: blocked outright and returned to the model as an error, in *either* mode - autonomy only removes friction for ambiguous medium-risk cases, it never bypasses an outright high-risk denial.
+3. **Session trust**: choosing "Always Allow" for a tool - or running `/guard trust <tool_name>` directly - skips future guard model calls for that specific tool for the rest of the session, not a blanket bypass of every guarded tool.
+4. **Concurrency-safe prompting**: interactive "ask" prompts are serialized behind a lock, so a fan-out of parallel delegated sub-agents (see Task Delegation below) can't produce overlapping/garbled terminal prompts - they queue instead of colliding.
+
+When a guard check runs, its outcome is folded into the result as a `_guard` note for transparency, the same way self-healing adds `_self_healed`.
+
+Configure via `models.json` (`guard_enabled`, `guard_model`, `guard_autonomy`) or live with `/guard on|off`, `/guard mode supervised|autonomous`, `/guard model <key>`, `/guard trust <tool_name>`.
+
+---
+
+## 🧭 Advisor (`consult_advisor`)
+
+`advisor.py` provides a single-shot, tool-free "second opinion" the main model can ask for via the `consult_advisor` tool, or you can trigger directly with `/advisor <question>`. It's a genuinely different kind of call from everything else in Mesh that spins up a focused sub-agent:
+
+- **`delegate_task`** does the work and reports back what happened.
+- **`self_heal`**'s repair pass fixes one specific tool-call failure.
+- **`consult_advisor`** takes no action and has no tools at all - it exists purely to give a candid opinion, flag risks/tradeoffs, and suggest alternatives, which the main model is free to weigh and disagree with.
+
+Set `advisor_model` in `models.json` to always consult a specific model (e.g. a stronger reasoning model) regardless of which model is actively driving the conversation, so a "second opinion" is an opinion from somewhere genuinely different - not the same model re-asked. Leave it `null` to just use whichever model is currently active.
 
 ---
 
@@ -376,6 +416,8 @@ Mesh/
 ├── delegation.py               # Task Delegation engine (independent of Sub-Agent Proxy)
 ├── memory_search.py             # Sub-agent-based semantic memory search (memory -> search)
 ├── self_heal.py                 # Self-healing tool-error recovery (mechanical retry + LLM repair)
+├── advisor.py                   # Advisor engine (consult_advisor / /advisor)
+├── guard.py                     # Tool-call Safety Guard (risk assessment + interactive escalation)
 ├── compaction.py               # Semantic context window compaction module
 ├── dream.py                    # /dream conversation analysis & knowledge extraction
 ├── main.py                    # Main CLI entry point and orchestration loop
@@ -397,7 +439,8 @@ Mesh/
 │   ├── todo_tool.py           # Multi-step task tracking tool
 │   ├── ask_tool.py            # Interactive human-in-the-loop decision tool
 │   ├── delegate_tool.py       # delegate_task tool (Task Delegation)
-│   └── goal_tool.py           # goal_manager tool (Pinned Session Goal)
+│   ├── goal_tool.py           # goal_manager tool (Pinned Session Goal)
+│   └── advisor_tool.py        # consult_advisor tool (Advisor)
 ├── commands/
 │   ├── __init__.py
 │   └── registry.py            # Slash command registry and dispatcher
@@ -427,6 +470,8 @@ Mesh/
 - **Added Self-Healing Tool-Error Recovery**: Failed tool calls previously went straight back to the model with no recovery attempt. Added `self_heal.py` and wired it into `ToolRegistry.execute()` (shared by the main loop, `delegate_task` sub-agents, and `/proxy` distillation): transient errors get mechanically retried with no model call, unknown tool-name typos are auto-corrected, and structurally-fixable argument errors get one LLM-assisted repair attempt. New `/selfheal on|off` toggle.
 - **Added Pinned Session Goal**: New `goal_manager` tool and `/goal` command track a single objective (with optional success criteria) that's folded directly into the live system prompt rather than left in chat history - unlike a todo item or a chat message, it survives `/compact`, `/switch`, and `/clear` by construction.
 - **Made Task Delegation recursive**: `delegate_task` previously excluded itself from every sub-agent's own tools, capping delegation at exactly one level. Sub-agents can now delegate further sub-tasks themselves, up to a new user-configurable `max_delegation_depth` (`models.json`, default 2, adjustable live via `/delegate depth [<n>]`). Multiple delegations issued in the same turn now also run concurrently (bounded to 4 at once) instead of sequentially, and the per-call turn budget tapers down with depth to bound total work.
+- **Added the Advisor**: New `consult_advisor` tool and `/advisor` command give the model a tool-free "second opinion" call, optionally from a different configured model (`advisor_model`) than whichever one is driving the conversation.
+- **Added the Tool-Call Safety Guard**: New `guard.py`, wired into `ToolRegistry.execute()` alongside self-healing, risk-assesses `run_shell_command`, `write_file`, `edit_file`, and every MCP tool before they run, using a dedicated (`guard_model`, defaults to the smallest local model configured) model - low risk allows, medium risk asks (or auto-approves in `autonomous` mode via `guard_autonomy`), high risk is always blocked. Reuses `PermissionManager`'s interactive picker for consistent UX, with prompts serialized so concurrent delegated sub-agents can't produce overlapping terminal prompts. New `/guard` command family.
 
 ---
 

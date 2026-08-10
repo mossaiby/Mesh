@@ -38,6 +38,10 @@ class ToolRegistry:
         # no hard dependency on it; execute() degrades to "no healing" when
         # self_healer is None or disabled.
         self.self_healer: Optional[Any] = None
+        # Set externally (see main.py) - risk-assesses tools flagged with
+        # requires_guard=True before they execute. None/disabled means no
+        # guard check runs at all.
+        self.safety_guard: Optional[Any] = None
 
     def register(self, tool: BaseTool) -> None:
         self._tools[tool.name] = tool
@@ -158,6 +162,20 @@ class ToolRegistry:
         # Extract and strip _intent parameter if present
         intent = kwargs.pop("_intent", "").strip()
 
+        # Safety Guard: risk-assess tools flagged with requires_guard=True
+        # (shell, file writes/edits, MCP tools) before executing. A denial
+        # blocks the call outright - it's never handed to self-healing,
+        # since a blocked call isn't a bug to fix.
+        guard = self.safety_guard
+        guard_info: Optional[Dict[str, Any]] = None
+        if getattr(tool, "requires_guard", False) and guard is not None and guard.enabled:
+            allowed, guard_info = await guard.check(resolved_name, kwargs)
+            if not allowed:
+                return json.dumps({
+                    "error": f"Blocked by Safety Guard: {guard_info.get('reason', 'assessed as too risky to run automatically.')}",
+                    "_guard": guard_info
+                })
+
         raw_result, run_notes = await self._execute_with_healing(tool, resolved_name, kwargs)
         healing_notes.extend(run_notes)
 
@@ -166,11 +184,14 @@ class ToolRegistry:
         # Fold in a short transparency note about any healing that occurred,
         # without breaking JSON validity for anything downstream that parses
         # the result (including SubAgentProxy distillation below).
-        if healing_notes and result_str.startswith("{"):
+        if (healing_notes or guard_info) and result_str.startswith("{"):
             try:
                 parsed = json.loads(result_str)
                 if isinstance(parsed, dict):
-                    parsed["_self_healed"] = healing_notes
+                    if healing_notes:
+                        parsed["_self_healed"] = healing_notes
+                    if guard_info:
+                        parsed["_guard"] = guard_info
                     result_str = json.dumps(parsed)
             except Exception:
                 pass

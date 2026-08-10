@@ -31,6 +31,8 @@ class MCPToolAdapter(BaseTool):
         self.parameters = parameters or {"type": "object", "properties": {}}
         self.session = session
         self.is_proxied = True  # Remote MCP tools route through SubAgentProxy
+        self.requires_guard = True  # MCP servers are third-party code with unpredictable
+                                     # side effects - always risk-assessed before calling out
 
     async def execute(self, **kwargs) -> Any:
         return await self.session.call_tool(self.name, kwargs)

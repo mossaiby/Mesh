@@ -15,6 +15,7 @@ from tools.native_tools import (
 )
 from tools.delegate_tool import DelegateTaskTool
 from tools.goal_tool import GoalTool
+from tools.advisor_tool import AdvisorTool
 
 __all__ = [
     "BaseTool",
@@ -35,4 +36,5 @@ __all__ = [
     "ShellTool",
     "DelegateTaskTool",
     "GoalTool",
+    "AdvisorTool",
 ]

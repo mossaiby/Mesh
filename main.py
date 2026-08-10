@@ -26,9 +26,12 @@ from tools import (
     ShellTool,
     DelegateTaskTool,
     GoalTool,
+    AdvisorTool,
 )
 import delegation
 import memory_search
+import advisor
+from guard import SafetyGuard
 from tools.ask_tool import _read_single_key
 from tools.note_tool import _read_notes, _write_notes, _append_notes
 from tools.memory_tool import _load_memory, _save_memory
@@ -53,6 +56,8 @@ class Mesh:
         self.tool_registry.subagent_proxy = self.subagent_proxy
         self.self_healer = SelfHealer(self.config_mgr)
         self.tool_registry.self_healer = self.self_healer
+        self.safety_guard = SafetyGuard(self.config_mgr, enabled=self.config_mgr.config.guard_enabled)
+        self.tool_registry.safety_guard = self.safety_guard
         
         self.permission_manager = PermissionManager()
         self.skill_registry = SkillRegistry(self.tool_registry)
@@ -103,6 +108,7 @@ class Mesh:
         self.tool_registry.register(DelegateTaskTool(self.tool_registry, self.config_mgr))
         self.goal_tool = GoalTool(on_change=lambda: self.update_system_message())
         self.tool_registry.register(self.goal_tool)
+        self.tool_registry.register(AdvisorTool(self.config_mgr))
         
         # 2. Register Skills & Load skills.json
         self.skill_registry.register(PythonCodingSkill())
@@ -119,6 +125,8 @@ class Mesh:
         self.cmd_registry.register("dream", "Analyze the conversation and extract candidate notes, memory facts, and skills", self.cmd_dream)
         self.cmd_registry.register("delegate", "Delegate a self-contained task to an autonomous sub-agent: /delegate <task description> | /delegate depth [<n>]", self.cmd_delegate)
         self.cmd_registry.register("goal", "View, set, or manage the pinned session goal: /goal <text> [| criterion 1 | criterion 2 ...] | /goal done <criterion #> | /goal clear", self.cmd_goal)
+        self.cmd_registry.register("advisor", "Consult the advisor for a second opinion: /advisor <question>", self.cmd_advisor)
+        self.cmd_registry.register("guard", "View or configure the tool-call safety guard: /guard [on|off] | /guard mode [supervised|autonomous] | /guard model [<key>] | /guard trust <tool>", self.cmd_guard)
         self.cmd_registry.register("retry", "Retry the last LLM response turn", self.cmd_retry)
         self.cmd_registry.register("context", "Display context window, tool schemas, and MCP status", self.cmd_context)
         self.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", self.cmd_system)
@@ -172,6 +180,14 @@ class Mesh:
         console.print(f"• [label]Sub-Agent Proxy Distillation:[/label] {proxy_state}")
         console.print(f"• [label]Self-Healing Tool-Error Recovery:[/label] {selfheal_state}")
         console.print(f"• [label]Delegation Recursion Depth:[/label] {self.config_mgr.config.max_delegation_depth}")
+        guard_state = "[success]ON[/success]" if self.safety_guard.enabled else "[error]OFF[/error]"
+        guard_model_str = self.config_mgr.config.guard_model or f"{self.config_mgr.config.active_model} (active)"
+        console.print(
+            f"• [label]Safety Guard:[/label] {guard_state} "
+            f"(mode: {self.config_mgr.config.guard_autonomy}, model: {guard_model_str})"
+        )
+        advisor_model_str = self.config_mgr.config.advisor_model or f"{self.config_mgr.config.active_model} (active)"
+        console.print(f"• [label]Advisor Model:[/label] {advisor_model_str}")
         console.print(f"• [label]Debug Mode:[/label] {debug_state}")
         
         skills = self.skill_registry.list_skills()
@@ -523,6 +539,73 @@ class Mesh:
                 console.print(f"[error]{result['error']}[/error]")
             else:
                 self.goal_tool.render(console)
+
+    async def cmd_advisor(self, args):
+        if not args:
+            console.print("[error]Usage: /advisor <question>[/error]")
+            return
+
+        question = " ".join(args)
+        console.print(f"[brand]\U0001F9ED Consulting advisor:[/brand] {question}")
+
+        result = await advisor.get_advice(question=question, config_mgr=self.config_mgr)
+        if result["status"] == "error":
+            console.print(f"[error]{result['error']}[/error]")
+        else:
+            console.print(f"\n[success]Advice[/success] [dim](from {result['advisor_model']}):[/dim]\n{result['advice']}\n")
+
+    async def cmd_guard(self, args):
+        cfg = self.config_mgr.config
+
+        if not args:
+            state_str = "[success]ON[/success]" if self.safety_guard.enabled else "[error]OFF[/error]"
+            model_str = cfg.guard_model or f"{cfg.active_model} (active model)"
+            trusted = ", ".join(sorted(self.safety_guard.get_session_trusted_tools())) or "none"
+            console.print(
+                f"Safety Guard is currently {state_str}, mode [accent]{cfg.guard_autonomy}[/accent], "
+                f"using model [accent]{model_str}[/accent].\n"
+                f"Session-trusted tools: [dim]{trusted}[/dim]\n"
+                f"Usage: [warning]/guard on[/warning] | [warning]/guard off[/warning] | "
+                f"[warning]/guard mode supervised[/warning] | [warning]/guard mode autonomous[/warning] | "
+                f"[warning]/guard model <key>[/warning] | [warning]/guard trust <tool_name>[/warning]"
+            )
+            return
+
+        sub = args[0].lower()
+
+        if sub == "on":
+            self.safety_guard.enabled = True
+            console.print("[success]Safety Guard ENABLED.[/success]")
+        elif sub == "off":
+            self.safety_guard.enabled = False
+            console.print("[warning]Safety Guard DISABLED - guarded tool calls will run unchecked.[/warning]")
+        elif sub == "mode" and len(args) >= 2:
+            mode = args[1].lower()
+            if mode not in ("supervised", "autonomous"):
+                console.print("[error]Usage: /guard mode supervised | /guard mode autonomous[/error]")
+                return
+            cfg.guard_autonomy = mode
+            console.print(f"[success]Safety Guard mode set to '{mode}'.[/success]")
+        elif sub == "model":
+            if len(args) == 1:
+                cfg.guard_model = None
+                console.print("[success]Safety Guard model reset to the active model.[/success]")
+                return
+            key = args[1]
+            if key not in cfg.models:
+                console.print(f"[error]Unknown model key '{key}'. See /models for valid keys.[/error]")
+                return
+            cfg.guard_model = key
+            console.print(f"[success]Safety Guard model set to '{key}'.[/success]")
+        elif sub == "trust" and len(args) >= 2:
+            tool_name = args[1]
+            self.safety_guard.trust_tool_for_session(tool_name)
+            console.print(f"[success]'{tool_name}' will no longer be guard-checked for the rest of this session.[/success]")
+        else:
+            console.print(
+                "[error]Usage: /guard [on|off] | /guard mode [supervised|autonomous] | "
+                "/guard model [<key>] | /guard trust <tool_name>[/error]"
+            )
 
     async def cmd_retry(self, args):
         last_user_idx = None

@@ -52,6 +52,7 @@ class WriteFileTool(BaseTool):
     name = "write_file"
     description = "Writes content to a file (creates parent directories if needed)."
     is_proxied = True
+    requires_guard = True
     parameters = {
         "type": "object",
         "properties": {
@@ -83,6 +84,7 @@ class EditFileTool(BaseTool):
     name = "edit_file"
     description = "Edits a file by replacing old string matches with new string."
     is_proxied = True
+    requires_guard = True
     parameters = {
         "type": "object",
         "properties": {
@@ -151,6 +153,7 @@ class ShellTool(BaseTool):
     name = "run_shell_command"
     description = "Runs a shell command in the system environment and returns stdout/stderr."
     is_proxied = True
+    requires_guard = True
     parameters = {
         "type": "object",
         "properties": {

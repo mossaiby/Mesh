@@ -34,6 +34,26 @@ class MeshConfig(BaseModel):
     # pieces and hand those off too, without allowing runaway/unbounded
     # recursive chains. User-adjustable via /delegate depth <n>.
     max_delegation_depth: int = 2
+    # Model key (from `models` below) consulted by the advisor tool. None
+    # falls back to whichever model is currently active - set this to a
+    # specific key (e.g. a stronger reasoning model) to always get a second
+    # opinion from a consistent source rather than the model doing the task.
+    advisor_model: Optional[str] = None
+    # Whether risky tool calls (shell, file writes, MCP tools) get an
+    # automatic risk assessment before executing. See SafetyGuard in guard.py.
+    guard_enabled: bool = True
+    # Model key used for that risk assessment. None falls back to the active
+    # model. Intentionally separate from advisor_model - this should
+    # typically be a small/cheap/local model, since it runs on every
+    # guarded tool call rather than only when explicitly asked for.
+    guard_model: Optional[str] = None
+    # "supervised" (default): a medium-risk ("ask") verdict prompts the
+    # human interactively before proceeding, same UX as PermissionManager.
+    # "autonomous": medium-risk calls proceed automatically without
+    # prompting. High-risk ("deny") calls are always blocked outright in
+    # either mode - autonomy only removes friction for ambiguous cases, it
+    # never bypasses an outright denial.
+    guard_autonomy: str = "supervised"
     providers: Dict[str, ProviderConfig] = Field(default_factory=dict)
     models: Dict[str, ModelConfig] = Field(default_factory=dict)
 
@@ -54,18 +74,20 @@ class ConfigManager:
         with open(self.filepath, "w", encoding="utf-8") as f:
             f.write(self.config.model_dump_json(indent=2))
 
-    def get_active_model_and_provider(self) -> Tuple[ModelConfig, ProviderConfig]:
-        active_key = self.config.active_model
-        if active_key not in self.config.models:
-            raise KeyError(f"Active model key '{active_key}' not found in models configuration.")
-        
-        model_cfg = self.config.models[active_key]
-        
+    def get_model_and_provider(self, key: str) -> Tuple[ModelConfig, ProviderConfig]:
+        if key not in self.config.models:
+            raise KeyError(f"Model key '{key}' not found in models configuration.")
+
+        model_cfg = self.config.models[key]
+
         if model_cfg.provider not in self.config.providers:
-            raise KeyError(f"Provider '{model_cfg.provider}' referenced by '{active_key}' not found in providers configuration.")
-        
+            raise KeyError(f"Provider '{model_cfg.provider}' referenced by '{key}' not found in providers configuration.")
+
         provider_cfg = self.config.providers[model_cfg.provider]
         return model_cfg, provider_cfg
+
+    def get_active_model_and_provider(self) -> Tuple[ModelConfig, ProviderConfig]:
+        return self.get_model_and_provider(self.config.active_model)
 
     def set_active_model(self, key: str) -> None:
         if key not in self.config.models:

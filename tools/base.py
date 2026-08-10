@@ -8,6 +8,8 @@ class BaseTool(ABC):
     description: str
     parameters: Dict[str, Any]
     is_proxied: bool = False  # Set to True for heavy tools that benefit from sub-agent distillation
+    requires_guard: bool = False  # Set to True for tools whose calls should be risk-assessed
+                                   # by the SafetyGuard before executing (shell, file writes, MCP tools)
 
     @abstractmethod
     async def execute(self, **kwargs) -> Any:
