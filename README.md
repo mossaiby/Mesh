@@ -1,8 +1,8 @@
 # ⚡ Mesh
 
-**v1.0.0**
+**v1.1.0**
 
-A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
+A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Speculative Swarm Exploration**, **Autonomous Tool Synthesis**, **Adversarial Multi-Model Consensus**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
 
 ---
 
@@ -10,6 +10,9 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 
 - **Multi-Provider OpenAI Compatibility**: Seamlessly connect to OpenAI, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint via `models.json`.
 - **Interactive Model Switcher (`/switch`)**: Switch active models on the fly using a cross-platform arrow-key selection menu or command arguments.
+- **Speculative Swarm Exploration (`explore_branches` / `/explore`)**: Runs $N$ parallel sub-agent swarm branches with distinct strategies/hypotheses to solve complex tasks simultaneously. Evaluates intermediate outputs with a Judge LLM pass and synthesizes the winning solution.
+- **Autonomous Tool Synthesis (`synthesize_tool` / `custom_tools/`)**: Enables Mesh or the user to write, AST-verify, save, and dynamically register new deterministic Python tools on the fly without restarting CLI sessions.
+- **Adversarial Multi-Model Consensus (`consult_consensus` / `/consensus`)**: Cross-examines critical plans or code patches. Model A generates a proposal, Model B red-teams and audits it for security/logic bugs, and a Referee pass synthesizes a verified consensus recommendation.
 - **Sub-Agent Proxy Architecture (`/proxy`)**: Reduces context window noise. Heavy tools (`read_file`, `shell`, `web_search`, MCP tools) require an `_intent` parameter. A dedicated sub-agent distills raw outputs into concise, structured JSON before handing them back to the main LLM.
 - **Recursive Task Delegation (`delegate_task`)**: A separate capability from `/proxy` - the main model can hand off a whole self-contained task to an autonomous sub-agent, which runs its own multi-step tool loop independently and reports back one final summary. Sub-agents can delegate further sub-tasks themselves (up to a user-configurable depth, default 2), and multiple delegations in one turn run concurrently - real parallel work-splitting, not just one level of hand-off.
 - **Advisor (`consult_advisor`)**: A tool-free, single-shot "second opinion" the model can consult before committing to a risky or ambiguous plan - optionally from a different configured model than the one driving the conversation, for a genuinely independent perspective rather than the same model re-asked.
@@ -39,18 +42,18 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 ```text
                ┌─────────────────────────────────────────────────────────┐
                │                      User (CLI)                         │
-               └────────────────────────────┬────────────────────────────┘
-                                            │
-                                  ┌─────────▼─────────┐
-                                  │      Mesh CLI     │
-                                  └─────────┬─────────┘
-                                            │
-        ┌───────────────────┬───────────────┼───────────────┬───────────────────┐
-        │                   │               │               │                   │
-┌───────▼───────┐   ┌───────▼───────┐  ┌────▼────┐   ┌──────▼──────┐   ┌────────▼────────┐
-│ OpenAI / Local│   │ Tool Registry │  │ Skills  │   │ MCP Client  │   │ Sub-Agent Proxy │
-│  Providers    │   │  & Security   │  │ Registry│   │ (mcps.json) │   │  (Distillation) │
-└───────────────┘   └───────────────┘  └─────────┘   └─────────────┘   └─────────────────┘
+               └─────────────────────────┬───────────────────────────────┘
+                                         │
+                                  ┌──────▼──────┐
+                                  │  Mesh CLI   │
+                                  └──────┬──────┘
+                                         │
+        ┌───────────────────┬────────────┼────────────┬───────────────────┐
+        │                   │            │            │                   │
+┌───────▼───────┐   ┌───────▼───────┐  ┌─▼───┐   ┌────▼──────┐   ┌────────▼────────┐
+│ OpenAI / Local│   │ Tool Registry │  │Skill│   │ MCP Client│   │ Sub-Agent Proxy │
+│  Providers    │   │  & Security   │  │Reg. │   │(mcps.json)│   │  (Distillation) │
+└───────────────┘   └───────────────┘  └─────┘   └───────────┘   └─────────────────┘
 ```
 
 ---
@@ -104,6 +107,8 @@ python main.py
 | `/version` | Show the current Mesh version. |
 | `/models` | List all configured models and their provider endpoints. |
 | `/switch [key]` | Interactively switch models using arrow keys, or directly by model key. |
+| `/explore <task>` | Run parallel speculative branch exploration across $N$ strategies. |
+| `/consensus <question> \| <proposal>` | Run an adversarial multi-model audit and synthesis pass. |
 | `/context` | Display conversation history, active tool schemas, and MCP statuses. |
 | `/system [text]` | Display, update, or clear (`/system clear`) the current system prompt. |
 | `/skills [enable\|disable] <name>` | List registered skills or enable/disable specific skills. |
@@ -213,6 +218,41 @@ Configures declarative skills that inject specialized instructions and tools.
   }
 }
 ```
+
+---
+
+## 🌲 Speculative Swarm Exploration (`explore_branches` / `/explore`)
+
+`explore.py` and `tools/explore_tool.py` introduce Monte Carlo Tree Search (MCTS) / Tree-of-Thoughts style parallel exploration to Mesh.
+
+1. **Parallel Branching**: Instead of sequentially attempting a complex task step-by-step, Mesh spawns $N$ parallel sub-agents (branches) with distinct strategy prompts (e.g., Direct Implementation, Defensive/Edge-Case Heavy, Alternative Structural Pattern).
+2. **Concurrent Execution**: All branches run asynchronously via `asyncio.gather()` using Mesh's delegation engine.
+3. **LLM Judge Pass**: A dedicated Judge pass evaluates all branch reports and tool logs, selects the winning strategy (or synthesizes the best ideas across branches), and presents a unified solution.
+
+Run via `/explore <task description>` or through the model calling the `explore_branches` tool.
+
+---
+
+## ⚡ Autonomous Tool Synthesis (`synthesize_tool` / `custom_tools/`)
+
+`tool_synthesis.py` and `tools/synthesis_tool.py` allow Mesh (or the user) to generate new deterministic Python tools on the fly when repetitive tasks are detected.
+
+1. **AST Validation**: Code generated by the model is validated via Python's `ast` module to guarantee clean syntax and valid `BaseTool` subclassing.
+2. **Persistence**: Validated tools are saved as Python modules inside `custom_tools/`.
+3. **Live Registration**: Newly synthesized tools are imported and registered dynamically into `ToolRegistry` at runtime without restarting the CLI session.
+4. **Auto-Load on Startup**: All saved tools in `custom_tools/` are automatically re-loaded every time Mesh starts.
+
+---
+
+## ⚖️ Adversarial Multi-Model Consensus (`consult_consensus` / `/consensus`)
+
+`consensus.py` and `tools/consensus_tool.py` implement an adversarial cross-examination loop for critical code changes or architectural proposals.
+
+1. **Proposal**: Model A generates a candidate plan, command, or patch.
+2. **Red-Team Audit**: Model B (configured via `advisor_model` or specified directly) acts as an auditor, red-teaming the proposal for security vulnerabilities, edge cases, and side effects.
+3. **Referee Synthesis**: A referee pass reviews the original proposal alongside the auditor's critique to synthesize a final, verified consensus recommendation.
+
+Run via `/consensus <question> | <proposed solution>` or via the `consult_consensus` tool.
 
 ---
 
@@ -437,6 +477,9 @@ Mesh/
 ├── config.py                  # Configuration manager and Pydantic schemas
 ├── subagent.py                # Sub-Agent Proxy distillation engine
 ├── delegation.py              # Task Delegation engine (independent of Sub-Agent Proxy)
+├── explore.py                 # Speculative Swarm Branch Exploration engine
+├── tool_synthesis.py          # Dynamic Tool Synthesis and AST validation
+├── consensus.py               # Adversarial Multi-Model Consensus engine
 ├── memory_search.py           # Sub-agent-based semantic memory search (memory -> search)
 ├── self_heal.py               # Self-healing tool-error recovery (mechanical retry + LLM repair)
 ├── advisor.py                 # Advisor engine (consult_advisor / /advisor)
@@ -445,6 +488,7 @@ Mesh/
 ├── compaction.py              # Semantic context window compaction module
 ├── dream.py                   # /dream conversation analysis & knowledge extraction
 ├── main.py                    # Main CLI entry point and orchestration loop
+├── custom_tools/              # Directory for dynamically synthesized tools
 ├── providers/
 │   ├── __init__.py
 │   └── openai_provider.py     # Async OpenAI-compatible client wrapper
@@ -464,7 +508,10 @@ Mesh/
 │   ├── ask_tool.py            # Interactive human-in-the-loop decision tool
 │   ├── delegate_tool.py       # delegate_task tool (Task Delegation)
 │   ├── goal_tool.py           # goal_manager tool (Pinned Session Goal)
-│   └── advisor_tool.py        # consult_advisor tool (Advisor)
+│   ├── advisor_tool.py        # consult_advisor tool (Advisor)
+│   ├── explore_tool.py        # explore_branches tool (Speculative Exploration)
+│   ├── synthesis_tool.py      # synthesize_tool tool (Tool Synthesis)
+│   └── consensus_tool.py      # consult_consensus tool (Multi-Model Consensus)
 ├── commands/
 │   ├── __init__.py
 │   └── registry.py            # Slash command registry and dispatcher
@@ -480,8 +527,14 @@ Mesh/
 
 ---
 
-## 🩹 Changelog / Bug Fixes (v1.0.0)
+## 🩹 Changelog / Bug Fixes
 
+### v1.1.0
+- **Added Speculative Swarm Exploration (`/explore`, `explore_branches`)**: Spawns $N$ parallel sub-agents with distinct strategies, evaluates intermediate reports with a Judge pass, and synthesizes a unified solution.
+- **Added Autonomous Tool Synthesis (`synthesize_tool`, `custom_tools/`)**: Generates, AST-validates, saves, and dynamically registers new Python tools at runtime without restarting Mesh.
+- **Added Adversarial Multi-Model Consensus (`/consensus`, `consult_consensus`)**: Runs a 2-stage red-team audit and referee synthesis pass before executing critical operations.
+
+### v1.0.0
 - **Missing `httpx` dependency**: `tools/web_tools.py` imports `httpx` for `web_search`/`web_fetch`, but it was never listed in `requirements.txt`, so a clean install would crash the first time either tool ran. Added to `requirements.txt`.
 - **Directory-permission misclassification**: `PermissionManager` used to guess "is this a directory?" from whether the path had a file suffix, which misclassified extensionless existing files (`Makefile`, `LICENSE`, `Dockerfile`, ...) as directories — approving "Always Allow" would add the *file itself* to the allow-list instead of its parent directory. Now uses `Path.is_dir()`.
 - **Web search title/snippet misalignment**: `web_search` matched result titles and snippets purely by their position in two independently-filtered lists, which could silently pair a title with the wrong snippet whenever unrelated links were filtered out. The link regex is now scoped to DuckDuckGo Lite's actual result-link anchors, and titles/snippets are paired by their original row index rather than by post-filter position.

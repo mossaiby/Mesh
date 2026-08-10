@@ -16,6 +16,9 @@ from tools.native_tools import (
 from tools.delegate_tool import DelegateTaskTool
 from tools.goal_tool import GoalTool
 from tools.advisor_tool import AdvisorTool
+from tools.explore_tool import ExploreTool
+from tools.synthesis_tool import SynthesizeTool
+from tools.consensus_tool import ConsensusTool
 
 __all__ = [
     "BaseTool",
@@ -37,4 +40,7 @@ __all__ = [
     "DelegateTaskTool",
     "GoalTool",
     "AdvisorTool",
+    "ExploreTool",
+    "SynthesizeTool",
+    "ConsensusTool",
 ]

@@ -28,10 +28,16 @@ from tools import (
     DelegateTaskTool,
     GoalTool,
     AdvisorTool,
+    ExploreTool,
+    SynthesizeTool,
+    ConsensusTool,
 )
 import delegation
 import memory_search
 import advisor
+import explore
+import consensus
+import tool_synthesis
 from guard import SafetyGuard
 from tools.ask_tool import _read_single_key
 from tools.note_tool import _read_notes, _write_notes, _append_notes
@@ -119,7 +125,13 @@ class Mesh:
         self.goal_tool = GoalTool(on_change=lambda: self.update_system_message())
         self.tool_registry.register(self.goal_tool)
         self.tool_registry.register(AdvisorTool(self.config_mgr))
+        self.tool_registry.register(ExploreTool(self.tool_registry, self.config_mgr))
+        self.tool_registry.register(SynthesizeTool(self.tool_registry))
+        self.tool_registry.register(ConsensusTool(self.config_mgr))
         
+        # Load any existing dynamic tools from custom_tools/
+        tool_synthesis.load_all_custom_tools(self.tool_registry)
+
         # 2. Register Skills & Load skills.json
         self.skill_registry.register(PythonCodingSkill())
         self.skill_registry.load_from_file()
@@ -134,6 +146,8 @@ class Mesh:
         self.cmd_registry.register("autocompact", "View or set auto-compaction: /autocompact on | /autocompact off | /autocompact threshold <0-100>", self.cmd_autocompact)
         self.cmd_registry.register("dream", "Analyze the conversation and extract candidate notes, memory facts, and skills", self.cmd_dream)
         self.cmd_registry.register("delegate", "Delegate a self-contained task to an autonomous sub-agent: /delegate <task description> | /delegate depth [<n>]", self.cmd_delegate)
+        self.cmd_registry.register("explore", "Run parallel speculative branch exploration: /explore <task description>", self.cmd_explore)
+        self.cmd_registry.register("consensus", "Run an adversarial multi-model consensus audit: /consensus <question> | <proposal>", self.cmd_consensus)
         self.cmd_registry.register("goal", "View, set, or manage the pinned session goal: /goal <text> [| criterion 1 | criterion 2 ...] | /goal done <criterion #> | /goal clear", self.cmd_goal)
         self.cmd_registry.register("advisor", "Consult the advisor for a second opinion: /advisor <question>", self.cmd_advisor)
         self.cmd_registry.register("guard", "View or configure the tool-call safety guard: /guard [on|off] | /guard mode [supervised|autonomous] | /guard model [<key>] | /guard trust <tool>", self.cmd_guard)
@@ -513,6 +527,49 @@ class Mesh:
             )
         else:
             console.print(f"\n[error]Delegation failed:[/error] {result.get('error', 'Unknown error')}\n")
+
+    async def cmd_explore(self, args):
+        if not args:
+            console.print("[error]Usage: /explore <task description>[/error]")
+            return
+
+        task = " ".join(args)
+        result = await explore.explore_branches(
+            task=task,
+            strategies=None,
+            tool_registry=self.tool_registry,
+            config_mgr=self.config_mgr
+        )
+
+        if result["status"] == "success":
+            console.print(f"\n[success]🌲 Exploration Swarm Synthesis:[/success]\n\n{result['synthesis']}\n")
+        else:
+            console.print(f"[error]Exploration failed:[/error] {result.get('error', 'Unknown error')}")
+
+    async def cmd_consensus(self, args):
+        if not args:
+            console.print("[error]Usage: /consensus <question/task> | <proposed solution>[/error]")
+            return
+
+        raw = " ".join(args)
+        if "|" in raw:
+            parts = raw.split("|", 1)
+            question, proposal = parts[0].strip(), parts[1].strip()
+        else:
+            question = raw
+            proposal = "Evaluate the optimal technical solution for this task."
+
+        result = await consensus.get_consensus(
+            question=question,
+            proposal=proposal,
+            config_mgr=self.config_mgr
+        )
+
+        if result["status"] == "success":
+            console.print(f"\n[label]Auditor Critique ({result['auditor_model']}):[/label]\n{result['critique']}\n")
+            console.print(f"[success]⚖️ Verified Consensus Recommendation ({result['proposer_model']}):[/success]\n{result['consensus_recommendation']}\n")
+        else:
+            console.print(f"[error]Consensus audit failed:[/error] {result.get('error', 'Unknown error')}")
 
     async def cmd_goal(self, args):
         if not args:
