@@ -48,7 +48,6 @@ from theme import console
 from version import __version__
 
 
-
 class Mesh:
     def __init__(self):
         self.config_mgr = ConfigManager()
@@ -75,7 +74,7 @@ class Mesh:
         self._pre_yolo_permission_auto_approve: Optional[bool] = None
 
         self.setup_defaults()
-
+        self.tool_registry.mode_blocked_tools = modes.blocked_tools_for_mode(self.current_mode, self.tool_registry)
         self.update_system_message(self.config_mgr.config.system_prompt)
 
     def update_system_message(self, base_prompt: str = None):
@@ -376,7 +375,7 @@ class Mesh:
             console.print("[error]Usage: /autocompact on | /autocompact off | /autocompact threshold <0-100>[/error]")
 
     async def cmd_dream(self, args):
-        console.print("[brand]\U0001F4A4 Dreaming...[/brand] [dim]Analyzing the conversation for reusable notes, memories, and skills.[/dim]")
+        console.print("[brand]💤 Dreaming...[/brand] [dim]Analyzing the conversation for reusable notes, memories, and skills.[/dim]")
 
         extraction, error = await dream_extract(self.messages, self.config_mgr)
         if error:
@@ -415,7 +414,7 @@ class Mesh:
         applied_notes = applied_memory = applied_skills = 0
 
         if notes:
-            console.print(f"\n[label]\U0001F4DD Candidate Notes ({len(notes)}):[/label]")
+            console.print(f"\n[label]📝 Candidate Notes ({len(notes)}):[/label]")
             for i, n in enumerate(notes, 1):
                 console.print(f"  {i}. {n}")
             console.print("[dim]Enter numbers to save (e.g. 1,3), 'all', or 'none':[/dim]")
@@ -426,7 +425,7 @@ class Mesh:
             applied_notes = len(chosen)
 
         if memory_items:
-            console.print(f"\n[label]\U0001F9E0 Candidate Memory Facts ({len(memory_items)}):[/label]")
+            console.print(f"\n[label]🧠 Candidate Memory Facts ({len(memory_items)}):[/label]")
             for i, m in enumerate(memory_items, 1):
                 console.print(f"  {i}. [accent]{m['key']}[/accent] = {m['value']}")
             console.print("[dim]Enter numbers to save (e.g. 1,3), 'all', or 'none':[/dim]")
@@ -440,7 +439,7 @@ class Mesh:
             applied_memory = len(chosen)
 
         if skills:
-            console.print(f"\n[label]\U0001F6E0\uFE0F  Candidate Skills ({len(skills)}):[/label]")
+            console.print(f"\n[label]🛠️ Candidate Skills ({len(skills)}):[/label]")
             existing_names = set(self.skill_registry.list_skills().keys())
             for i, s in enumerate(skills, 1):
                 dup_tag = " [warning](exists - will be overwritten)[/warning]" if s["name"] in existing_names else ""
@@ -559,7 +558,7 @@ class Mesh:
             return
 
         question = " ".join(args)
-        console.print(f"[brand]\U0001F9ED Consulting advisor:[/brand] {question}")
+        console.print(f"[brand]🧭 Consulting advisor:[/brand] {question}")
 
         result = await advisor.get_advice(question=question, config_mgr=self.config_mgr)
         if result["status"] == "error":
@@ -598,6 +597,8 @@ class Mesh:
                 console.print("[error]Usage: /guard mode supervised | /guard mode autonomous[/error]")
                 return
             cfg.guard_autonomy = mode
+            if self.current_mode == "yolo":
+                self._pre_yolo_guard_autonomy = mode
             console.print(f"[success]Safety Guard mode set to '{mode}'.[/success]")
         elif sub == "model":
             if len(args) == 1:
@@ -1113,7 +1114,7 @@ class Mesh:
 
             self.messages, auto_compacted, compact_details = await maybe_auto_compact(self.messages, self.config_mgr)
             if auto_compacted:
-                console.print(f"[warning]\U0001F5DC\uFE0F  {compact_details}[/warning]")
+                console.print(f"[warning]🗜️  {compact_details}[/warning]")
 
             provider = OpenAIProvider(model_cfg, provider_cfg)
             schemas = self.tool_registry.get_schemas() if self.tools_enabled else None

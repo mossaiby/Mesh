@@ -93,7 +93,7 @@ async def semantic_memory_search(
     provider = OpenAIProvider(model_cfg, provider_cfg)
 
     if verbose:
-        console.print(f"[brand]\U0001F50D Searching memory for:[/brand] {query}")
+        console.print(f"[brand]🔍 Searching memory for:[/brand] {query}")
 
     raw_text = ""
     try:
@@ -128,6 +128,6 @@ async def semantic_memory_search(
         answer = None
 
     if verbose:
-        console.print(f"[brand]\u2705 Found {len(clean_matches)} relevant memory entr{'y' if len(clean_matches) == 1 else 'ies'}.[/brand]")
+        console.print(f"[brand]✅ Found {len(clean_matches)} relevant memory entr{'y' if len(clean_matches) == 1 else 'ies'}.[/brand]")
 
     return {"status": "ok", "matches": clean_matches, "answer": answer}

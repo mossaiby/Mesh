@@ -5,7 +5,6 @@ from providers.openai_provider import OpenAIProvider
 from theme import console
 
 
-
 class SubAgentProxy:
     """
     Sub-agent proxy that executes tools on behalf of the main agent and
@@ -85,7 +84,7 @@ class SubAgentProxy:
                 # 2. Sub-agent Content tokens
                 elif ctype == "content":
                     if printed_reasoning_header and self.debug_mode:
-                        console.print("\n[brand]📝 [SUB-AGENT OUTPUT]:[/brand]")
+                        console.print("\n[brand]📜 [SUB-AGENT OUTPUT]:[/brand]")
                         printed_reasoning_header = False
 
                     distilled += cval
