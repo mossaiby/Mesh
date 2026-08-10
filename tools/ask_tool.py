@@ -7,7 +7,6 @@ from tools.base import BaseTool
 from theme import console
 
 
-
 def _read_single_key() -> str:
     """Reads a single keypress or arrow key event cross-platform without requiring Enter."""
     if sys.platform == "win32":
@@ -119,7 +118,7 @@ class AskUserTool(BaseTool):
                     live.update(render_menu(current_idx), refresh=True)
                     try:
                         key = _read_single_key()
-                    except Exception:
+                    except (Exception, KeyboardInterrupt):
                         break
 
                     if key == "up":

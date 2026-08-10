@@ -31,8 +31,13 @@ TRANSIENT_PATTERNS = [
 ]
 
 # Never attempt any healing on these - they're deliberate boundaries
-# (a permission decision), not a broken tool call to be fixed.
-NON_HEALABLE_PATTERNS = ["permission denied"]
+# (a permission/guard decision), not a broken tool call to be fixed.
+NON_HEALABLE_PATTERNS = [
+    "permission denied",
+    "blocked by safety guard",
+    "denied by user",
+    "execution denied"
+]
 
 # Tools excluded from LLM-based argument auto-repair: either the side effect
 # of blindly re-running corrected arguments is too severe to do without a

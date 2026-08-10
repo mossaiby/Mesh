@@ -403,9 +403,9 @@ Use **`↑` / `↓` Arrow Keys** and **Enter** to make a selection.
 
 ```text
 Mesh/
-├── requirements.txt         # Project Python dependencies
-├── models.json               # Provider endpoints and model configurations
-├── mcps.json                 # Model Context Protocol server definitions
+├── requirements.txt           # Project Python dependencies
+├── models.json                # Provider endpoints and model configurations
+├── mcps.json                  # Model Context Protocol server definitions
 ├── skills.json                # Declarative skills configuration
 ├── memory.json                # Persistent key-value memory storage
 ├── notes.md                   # Persistent Markdown notes
@@ -413,13 +413,13 @@ Mesh/
 ├── theme.py                   # Shared Rich theme & console instance
 ├── config.py                  # Configuration manager and Pydantic schemas
 ├── subagent.py                # Sub-Agent Proxy distillation engine
-├── delegation.py               # Task Delegation engine (independent of Sub-Agent Proxy)
-├── memory_search.py             # Sub-agent-based semantic memory search (memory -> search)
-├── self_heal.py                 # Self-healing tool-error recovery (mechanical retry + LLM repair)
-├── advisor.py                   # Advisor engine (consult_advisor / /advisor)
-├── guard.py                     # Tool-call Safety Guard (risk assessment + interactive escalation)
-├── compaction.py               # Semantic context window compaction module
-├── dream.py                    # /dream conversation analysis & knowledge extraction
+├── delegation.py              # Task Delegation engine (independent of Sub-Agent Proxy)
+├── memory_search.py           # Sub-agent-based semantic memory search (memory -> search)
+├── self_heal.py               # Self-healing tool-error recovery (mechanical retry + LLM repair)
+├── advisor.py                 # Advisor engine (consult_advisor / /advisor)
+├── guard.py                   # Tool-call Safety Guard (risk assessment + interactive escalation)
+├── compaction.py              # Semantic context window compaction module
+├── dream.py                   # /dream conversation analysis & knowledge extraction
 ├── main.py                    # Main CLI entry point and orchestration loop
 ├── providers/
 │   ├── __init__.py
@@ -446,12 +446,12 @@ Mesh/
 │   └── registry.py            # Slash command registry and dispatcher
 ├── mcp/
 │   ├── __init__.py
-│   └── client.py               # Stdio JSON-RPC MCP client & manager
+│   └── client.py              # Stdio JSON-RPC MCP client & manager
 └── skills/
     ├── __init__.py
-    ├── base.py                 # Skill base class definition
-    ├── registry.py              # Skill manager and instruction composer
-    └── code_skill.py            # Python coding skill implementation
+    ├── base.py                # Skill base class definition
+    ├── registry.py            # Skill manager and instruction composer
+    └── code_skill.py          # Python coding skill implementation
 ```
 
 ---
@@ -473,6 +473,11 @@ Mesh/
 - **Added the Advisor**: New `consult_advisor` tool and `/advisor` command give the model a tool-free "second opinion" call, optionally from a different configured model (`advisor_model`) than whichever one is driving the conversation.
 - **Added the Tool-Call Safety Guard**: New `guard.py`, wired into `ToolRegistry.execute()` alongside self-healing, risk-assesses `run_shell_command`, `write_file`, `edit_file`, and every MCP tool before they run, using a dedicated (`guard_model`, defaults to the smallest local model configured) model - low risk allows, medium risk asks (or auto-approves in `autonomous` mode via `guard_autonomy`), high risk is always blocked. Reuses `PermissionManager`'s interactive picker for consistent UX, with prompts serialized so concurrent delegated sub-agents can't produce overlapping terminal prompts. New `/guard` command family.
 - **Fixed a real code-execution vulnerability in `calculator`**: it evaluated expressions with `eval(expr, {"__builtins__": None}, {})`, which is not actually a sandbox - the classic escape `().__class__.__bases__[0].__subclasses__()` (and variants that reach `os.system`/file access from there) uses only attribute access and calls on a literal, never a builtin or a name lookup, so stripping `__builtins__` does nothing to stop it. Replaced with an AST-based evaluator that only permits numeric literals and arithmetic operators - no `Name`, `Call`, `Attribute`, or `Subscript` nodes are accepted at all, which closes the escape completely rather than probabilistically (the fix is a provably-safe grammar restriction, not an LLM guard - the latter would only reduce risk, not eliminate a real injection bug).
+- **Fixed Context Compaction API turn sequence crashes**: `compaction.py::find_safe_split_index()` now strictly enforces that context compaction boundaries split at a `user` turn (`role == "user"`). This eliminates adjacent `assistant` message sequences when appending history summaries, resolving HTTP `400 Bad Request` schema errors across strict API providers (Anthropic, OpenRouter, DeepSeek, Groq).
+- **Prevented Safety Guard Infinite Self-Healing Loops**: Expanded `NON_HEALABLE_PATTERNS` in `self_heal.py` to match `"blocked by safety guard"`, `"denied by user"`, and `"execution denied"`, ensuring Safety Guard blocks never trigger token-wasting argument repair loops.
+- **Added MCP Stdio Subprocess Cleanup Registry**: Added `atexit` hooks and process registration in `mcp/client.py` to guarantee stdio MCP server processes are killed on process exit or signal interrupts.
+- **Fixed Terminal Raw Mode Corruption on KeyboardInterrupt**: Handled `KeyboardInterrupt` alongside `Exception` in `tools/ask_tool.py` during option selection loops so terminal settings are cleanly restored on Ctrl+C.
+- **Handled Exceptions in Slash Command Dispatching**: Wrapped slash command execution in `commands/registry.py` inside a `try...except` block to prevent unhandled command exceptions from crashing the main CLI loop.
 
 ---
 

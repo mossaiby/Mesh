@@ -1,4 +1,5 @@
 import asyncio
+import atexit
 import json
 import os
 import sys
@@ -9,6 +10,30 @@ from pydantic import BaseModel, Field
 from tools.base import BaseTool
 from tools.registry import ToolRegistry
 from version import __version__
+
+# Global registry of active MCP sessions for automatic cleanup on process termination
+_ACTIVE_MCP_SESSIONS: List["MCPClientSession"] = []
+
+
+def _cleanup_all_mcp_sessions():
+    """Cleanly terminates all background stdio MCP server processes on exit."""
+    global _ACTIVE_MCP_SESSIONS
+    for session in list(_ACTIVE_MCP_SESSIONS):
+        if session.process and session.process.returncode is None:
+            try:
+                if sys.platform == "win32":
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(session.process.pid)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                else:
+                    session.process.terminate()
+            except Exception:
+                pass
+
+
+atexit.register(_cleanup_all_mcp_sessions)
 
 
 class MCPServerConfig(BaseModel):
@@ -82,6 +107,7 @@ class MCPClientSession:
                 stderr=asyncio.subprocess.PIPE,
                 env=proc_env
             )
+            _ACTIVE_MCP_SESSIONS.append(self)
         except Exception as e:
             self.error_message = f"Failed to launch command '{self.config.command}': {str(e)}"
             return False
@@ -204,6 +230,9 @@ class MCPClientSession:
     async def close(self):
         self.is_connected = False
         
+        if self in _ACTIVE_MCP_SESSIONS:
+            _ACTIVE_MCP_SESSIONS.remove(self)
+
         if self._reader_task and not self._reader_task.done():
             self._reader_task.cancel()
         if self._stderr_task and not self._stderr_task.done():
@@ -317,5 +346,5 @@ class MCPManager:
         return info
 
     async def close_all(self):
-        for session in self.sessions.values():
+        for session in list(self.sessions.values()):
             await session.close()

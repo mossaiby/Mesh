@@ -33,8 +33,9 @@ def estimate_tokens(messages: List[Dict[str, Any]]) -> int:
 
 def find_safe_split_index(chat_msgs: List[Dict[str, Any]], min_keep: int = 2) -> int:
     """
-    Finds a safe index to split chat_msgs so that tool call/result
-    pairs are not broken across the boundary.
+    Finds a safe index to split chat_msgs so that to_keep always starts
+    with a 'user' message, ensuring valid alternating turn structure and
+    never breaking tool call/result pairs across the boundary.
     """
     if len(chat_msgs) <= min_keep:
         return 0
@@ -42,14 +43,11 @@ def find_safe_split_index(chat_msgs: List[Dict[str, Any]], min_keep: int = 2) ->
     split_idx = len(chat_msgs) - min_keep
 
     while split_idx > 0:
-        msg = chat_msgs[split_idx]
-        if msg.get("role") == "user":
-            break
-        if msg.get("role") == "assistant" and not msg.get("tool_calls"):
-            break
+        if chat_msgs[split_idx].get("role") == "user":
+            return split_idx
         split_idx -= 1
 
-    return split_idx
+    return 0
 
 
 async def compact_messages(

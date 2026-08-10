@@ -1,4 +1,5 @@
 from typing import Callable, Awaitable, Dict, List
+from theme import console
 
 CommandHandler = Callable[[List[str]], Awaitable[None]]
 
@@ -17,11 +18,17 @@ class CommandRegistry:
 
     async def dispatch(self, text: str) -> bool:
         parts = text.strip().split()
+        if not parts:
+            return False
+
         cmd = parts[0].lower()
         args = parts[1:]
 
         if cmd in self._commands:
-            await self._commands[cmd](args)
+            try:
+                await self._commands[cmd](args)
+            except Exception as e:
+                console.print(f"[error]Error executing command {cmd}:[/error] {e}")
             return True
         return False
 
