@@ -10,6 +10,12 @@ class PermissionManager:
     def __init__(self):
         # Default allowed directory is current working directory
         self.allowed_dirs: List[str] = [str(Path.cwd().resolve())]
+        # Set by /mode (YOLO mode forces this True for its duration, and
+        # restores the prior value on leaving) - when True, out-of-bounds
+        # path requests are approved automatically without an interactive
+        # prompt, but NOT persisted to allowed_dirs, so it's a per-call
+        # convenience rather than a permanent widening of the allow-list.
+        self.auto_approve: bool = False
 
     def add_dir(self, path: str) -> str:
         resolved = str(Path(path).resolve())
@@ -37,6 +43,10 @@ class PermissionManager:
 
     async def check_and_request_permission(self, tool_name: str, target_path: str) -> bool:
         if self.is_path_allowed(target_path):
+            return True
+
+        if self.auto_approve:
+            console.print(f"[warning]Auto-approved path access for '{tool_name}' (YOLO mode):[/warning] '{target_path}'")
             return True
 
         resolved_target = str(Path(target_path).resolve())

@@ -43,6 +43,14 @@ class ToolRegistry:
         # requires_guard=True before they execute. None/disabled means no
         # guard check runs at all.
         self.safety_guard: Optional[Any] = None
+        # Set externally (see main.py) whenever /mode changes - names of
+        # tools the current mode disallows (e.g. every mutating tool in
+        # Plan/Review mode). This is the hard-enforcement layer: main.py
+        # also filters these out of the schemas shown to the model, but a
+        # non-compliant/hallucinating model calling a tool outside its own
+        # schema would otherwise still succeed, which would make a
+        # read-only mode not actually read-only.
+        self.mode_blocked_tools: set = set()
 
     def register(self, tool: BaseTool) -> None:
         self._tools[tool.name] = tool
@@ -50,6 +58,13 @@ class ToolRegistry:
     def unregister(self, tool_name: str) -> None:
         if tool_name in self._tools:
             del self._tools[tool_name]
+
+    def get_tool_names_requiring_guard(self) -> set:
+        """Public accessor for 'which registered tools are flagged as
+        state-mutating' - used by modes.py to compute Plan/Review mode's
+        blocklist from the same signal the Safety Guard already uses,
+        rather than a second hardcoded list that could drift out of sync."""
+        return {name for name, tool in self._tools.items() if getattr(tool, "requires_guard", False)}
 
     def get_schemas(self, inject_intent: bool = True) -> List[Dict[str, Any]]:
         use_intent = inject_intent and (
@@ -139,6 +154,11 @@ class ToolRegistry:
                 return json.dumps({"error": f"Tool '{tool_name}' not registered."})
 
         tool = self._tools[resolved_name]
+
+        if resolved_name in self.mode_blocked_tools:
+            return json.dumps({
+                "error": f"Tool '{resolved_name}' is not available in the current mode. Use /mode to check or switch modes."
+            })
 
         try:
             kwargs = json.loads(arguments_json) if arguments_json else {}
