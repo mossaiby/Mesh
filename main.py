@@ -117,7 +117,7 @@ class Mesh:
         self.cmd_registry.register("compact", "Semantically summarize older conversation context", self.cmd_compact)
         self.cmd_registry.register("autocompact", "View or set auto-compaction: /autocompact on | /autocompact off | /autocompact threshold <0-100>", self.cmd_autocompact)
         self.cmd_registry.register("dream", "Analyze the conversation and extract candidate notes, memory facts, and skills", self.cmd_dream)
-        self.cmd_registry.register("delegate", "Delegate a self-contained task to an autonomous sub-agent: /delegate <task description>", self.cmd_delegate)
+        self.cmd_registry.register("delegate", "Delegate a self-contained task to an autonomous sub-agent: /delegate <task description> | /delegate depth [<n>]", self.cmd_delegate)
         self.cmd_registry.register("goal", "View, set, or manage the pinned session goal: /goal <text> [| criterion 1 | criterion 2 ...] | /goal done <criterion #> | /goal clear", self.cmd_goal)
         self.cmd_registry.register("retry", "Retry the last LLM response turn", self.cmd_retry)
         self.cmd_registry.register("context", "Display context window, tool schemas, and MCP status", self.cmd_context)
@@ -171,6 +171,7 @@ class Mesh:
         console.print(f"• [label]Tools:[/label] {tools_state} ({len(schemas)} active schemas)")
         console.print(f"• [label]Sub-Agent Proxy Distillation:[/label] {proxy_state}")
         console.print(f"• [label]Self-Healing Tool-Error Recovery:[/label] {selfheal_state}")
+        console.print(f"• [label]Delegation Recursion Depth:[/label] {self.config_mgr.config.max_delegation_depth}")
         console.print(f"• [label]Debug Mode:[/label] {debug_state}")
         
         skills = self.skill_registry.list_skills()
@@ -439,7 +440,26 @@ class Mesh:
 
     async def cmd_delegate(self, args):
         if not args:
-            console.print("[error]Usage: /delegate <task description>[/error]")
+            console.print("[error]Usage: /delegate <task description> | /delegate depth [<n>][/error]")
+            return
+
+        if args[0].lower() == "depth":
+            if len(args) == 1:
+                console.print(
+                    f"Delegation recursion depth is currently [accent]{self.config_mgr.config.max_delegation_depth}[/accent] "
+                    f"(1 = no recursion beyond the first sub-agent).\nUsage: [warning]/delegate depth <n>[/warning]"
+                )
+                return
+            try:
+                n = int(args[1])
+            except ValueError:
+                console.print("[error]Usage: /delegate depth <n> (n must be a positive integer)[/error]")
+                return
+            if n < 1:
+                console.print("[error]Depth must be at least 1.[/error]")
+                return
+            self.config_mgr.config.max_delegation_depth = n
+            console.print(f"[success]Delegation recursion depth set to {n}.[/success]")
             return
 
         task = " ".join(args)

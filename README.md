@@ -11,7 +11,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 - **Multi-Provider OpenAI Compatibility**: Seamlessly connect to OpenAI, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint via `models.json`.
 - **Interactive Model Switcher (`/switch`)**: Switch active models on the fly using a cross-platform arrow-key selection menu or command arguments.
 - **Sub-Agent Proxy Architecture (`/proxy`)**: Reduces context window noise. Heavy tools (`read_file`, `shell`, `web_search`, MCP tools) require an `_intent` parameter. A dedicated sub-agent distills raw outputs into concise, structured JSON before handing them back to the main LLM.
-- **Task Delegation (`delegate_task`)**: A separate capability from `/proxy` - the main model can hand off a whole self-contained task to an autonomous sub-agent, which runs its own multi-step tool loop independently and reports back one final summary, instead of the main model babysitting every step.
+- **Recursive Task Delegation (`delegate_task`)**: A separate capability from `/proxy` - the main model can hand off a whole self-contained task to an autonomous sub-agent, which runs its own multi-step tool loop independently and reports back one final summary. Sub-agents can delegate further sub-tasks themselves (up to a user-configurable depth, default 2), and multiple delegations in one turn run concurrently - real parallel work-splitting, not just one level of hand-off.
 - **Self-Healing Tool-Error Recovery (`/selfheal`)**: Failed tool calls get one automatic recovery attempt before the model ever sees the error - transient failures (timeouts, rate limits) are mechanically retried with no model call, and failures likely caused by malformed arguments are diagnosed and retried once by a focused repair sub-agent.
 - **Pinned Session Goal (`/goal`)**: A single objective (with optional success criteria) that's folded directly into the live system prompt rather than a chat message, so it stays visible to the model across `/compact`, `/switch`, and `/clear` - the one thing in a session that's designed to never get summarized away.
 - **Model Context Protocol (MCP) (`/mcps`)**: Native stdio JSON-RPC MCP client supporting `mcps.json`. Dynamically discovers and executes tools from external MCP servers (SQLite, Filesystem, GitHub, etc.) with global and per-server toggles.
@@ -114,7 +114,7 @@ python main.py
 | `/compact` | Semantically compact older conversation history using the LLM. |
 | `/autocompact [on\|off\|threshold <0-100>]` | View or configure automatic compaction, which triggers `/compact` once estimated token usage crosses the threshold. |
 | `/dream` | Analyze the conversation and interactively extract candidate notes, memory facts, and reusable skills. |
-| `/delegate <task>` | Manually hand a self-contained task to an autonomous sub-agent and print its final report. |
+| `/delegate <task>` \| `/delegate depth [<n>]` | Manually hand a task to an autonomous sub-agent and print its final report; view or set the recursive delegation depth limit. |
 | `/goal <text> [\| criterion \| ...]` | View, set (with optional success criteria), or manage the pinned session goal; `/goal done <#>` marks a criterion complete, `/goal clear` removes it. |
 | `/retry` | Re-run the last completion turn (strips the last assistant/tool response). |
 | `/debug [on\|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent logs. |
@@ -128,7 +128,7 @@ python main.py
 ### `models.json`
 Defines provider REST endpoints and model configurations, plus a single global system prompt shared by every model. Mesh always talks to whichever model is active with the same base instructions - switching models (`/switch`) changes only the endpoint/model ID, never the assistant's persona or instructions. Use `/system` to view or temporarily override the prompt for the current session.
 
-`auto_compact` and `auto_compact_threshold` control Auto-Compaction (see below) globally. Each model entry's `context_window` (in tokens) tells Mesh how much room that specific model has, so the same threshold behaves correctly across models with very different context sizes.
+`auto_compact` and `auto_compact_threshold` control Auto-Compaction (see below) globally. `max_delegation_depth` controls how many levels deep recursive Task Delegation (see below) may go. Each model entry's `context_window` (in tokens) tells Mesh how much room that specific model has, so the same threshold behaves correctly across models with very different context sizes.
 
 ```json
 {
@@ -136,6 +136,7 @@ Defines provider REST endpoints and model configurations, plus a single global s
   "system_prompt": "You are a helpful, intelligent AI assistant running inside Mesh, an interactive terminal CLI.",
   "auto_compact": true,
   "auto_compact_threshold": 0.75,
+  "max_delegation_depth": 2,
   "providers": {
     "groq": {
       "name": "Groq Cloud",
@@ -273,13 +274,22 @@ Actions: `set` (replaces any existing goal), `get` (raw JSON for the model), `di
 Task Delegation is a separate capability from Sub-Agent Proxy above, implemented independently in `delegation.py` and `tools/delegate_tool.py`. Where `/proxy` distills the *output* of a single tool call the main model already decided to make, `delegate_task` lets the main model hand off an entire multi-step task and get out of the loop until it's done:
 
 1. **Hand-off**: The main model calls the `delegate_task` tool with a self-contained task description (e.g. *"investigate why the build is failing and report what's wrong"*).
-2. **Independent Sub-Agent Loop**: A fresh sub-agent conversation is created with its own system prompt and its own bounded tool-calling loop (default up to 6 turns, capped at 10) - it plans, calls tools, reads results, and iterates entirely on its own.
-3. **Tool Access**: The sub-agent shares the same live `ToolRegistry` as the main agent (so it can read/write files, run shell commands, search the web, use notes/memory, etc.), minus `delegate_task` itself (no recursive delegation chains) and `ask_user` (there's no live user for it to interact with mid-task).
-4. **Final Report Only**: Once the sub-agent stops calling tools, its final message becomes a single structured result - `{status, report, tool_calls, turns_used}` - handed back to the main model. The main model never sees the sub-agent's intermediate turns, only the outcome.
+2. **Independent Sub-Agent Loop**: A fresh sub-agent conversation is created with its own system prompt and its own bounded tool-calling loop (default up to 6 turns, capped at 10, tapering down at deeper recursion levels - see below) - it plans, calls tools, reads results, and iterates entirely on its own.
+3. **Tool Access**: The sub-agent shares the same live `ToolRegistry` as the main agent (so it can read/write files, run shell commands, search the web, use notes/memory, etc.), minus `ask_user` (there's no live user for it to interact with mid-task).
+4. **Final Report Only**: Once the sub-agent stops calling tools, its final message becomes a single structured result - `{status, report, tool_calls, turns_used, depth}` - handed back to whoever delegated to it. The caller never sees the sub-agent's intermediate turns, only the outcome.
 
 Because the sub-agent's tool schemas are always built with intent-injection disabled, its tool calls never carry an `_intent` argument - so `delegate_task` never routes through `SubAgentProxy`/`/proxy`, regardless of whether `/proxy` is on or off. The two features compose but don't interfere with each other.
 
 You can also trigger delegation directly for testing via `/delegate <task description>`, without needing the main model to decide to call the tool.
+
+### Recursive delegation
+
+A sub-agent can itself call `delegate_task` - genuinely splitting a task into independent pieces and handing those to further sub-agents, rather than doing everything in one conversation:
+
+- **Depth limit (user-selectable)**: controlled by `max_delegation_depth` in `models.json` (default **2** - a sub-agent can delegate once more, but that second-level sub-agent cannot delegate again). View or change it live with `/delegate depth [<n>]`. At the deepest allowed level, `delegate_task` is simply absent from that sub-agent's own tools, so recursion always terminates - there's no separate cycle-detection needed, the same way `todo_manager`'s dependency graph is acyclic by construction.
+- **Fan-out**: if a sub-agent calls `delegate_task` multiple times in the same turn, those child sub-agents run **concurrently** (bounded to 4 at once) rather than one at a time - real parallel work-splitting, not just sequential hand-offs. Every other tool still executes sequentially in call order, since most of them touch shared, unlocked, file-backed state (`memory.json`, `notes.md`, the todo list) where concurrent execution could race; `delegate_task` is safe to parallelize because each sub-agent operates in its own isolated message history.
+- **Turn-budget tapering**: the per-call turn cap shrinks with depth (`max(2, 10 - 2*(depth-1))` - 10 at depth 1, 8 at depth 2, 6 at depth 3, ...), so a deep recursive chain can't multiply total work unboundedly even within the depth cap.
+- Depth is tracked via a `contextvars.ContextVar` rather than an explicit parameter, since the same `delegate_task` tool instance is shared by every level of delegation - each nested (and each parallel) sub-agent needs to know "how deep am I being called from right now" without the levels interfering with each other.
 
 ---
 
@@ -414,8 +424,9 @@ Mesh/
 - **Added Task Delegation**: New `delegate_task` tool and `delegation.py` engine let the main model hand off a self-contained multi-step task to an autonomous sub-agent with its own tool loop, separate from and unaffected by Sub-Agent Proxy (`/proxy`). Also added `/delegate <task>` for manual testing.
 - **Added Dependency-Aware TODOs**: `todo_manager` previously tracked a flat list with no notion of ordering constraints. Added an optional `depends_on` field on `add`, dependency-gated `complete`, a new `next` action to surface unblocked work, and richer `display` rendering (done/ready/blocked, with blocking task IDs shown).
 - **Added Semantic Memory Search**: `memory` previously only supported exact-key lookup via `get`. Added a `search` action (`memory_search.py`) that recalls entries by meaning using a dedicated sub-agent call - chosen over embedding/cosine-similarity search since it needs no vector infrastructure and handles short key-value pairs more reliably.
-- **Added Self-Healing Tool-Error Recovery**: Failed tool calls previously went straight back to the model with no recovery attempt. Added `self_heal.py` and wired it into `ToolRegistry.execute()` (shared by the main loop, `delegate_task` sub-agents, and `/proxy` distillation): transient errors get mechanically retried with no model call, unknown tool-name typos are auto-corrected, and structurally-fixable argument errors get one LLM-assisted repair attempt. New `/selfheal on\|off` toggle.
+- **Added Self-Healing Tool-Error Recovery**: Failed tool calls previously went straight back to the model with no recovery attempt. Added `self_heal.py` and wired it into `ToolRegistry.execute()` (shared by the main loop, `delegate_task` sub-agents, and `/proxy` distillation): transient errors get mechanically retried with no model call, unknown tool-name typos are auto-corrected, and structurally-fixable argument errors get one LLM-assisted repair attempt. New `/selfheal on|off` toggle.
 - **Added Pinned Session Goal**: New `goal_manager` tool and `/goal` command track a single objective (with optional success criteria) that's folded directly into the live system prompt rather than left in chat history - unlike a todo item or a chat message, it survives `/compact`, `/switch`, and `/clear` by construction.
+- **Made Task Delegation recursive**: `delegate_task` previously excluded itself from every sub-agent's own tools, capping delegation at exactly one level. Sub-agents can now delegate further sub-tasks themselves, up to a new user-configurable `max_delegation_depth` (`models.json`, default 2, adjustable live via `/delegate depth [<n>]`). Multiple delegations issued in the same turn now also run concurrently (bounded to 4 at once) instead of sequentially, and the per-call turn budget tapers down with depth to bound total work.
 
 ---
 

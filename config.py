@@ -27,6 +27,13 @@ class MeshConfig(BaseModel):
     system_prompt: str = "You are a helpful text-based AI assistant running inside Mesh, an interactive terminal CLI."
     auto_compact: bool = True
     auto_compact_threshold: float = 0.75
+    # How many levels deep delegate_task may recurse (a sub-agent spawning its
+    # own sub-agents). Depth 1 = the main agent's direct sub-agent; depth 2
+    # = that sub-agent delegating further, etc. 2 is a meaningful default:
+    # enough for a sub-agent to genuinely split a task into independent
+    # pieces and hand those off too, without allowing runaway/unbounded
+    # recursive chains. User-adjustable via /delegate depth <n>.
+    max_delegation_depth: int = 2
     providers: Dict[str, ProviderConfig] = Field(default_factory=dict)
     models: Dict[str, ModelConfig] = Field(default_factory=dict)
 
