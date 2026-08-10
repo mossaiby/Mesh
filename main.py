@@ -1,6 +1,7 @@
 import asyncio
 import sys
 import os
+from typing import Optional
 from rich.live import Live
 from rich.markdown import Markdown
 from rich.markup import escape
@@ -42,6 +43,7 @@ from compaction import compact_messages, maybe_auto_compact, estimate_tokens
 from dream import dream_extract
 from subagent import SubAgentProxy
 from self_heal import SelfHealer
+import modes
 from theme import console
 from version import __version__
 
@@ -66,7 +68,12 @@ class Mesh:
         self.debug_mode: bool = False
         self.subagent_proxy.debug_mode = self.debug_mode
         self.tools_enabled: bool = True
-        
+        self.current_mode: str = modes.DEFAULT_MODE
+        # Saved so YOLO mode can restore whatever the user had explicitly
+        # set before entering it, rather than resetting to hardcoded defaults.
+        self._pre_yolo_guard_autonomy: Optional[str] = None
+        self._pre_yolo_permission_auto_approve: Optional[bool] = None
+
         self.setup_defaults()
 
         self.update_system_message(self.config_mgr.config.system_prompt)
@@ -83,6 +90,10 @@ class Mesh:
         goal_section = self.goal_tool.as_system_prompt_section() if hasattr(self, "goal_tool") else ""
         if goal_section:
             full_sys += f"\n\n{goal_section}"
+
+        if hasattr(self, "current_mode"):
+            mode_def = modes.MODES.get(self.current_mode, modes.MODES[modes.DEFAULT_MODE])
+            full_sys += f"\n\n## Current Mode: {mode_def.label}\n{mode_def.system_note}"
 
         sys_idx = next((i for i, m in enumerate(self.messages) if m.get("role") == "system"), None) if hasattr(self, "messages") else None
         
@@ -127,6 +138,7 @@ class Mesh:
         self.cmd_registry.register("goal", "View, set, or manage the pinned session goal: /goal <text> [| criterion 1 | criterion 2 ...] | /goal done <criterion #> | /goal clear", self.cmd_goal)
         self.cmd_registry.register("advisor", "Consult the advisor for a second opinion: /advisor <question>", self.cmd_advisor)
         self.cmd_registry.register("guard", "View or configure the tool-call safety guard: /guard [on|off] | /guard mode [supervised|autonomous] | /guard model [<key>] | /guard trust <tool>", self.cmd_guard)
+        self.cmd_registry.register("mode", "View or switch operating mode: /mode [plan|build|review|yolo]", self.cmd_mode)
         self.cmd_registry.register("retry", "Retry the last LLM response turn", self.cmd_retry)
         self.cmd_registry.register("context", "Display context window, tool schemas, and MCP status", self.cmd_context)
         self.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", self.cmd_system)
@@ -188,6 +200,7 @@ class Mesh:
         )
         advisor_model_str = self.config_mgr.config.advisor_model or f"{self.config_mgr.config.active_model} (active)"
         console.print(f"• [label]Advisor Model:[/label] {advisor_model_str}")
+        console.print(f"• [label]Mode:[/label] {modes.MODES[self.current_mode].label}")
         console.print(f"• [label]Debug Mode:[/label] {debug_state}")
         
         skills = self.skill_registry.list_skills()
@@ -606,6 +619,56 @@ class Mesh:
                 "[error]Usage: /guard [on|off] | /guard mode [supervised|autonomous] | "
                 "/guard model [<key>] | /guard trust <tool_name>[/error]"
             )
+
+    async def cmd_mode(self, args):
+        if not args:
+            current = modes.MODES[self.current_mode]
+            console.print(f"Current mode: [accent]{current.label}[/accent] - {current.description}\n")
+            console.print("[label]Available modes:[/label]")
+            for key, mode_def in modes.MODES.items():
+                marker = "[accent]*[/accent]" if key == self.current_mode else " "
+                console.print(f"  {marker} [label]{key}[/label] - {mode_def.description}")
+            console.print("\nUsage: [warning]/mode <name>[/warning]")
+            return
+
+        requested = args[0].lower()
+        if requested not in modes.MODES:
+            valid = ", ".join(modes.MODES.keys())
+            console.print(f"[error]Unknown mode '{requested}'. Valid modes: {valid}[/error]")
+            return
+
+        if requested == self.current_mode:
+            console.print(f"[dim]Already in {modes.MODES[requested].label} mode.[/dim]")
+            return
+
+        leaving_yolo = self.current_mode == "yolo" and requested != "yolo"
+        entering_yolo = requested == "yolo" and self.current_mode != "yolo"
+
+        if entering_yolo:
+            # Remember whatever the user had explicitly set, so leaving
+            # YOLO restores their actual prior choice rather than a
+            # hardcoded default.
+            self._pre_yolo_guard_autonomy = self.config_mgr.config.guard_autonomy
+            self._pre_yolo_permission_auto_approve = self.permission_manager.auto_approve
+            self.config_mgr.config.guard_autonomy = "autonomous"
+            self.permission_manager.auto_approve = True
+        elif leaving_yolo:
+            if self._pre_yolo_guard_autonomy is not None:
+                self.config_mgr.config.guard_autonomy = self._pre_yolo_guard_autonomy
+            if self._pre_yolo_permission_auto_approve is not None:
+                self.permission_manager.auto_approve = self._pre_yolo_permission_auto_approve
+            self._pre_yolo_guard_autonomy = None
+            self._pre_yolo_permission_auto_approve = None
+
+        self.current_mode = requested
+        self.tool_registry.mode_blocked_tools = modes.blocked_tools_for_mode(requested, self.tool_registry)
+        self.update_system_message()
+
+        mode_def = modes.MODES[requested]
+        console.print(f"[success]Switched to {mode_def.label} Mode.[/success] {mode_def.description}")
+        if self.tool_registry.mode_blocked_tools:
+            blocked_str = ", ".join(sorted(self.tool_registry.mode_blocked_tools))
+            console.print(f"[dim]Unavailable in this mode: {blocked_str}[/dim]")
 
     async def cmd_retry(self, args):
         last_user_idx = None
@@ -1054,6 +1117,8 @@ class Mesh:
 
             provider = OpenAIProvider(model_cfg, provider_cfg)
             schemas = self.tool_registry.get_schemas() if self.tools_enabled else None
+            if schemas and self.tool_registry.mode_blocked_tools:
+                schemas = [s for s in schemas if s["function"]["name"] not in self.tool_registry.mode_blocked_tools]
 
             console.print(f"\n[info]Assistant ({model_cfg.name} via {provider_cfg.name})[/info] >")
 

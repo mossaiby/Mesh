@@ -14,6 +14,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 - **Recursive Task Delegation (`delegate_task`)**: A separate capability from `/proxy` - the main model can hand off a whole self-contained task to an autonomous sub-agent, which runs its own multi-step tool loop independently and reports back one final summary. Sub-agents can delegate further sub-tasks themselves (up to a user-configurable depth, default 2), and multiple delegations in one turn run concurrently - real parallel work-splitting, not just one level of hand-off.
 - **Advisor (`consult_advisor`)**: A tool-free, single-shot "second opinion" the model can consult before committing to a risky or ambiguous plan - optionally from a different configured model than the one driving the conversation, for a genuinely independent perspective rather than the same model re-asked.
 - **Tool-Call Safety Guard (`/guard`)**: Shell commands, file writes/edits, and MCP tool calls are automatically risk-assessed by a dedicated (ideally cheap/local) model before they run - low risk proceeds, medium risk asks for permission (or auto-approves in autonomous mode), high risk is blocked outright regardless of mode.
+- **Operating Modes (`/mode`)**: Switch between Build (default, full access), Plan/Review (read-only - investigate and propose without touching anything), and YOLO (full access, no confirmation prompts for ambiguous-risk actions). Mode restrictions are enforced twice - hidden from the model's own tool list *and* hard-blocked at execution - so a read-only mode is read-only even against a model that ignores its own tool list.
 - **Self-Healing Tool-Error Recovery (`/selfheal`)**: Failed tool calls get one automatic recovery attempt before the model ever sees the error - transient failures (timeouts, rate limits) are mechanically retried with no model call, and failures likely caused by malformed arguments are diagnosed and retried once by a focused repair sub-agent.
 - **Pinned Session Goal (`/goal`)**: A single objective (with optional success criteria) that's folded directly into the live system prompt rather than a chat message, so it stays visible to the model across `/compact`, `/switch`, and `/clear` - the one thing in a session that's designed to never get summarized away.
 - **Model Context Protocol (MCP) (`/mcps`)**: Native stdio JSON-RPC MCP client supporting `mcps.json`. Dynamically discovers and executes tools from external MCP servers (SQLite, Filesystem, GitHub, etc.) with global and per-server toggles.
@@ -120,6 +121,7 @@ python main.py
 | `/goal <text> [\| criterion \| ...]` | View, set (with optional success criteria), or manage the pinned session goal; `/goal done <#>` marks a criterion complete, `/goal clear` removes it. |
 | `/advisor <question>` | Manually consult the advisor for a second opinion and print its response. |
 | `/guard [on\|off]` | View or configure the tool-call safety guard: `/guard mode [supervised\|autonomous]`, `/guard model [<key>]`, `/guard trust <tool>`. |
+| `/mode [plan\|build\|review\|yolo]` | View or switch operating mode - see below for what each restricts. |
 | `/retry` | Re-run the last completion turn (strips the last assistant/tool response). |
 | `/debug [on\|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent logs. |
 | `/clear` | Clear conversation history while keeping system prompt and skills intact. |
@@ -223,6 +225,27 @@ When `/proxy on` is active:
 4. **Context Optimization**: The main LLM receives a clean, structured JSON summary instead of thousands of lines of raw file content or build logs.
 
 *Note: Short outputs (under 4 lines / 300 characters) and lightweight tools (`calculator`, `memory`) automatically bypass distillation for zero-latency execution.*
+
+---
+
+## 🚦 Operating Modes (`/mode`)
+
+`modes.py` defines four modes that constrain what the model can do without touching what it's allowed to *know* - the system prompt, memory, and notes stay fully available in every mode; only tool access and confirmation behavior change.
+
+| Mode | Tool access | Confirmation behavior |
+| :--- | :--- | :--- |
+| **Build** (default) | Full | Normal - Safety Guard/permissions behave as configured |
+| **Plan** | Read-only (no `write_file`, `edit_file`, `run_shell_command`, `delegate_task`, or MCP tools) | Normal |
+| **Review** | Read-only (same restriction as Plan) | Normal |
+| **YOLO** | Full | Ambiguous-risk ("ask") actions auto-approve; genuinely high-risk actions are still always blocked |
+
+Plan and Review both reuse the exact same signal the Safety Guard already relies on - every tool with `requires_guard = True` (see below) plus `delegate_task` - rather than a second hardcoded blocklist that could drift out of sync as new tools or MCP servers are added. The difference between them is purely the model's *framing*: Plan is told to investigate and produce a step-by-step plan; Review is told to critique what's already there, not propose new work.
+
+**Enforced twice, not once**: switching modes both hides blocked tools from the schema offered to the model *and* hard-blocks them at `ToolRegistry.execute()` if called anyway. The first layer is what a well-behaved model actually sees; the second is what makes Plan/Review mode a real guarantee rather than a polite suggestion, for models that sometimes call tools outside their own advertised schema.
+
+**YOLO mode** temporarily forces `guard_autonomy` to `"autonomous"` and `PermissionManager.auto_approve` to `True`, restoring whatever you'd actually set before entering it (not a hardcoded default) when you switch back out. High-risk actions are never auto-approved in any mode - YOLO removes friction for ambiguous cases, it never bypasses an outright Safety Guard denial.
+
+The active mode is folded into the live system prompt the same way the Pinned Session Goal is, so it survives `/compact`, `/switch`, and `/clear` just like the goal does.
 
 ---
 
@@ -418,6 +441,7 @@ Mesh/
 ├── self_heal.py               # Self-healing tool-error recovery (mechanical retry + LLM repair)
 ├── advisor.py                 # Advisor engine (consult_advisor / /advisor)
 ├── guard.py                   # Tool-call Safety Guard (risk assessment + interactive escalation)
+├── modes.py                   # Operating modes (Plan/Build/Review/YOLO)
 ├── compaction.py              # Semantic context window compaction module
 ├── dream.py                   # /dream conversation analysis & knowledge extraction
 ├── main.py                    # Main CLI entry point and orchestration loop
@@ -473,6 +497,7 @@ Mesh/
 - **Added the Advisor**: New `consult_advisor` tool and `/advisor` command give the model a tool-free "second opinion" call, optionally from a different configured model (`advisor_model`) than whichever one is driving the conversation.
 - **Added the Tool-Call Safety Guard**: New `guard.py`, wired into `ToolRegistry.execute()` alongside self-healing, risk-assesses `run_shell_command`, `write_file`, `edit_file`, and every MCP tool before they run, using a dedicated (`guard_model`, defaults to the smallest local model configured) model - low risk allows, medium risk asks (or auto-approves in `autonomous` mode via `guard_autonomy`), high risk is always blocked. Reuses `PermissionManager`'s interactive picker for consistent UX, with prompts serialized so concurrent delegated sub-agents can't produce overlapping terminal prompts. New `/guard` command family.
 - **Fixed a real code-execution vulnerability in `calculator`**: it evaluated expressions with `eval(expr, {"__builtins__": None}, {})`, which is not actually a sandbox - the classic escape `().__class__.__bases__[0].__subclasses__()` (and variants that reach `os.system`/file access from there) uses only attribute access and calls on a literal, never a builtin or a name lookup, so stripping `__builtins__` does nothing to stop it. Replaced with an AST-based evaluator that only permits numeric literals and arithmetic operators - no `Name`, `Call`, `Attribute`, or `Subscript` nodes are accepted at all, which closes the escape completely rather than probabilistically (the fix is a provably-safe grammar restriction, not an LLM guard - the latter would only reduce risk, not eliminate a real injection bug).
+- **Added Operating Modes**: New `modes.py` and `/mode` command add Plan, Build (default), Review, and YOLO modes. Plan/Review block every tool flagged `requires_guard` plus `delegate_task` (enforced both at the schema level shown to the model and hard-blocked in `ToolRegistry.execute()`, so it holds even against a model that calls a tool outside its own advertised list); YOLO temporarily forces `guard_autonomy` to `autonomous` and `PermissionManager.auto_approve` to `True`, restoring your prior settings on leaving. The active mode is folded into the live system prompt the same way the Pinned Session Goal is, so it survives `/compact`, `/switch`, and `/clear`.
 - **Fixed Context Compaction API turn sequence crashes**: `compaction.py::find_safe_split_index()` now strictly enforces that context compaction boundaries split at a `user` turn (`role == "user"`). This eliminates adjacent `assistant` message sequences when appending history summaries, resolving HTTP `400 Bad Request` schema errors across strict API providers (Anthropic, OpenRouter, DeepSeek, Groq).
 - **Prevented Safety Guard Infinite Self-Healing Loops**: Expanded `NON_HEALABLE_PATTERNS` in `self_heal.py` to match `"blocked by safety guard"`, `"denied by user"`, and `"execution denied"`, ensuring Safety Guard blocks never trigger token-wasting argument repair loops.
 - **Added MCP Stdio Subprocess Cleanup Registry**: Added `atexit` hooks and process registration in `mcp/client.py` to guarantee stdio MCP server processes are killed on process exit or signal interrupts.
