@@ -1,4 +1,5 @@
 import asyncio
+import ast
 import difflib
 import json
 from typing import Dict, List, Any, Optional
@@ -231,9 +232,76 @@ class CalculatorTool(BaseTool):
         "required": ["expression"]
     }
 
+    # Only these AST node types are permitted - no Name, Call, Attribute, or
+    # Subscript nodes exist in this whitelist, which is exactly what closes
+    # off the classic `eval(expr, {"__builtins__": None}, {})` sandbox
+    # escape (e.g. `().__class__.__bases__[0].__subclasses__()`): that
+    # attack never calls a builtin or looks up a name, it only chains
+    # attribute access and calls on a literal, so stripping __builtins__
+    # alone does nothing to stop it. Rejecting Attribute/Call/Subscript
+    # nodes at the AST level does.
+    _ALLOWED_NODES = (
+        ast.Expression, ast.BinOp, ast.UnaryOp, ast.Constant,
+        ast.Add, ast.Sub, ast.Mult, ast.Div, ast.FloorDiv, ast.Mod, ast.Pow,
+        ast.UAdd, ast.USub,
+    )
+
+    @classmethod
+    def _safe_eval(cls, expression: str):
+        try:
+            tree = ast.parse(expression, mode="eval")
+        except SyntaxError as e:
+            raise ValueError(f"Invalid expression: {e}")
+
+        for node in ast.walk(tree):
+            if not isinstance(node, cls._ALLOWED_NODES):
+                raise ValueError(f"Expression contains a disallowed construct: {type(node).__name__}")
+            if isinstance(node, ast.Constant) and not isinstance(node.value, (int, float)):
+                raise ValueError("Only numeric constants are allowed.")
+
+        return cls._eval_node(tree.body)
+
+    @classmethod
+    def _eval_node(cls, node):
+        if isinstance(node, ast.Constant):
+            return node.value
+        if isinstance(node, ast.BinOp):
+            left = cls._eval_node(node.left)
+            right = cls._eval_node(node.right)
+            if isinstance(node.op, ast.Add):
+                return left + right
+            if isinstance(node.op, ast.Sub):
+                return left - right
+            if isinstance(node.op, ast.Mult):
+                return left * right
+            if isinstance(node.op, ast.Div):
+                return left / right
+            if isinstance(node.op, ast.FloorDiv):
+                return left // right
+            if isinstance(node.op, ast.Mod):
+                return left % right
+            if isinstance(node.op, ast.Pow):
+                # Guard against absurdly expensive exponents (e.g. 9**9**9)
+                # tying up the event loop, since this whole evaluator runs
+                # synchronously with no timeout.
+                if isinstance(right, (int, float)) and abs(right) > 1000:
+                    raise ValueError("Exponent too large.")
+                return left ** right
+            raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
+        if isinstance(node, ast.UnaryOp):
+            operand = cls._eval_node(node.operand)
+            if isinstance(node.op, ast.UAdd):
+                return +operand
+            if isinstance(node.op, ast.USub):
+                return -operand
+            raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
+        raise ValueError(f"Unsupported expression node: {type(node).__name__}")
+
     async def execute(self, expression: str) -> Dict[str, Any]:
         try:
-            result = eval(expression, {"__builtins__": None}, {})
+            result = self._safe_eval(expression)
             return {"result": result}
+        except ZeroDivisionError:
+            return {"error": "Division by zero."}
         except Exception as e:
             return {"error": str(e)}
