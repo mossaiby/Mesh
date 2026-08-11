@@ -31,6 +31,7 @@ from tools import (
     ExploreTool,
     SynthesizeTool,
     ConsensusTool,
+    SearchSymbolsTool,
 )
 import delegation
 import memory_search
@@ -38,6 +39,9 @@ import advisor
 import explore
 import consensus
 import tool_synthesis
+import squad
+import reflexion
+import symbol_search
 from checkpoint import CheckpointManager
 from file_history import file_history_tracker
 from guard import SafetyGuard
@@ -101,6 +105,10 @@ class Mesh:
             mode_def = modes.MODES.get(self.current_mode, modes.MODES[modes.DEFAULT_MODE])
             full_sys += f"\n\n## Current Mode: {mode_def.label}\n{mode_def.system_note}"
 
+        reflexion_section = reflexion.get_reflexion_instructions()
+        if reflexion_section:
+            full_sys += f"\n\n{reflexion_section}"
+
         sys_idx = next((i for i, m in enumerate(self.messages) if m.get("role") == "system"), None) if hasattr(self, "messages") else None
         
         if sys_idx is not None:
@@ -129,9 +137,13 @@ class Mesh:
         self.tool_registry.register(ExploreTool(self.tool_registry, self.config_mgr))
         self.tool_registry.register(SynthesizeTool(self.tool_registry))
         self.tool_registry.register(ConsensusTool(self.config_mgr))
+        self.tool_registry.register(SearchSymbolsTool())
         
         # Load any existing dynamic tools from custom_tools/
         tool_synthesis.load_all_custom_tools(self.tool_registry)
+
+        # Index codebase symbols asynchronously on launch
+        symbol_search.symbol_indexer.index_directory(".")
 
         # 2. Register Skills & Load skills.json
         self.skill_registry.register(PythonCodingSkill())
@@ -149,6 +161,8 @@ class Mesh:
         self.cmd_registry.register("delegate", "Delegate a self-contained task to an autonomous sub-agent: /delegate <task description> | /delegate depth [<n>]", self.cmd_delegate)
         self.cmd_registry.register("explore", "Run parallel speculative branch exploration: /explore [<num_branches>] <task description>", self.cmd_explore)
         self.cmd_registry.register("consensus", "Run an adversarial multi-model consensus audit: /consensus <question> | <proposal>", self.cmd_consensus)
+        self.cmd_registry.register("squad", "Execute 4-stage autonomous task squad (Architect -> Coder -> Test Engineer -> Security Auditor): /squad <task>", self.cmd_squad)
+        self.cmd_registry.register("reflexion", "View or distill cross-session error lessons: /reflexion [distill|clear]", self.cmd_reflexion)
         self.cmd_registry.register("checkpoint", "Save or list session checkpoints: /checkpoint save <tag> | /checkpoint list", self.cmd_checkpoint)
         self.cmd_registry.register("fork", "Fork current session state into a new working branch: /fork <branch_name>", self.cmd_fork)
         self.cmd_registry.register("checkout", "Restore session state from a checkpoint tag or branch: /checkout <tag_or_branch>", self.cmd_checkout)
@@ -205,6 +219,7 @@ class Mesh:
         
         schemas = self.tool_registry.get_schemas()
         console.print(f"• [label]Tools:[/label] {tools_state} ({len(schemas)} active schemas)")
+        console.print(f"• [label]Indexed AST Symbols:[/label] {len(symbol_search.symbol_indexer.symbol_index)} codebase symbols")
         console.print(f"• [label]Active Branch:[/label] [accent]{self.checkpoint_mgr.active_branch}[/accent] ({len(self.checkpoint_mgr.checkpoints)} saved checkpoints)")
         console.print(f"• [label]Sub-Agent Proxy Distillation:[/label] {proxy_state}")
         console.print(f"• [label]Self-Healing Tool-Error Recovery:[/label] {selfheal_state}")
@@ -339,6 +354,50 @@ class Mesh:
             console.print(f"[success]Switched active model to: [label]{selected_key}[/label] ({model_cfg.name} via {provider_cfg.name})[/success]")
         except Exception as e:
             console.print(f"[error]Error switching model: {e}[/error]")
+
+    async def cmd_squad(self, args):
+        if not args:
+            console.print("[error]Usage: /squad <task description>[/error]")
+            return
+
+        task = " ".join(args)
+        result = await squad.run_squad_pipeline(
+            task=task,
+            tool_registry=self.tool_registry,
+            config_mgr=self.config_mgr,
+            verbose=self.debug_mode
+        )
+
+        if result["status"] == "success":
+            console.print(f"\n[success]👥 Autonomous Task Squad Final Report:[/success]\n\n{result['final_report']}\n")
+        else:
+            console.print(f"[error]Task squad pipeline failed.[/error]")
+
+    async def cmd_reflexion(self, args):
+        if not args:
+            lessons_text = reflexion.get_reflexion_instructions()
+            if lessons_text:
+                console.print(f"\n[success]{lessons_text}[/success]\n")
+            else:
+                console.print("[dim]No distilled reflexion lessons currently saved.[/dim]")
+            console.print("Usage: [warning]/reflexion distill[/warning] | [warning]/reflexion clear[/warning]\n")
+            return
+
+        sub = args[0].lower()
+        if sub == "distill":
+            console.print("[brand]🧠 Distilling reflexion lessons...[/brand]")
+            success, msg = await reflexion.distill_reflexion_lessons(self.config_mgr)
+            if success:
+                self.update_system_message()
+                console.print(f"[success]{msg}[/success]")
+            else:
+                console.print(f"[warning]{msg}[/warning]")
+        elif sub == "clear":
+            reflexion.clear_reflexion()
+            self.update_system_message()
+            console.print("[warning]Reflexion journal cleared.[/warning]")
+        else:
+            console.print("[error]Usage: /reflexion distill | /reflexion clear[/error]")
 
     async def cmd_checkpoint(self, args):
         if not args:
@@ -1337,7 +1396,14 @@ class Mesh:
 
                 if self.debug_mode:
                     console.print(f"[brand]🔧 DEBUG - Tool Execution Result:[/brand]\n{tool_result}")
-                
+
+                # Log errors to reflexion event recorder
+                if isinstance(tool_result, str) and '"error":' in tool_result:
+                    reflexion.record_reflexion_event(
+                        event_type="tool_failure",
+                        details=f"Tool '{tool_call['name']}' failed with args {tool_call['args']}: {tool_result[:300]}"
+                    )
+
                 self.messages.append({
                     "role": "tool",
                     "tool_call_id": tool_call["id"],

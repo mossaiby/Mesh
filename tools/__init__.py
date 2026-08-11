@@ -19,6 +19,7 @@ from tools.advisor_tool import AdvisorTool
 from tools.explore_tool import ExploreTool
 from tools.synthesis_tool import SynthesizeTool
 from tools.consensus_tool import ConsensusTool
+from tools.symbol_tool import SearchSymbolsTool
 
 __all__ = [
     "BaseTool",
@@ -43,4 +44,5 @@ __all__ = [
     "ExploreTool",
     "SynthesizeTool",
     "ConsensusTool",
+    "SearchSymbolsTool",
 ]
