@@ -74,8 +74,6 @@ class Mesh:
         self.subagent_proxy.debug_mode = self.debug_mode
         self.tools_enabled: bool = True
         self.current_mode: str = modes.DEFAULT_MODE
-        # Saved so YOLO mode can restore whatever the user had explicitly
-        # set before entering it, rather than resetting to hardcoded defaults.
         self._pre_yolo_guard_autonomy: Optional[str] = None
         self._pre_yolo_permission_auto_approve: Optional[bool] = None
 
@@ -146,7 +144,7 @@ class Mesh:
         self.cmd_registry.register("autocompact", "View or set auto-compaction: /autocompact on | /autocompact off | /autocompact threshold <0-100>", self.cmd_autocompact)
         self.cmd_registry.register("dream", "Analyze the conversation and extract candidate notes, memory facts, and skills", self.cmd_dream)
         self.cmd_registry.register("delegate", "Delegate a self-contained task to an autonomous sub-agent: /delegate <task description> | /delegate depth [<n>]", self.cmd_delegate)
-        self.cmd_registry.register("explore", "Run parallel speculative branch exploration: /explore <task description>", self.cmd_explore)
+        self.cmd_registry.register("explore", "Run parallel speculative branch exploration: /explore [<num_branches>] <task description>", self.cmd_explore)
         self.cmd_registry.register("consensus", "Run an adversarial multi-model consensus audit: /consensus <question> | <proposal>", self.cmd_consensus)
         self.cmd_registry.register("goal", "View, set, or manage the pinned session goal: /goal <text> [| criterion 1 | criterion 2 ...] | /goal done <criterion #> | /goal clear", self.cmd_goal)
         self.cmd_registry.register("advisor", "Consult the advisor for a second opinion: /advisor <question>", self.cmd_advisor)
@@ -172,9 +170,6 @@ class Mesh:
 
         table = Table(show_header=False, box=None, padding=(0, 1, 0, 2))
         table.add_column("Command", style="label", no_wrap=True)
-        # Descriptions are rendered as plain Text (not markup) so literal
-        # characters like [key] or <path> in usage hints are shown exactly
-        # as written instead of being parsed as Rich style tags and dropped.
         table.add_column("Description")
 
         for cmd, desc in self.cmd_registry.list_commands().items():
@@ -530,15 +525,27 @@ class Mesh:
 
     async def cmd_explore(self, args):
         if not args:
-            console.print("[error]Usage: /explore <task description>[/error]")
+            console.print("[error]Usage: /explore [<num_branches>] <task description>[/error]")
             return
 
-        task = " ".join(args)
+        num_branches = 3
+        if args[0].isdigit() and 2 <= int(args[0]) <= 5:
+            num_branches = int(args[0])
+            task = " ".join(args[1:])
+        else:
+            task = " ".join(args)
+
+        if not task.strip():
+            console.print("[error]Usage: /explore [<num_branches>] <task description>[/error]")
+            return
+
         result = await explore.explore_branches(
             task=task,
             strategies=None,
             tool_registry=self.tool_registry,
-            config_mgr=self.config_mgr
+            config_mgr=self.config_mgr,
+            num_branches=num_branches,
+            debug_mode=self.debug_mode
         )
 
         if result["status"] == "success":

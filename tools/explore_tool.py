@@ -7,8 +7,8 @@ class ExploreTool(BaseTool):
     name = "explore_branches"
     description = (
         "Runs speculative parallel branch search for complex or ambiguous problems. "
-        "Spawns parallel sub-agents with distinct strategies, evaluates their results, "
-        "and synthesizes the winning solution."
+        "Dynamically generates N distinct task strategies, executes sub-agent swarms "
+        "in parallel, evaluates their results, and synthesizes the winning solution."
     )
     is_proxied = False
     parameters = {
@@ -18,10 +18,14 @@ class ExploreTool(BaseTool):
                 "type": "string",
                 "description": "The complex task or problem description to explore in parallel."
             },
+            "num_branches": {
+                "type": "integer",
+                "description": "Number of parallel strategy branches to generate and explore (2 to 5, default: 3)."
+            },
             "strategies": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Optional list of distinct strategy prompts to explore (defaults to 3 auto-generated approaches)."
+                "description": "Optional explicit list of strategy prompts. If omitted, strategies are generated dynamically by the LLM."
             },
             "max_turns": {
                 "type": "integer",
@@ -35,11 +39,20 @@ class ExploreTool(BaseTool):
         self._tool_registry = tool_registry
         self._config_mgr = config_mgr
 
-    async def execute(self, task: str, strategies: Optional[List[str]] = None, max_turns: int = 6) -> Dict[str, Any]:
+    async def execute(
+        self,
+        task: str,
+        num_branches: int = 3,
+        strategies: Optional[List[str]] = None,
+        max_turns: int = 6
+    ) -> Dict[str, Any]:
+        debug_mode = getattr(self._tool_registry.subagent_proxy, "debug_mode", False)
         return await explore.explore_branches(
             task=task,
             strategies=strategies,
             tool_registry=self._tool_registry,
             config_mgr=self._config_mgr,
-            max_turns=max_turns
+            num_branches=num_branches,
+            max_turns=max_turns,
+            debug_mode=debug_mode
         )

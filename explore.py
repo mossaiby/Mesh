@@ -7,6 +7,15 @@ import delegation
 from theme import console
 
 
+STRATEGY_GENERATOR_SYSTEM_PROMPT = (
+    "You are Mesh's Speculative Strategy Generator. Given a task, generate distinct, "
+    "non-overlapping, highly concrete strategies or hypotheses to solve or investigate "
+    "the task. Each strategy must be a clear, actionable mission statement for an autonomous sub-agent.\n\n"
+    "Respond with ONLY a single JSON object in this exact shape:\n"
+    '{"strategies": ["Strategy 1 description...", "Strategy 2 description...", ...]}\n\n'
+    "No markdown fences, no extra text."
+)
+
 JUDGE_SYSTEM_PROMPT = (
     "You are Mesh's Speculative Branching Judge. Multiple autonomous sub-agents were "
     "spun up in parallel with distinct strategies to attempt the same task.\n\n"
@@ -19,39 +28,111 @@ JUDGE_SYSTEM_PROMPT = (
 )
 
 
+def _safe_parse_json(raw: str) -> Dict[str, Any]:
+    raw = (raw or "").strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`")
+        if raw.lower().startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    try:
+        data = json.loads(raw)
+    except Exception:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                data = json.loads(raw[start:end + 1])
+            except Exception:
+                return {}
+        else:
+            return {}
+    return data if isinstance(data, dict) else {}
+
+
+async def generate_dynamic_strategies(
+    task: str,
+    config_mgr: ConfigManager,
+    num_branches: int = 3
+) -> List[str]:
+    """
+    Uses the active LLM to dynamically generate `num_branches` task-specific
+    mission statements for sub-agent swarm exploration.
+    """
+    prompt = [
+        {"role": "system", "content": STRATEGY_GENERATOR_SYSTEM_PROMPT},
+        {"role": "user", "content": f"Task: {task}\nNumber of distinct strategies requested: {num_branches}"}
+    ]
+
+    try:
+        model_cfg, provider_cfg = config_mgr.get_active_model_and_provider()
+        provider = OpenAIProvider(model_cfg, provider_cfg)
+
+        raw_text = ""
+        async for chunk in provider.stream_chat(prompt):
+            if chunk["type"] == "content":
+                raw_text += chunk["value"]
+
+        data = _safe_parse_json(raw_text)
+        strategies = data.get("strategies") or []
+        if isinstance(strategies, list) and len(strategies) > 0:
+            return [str(s).strip() for s in strategies if str(s).strip()][:num_branches]
+    except Exception:
+        pass
+
+    # Fallback if strategy generation fails or is unparseable
+    return [
+        f"Approach 1 (Direct): Investigate and solve '{task}' directly using standard conventions.",
+        f"Approach 2 (Defensive / Validation): Investigate '{task}' focusing on edge-case validation and error bounds.",
+        f"Approach 3 (Alternative Structural): Investigate '{task}' exploring alternative architecture patterns."
+    ][:num_branches]
+
+
 async def explore_branches(
     task: str,
     strategies: Optional[List[str]],
     tool_registry: Any,
     config_mgr: ConfigManager,
-    max_turns: int = 6
+    num_branches: int = 3,
+    max_turns: int = 6,
+    debug_mode: bool = False
 ) -> Dict[str, Any]:
     """
     Spawns multiple parallel sub-agents with distinct strategies to attempt `task`.
     Evaluates branch reports using a Judge pass and synthesizes the winning solution.
     """
-    if not strategies:
-        # Auto-generate 3 distinct strategies using the active model
-        strategies = [
-            f"Approach 1 (Direct Implementation): Solve '{task}' using the most straightforward direct approach.",
-            f"Approach 2 (Defensive / Edge-Case Heavy): Solve '{task}' with strict validation and edge-case handling.",
-            f"Approach 3 (Alternative / Structural): Solve '{task}' using an alternative structural pattern or algorithm."
-        ]
+    num_branches = min(max(2, num_branches), 5)
 
-    console.print(f"\n[brand]🌲 Speculative Exploration Swarm:[/brand] Launching {len(strategies)} parallel branches for task:\n  [italic]{task}[/italic]\n")
+    if not strategies:
+        console.print(f"[brand]🧠 Strategy Generator:[/brand] Synthesizing {num_branches} custom mission statements for task...")
+        strategies = await generate_dynamic_strategies(task, config_mgr, num_branches=num_branches)
+
+    console.print(f"\n[brand]🌲 Speculative Exploration Swarm:[/brand] Launching {len(strategies)} parallel branches:\n")
+
+    for i, strat in enumerate(strategies, 1):
+        console.print(f"  [accent]▶ Branch {i}:[/accent] {strat}")
+    console.print()
 
     async def run_branch(idx: int, strategy: str) -> Dict[str, Any]:
-        branch_task = f"Task: {task}\n\nAssigned Strategy for this Branch: {strategy}"
-        console.print(f"  [accent]▶ Branch {idx + 1}:[/accent] [dim]{strategy}[/dim]")
+        branch_task = f"Overall Objective: {task}\n\nYour Assigned Branch Strategy/Mission: {strategy}"
+        
+        # Pass verbose=True if debug_mode is enabled so sub-agent tool calls stream live
         res = await delegation.run_delegated_task(
             task=branch_task,
             tool_registry=tool_registry,
             config_mgr=config_mgr,
             max_turns=max_turns,
-            verbose=False
+            verbose=debug_mode
         )
         res["strategy"] = strategy
         res["branch_id"] = idx + 1
+
+        if debug_mode:
+            console.print(f"\n[brand]🔧 DEBUG - Branch {idx + 1} Output:[/brand]")
+            console.print(f"[dim]Turns Used: {res.get('turns_used', 0)} | Tool Calls: {len(res.get('tool_calls', []))}[/dim]")
+            if res.get("report"):
+                console.print(f"[dim]{res['report']}[/dim]\n")
+
         return res
 
     branch_results = await asyncio.gather(*(run_branch(i, strat) for i, strat in enumerate(strategies)))
@@ -84,6 +165,7 @@ async def explore_branches(
         return {
             "status": "success",
             "task": task,
+            "strategies": strategies,
             "synthesis": synthesis_text.strip(),
             "branches_evaluated": len(branch_results),
             "branch_reports": branch_results
