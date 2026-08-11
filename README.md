@@ -2,7 +2,7 @@
 
 **v1.0.0**
 
-A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Speculative Swarm Exploration**, **Autonomous Tool Synthesis**, **Adversarial Multi-Model Consensus**, **Multi-Role Autonomous Task Squads**, **Cross-Session Reflexion Journaling**, **AST Codebase Symbol Indexing**, **Session Checkpointing & Branching**, **Unified Diff Previews & File Rollback**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
+A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Automated Linter/Formatter Hooks**, **Iterative Auto-Test Loops**, **Speculative Swarm Exploration**, **Autonomous Tool Synthesis**, **Adversarial Multi-Model Consensus**, **Multi-Role Autonomous Task Squads**, **Cross-Session Reflexion Journaling**, **AST Codebase Symbol Indexing**, **Session Checkpointing & Branching**, **Unified Diff Previews & File Rollback**, **Script File Execution & Automation**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
 
 ---
 
@@ -11,6 +11,8 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 - **Multi-Provider OpenAI Compatibility**: Seamlessly connect to OpenAI, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint via `models.json`.
 - **Interactive Model Switcher (`/switch`)**: Switch active models on the fly using a cross-platform arrow-key selection menu or command arguments.
 - **Model Discovery & Batch Configuration (`/models discover` / `/models add`)**: Query provider REST endpoints (`/v1/models`) to discover remote models offered by backends. Interactively pick discovered models with arrow keys or batch-add models using wildcard patterns (e.g., `/models add openrouter *free*` or `/models add groq llama`).
+- **Automated Post-Edit Linter Hooks (`/hooks`)**: Automatically runs background linters/formatters (`ruff`, `flake8`, `eslint`, `black`, `cargo check`, `gofmt`) after file edits (`write_file`, `edit_file`) and feeds syntax/style feedback directly back to the LLM to fix errors in real-time.
+- **Iterative Auto-Test Loop (`/loop <command>`)**: Executes a build or test command (e.g. `/loop pytest` or `/loop npm test`). If tests fail, Mesh enters an automated loop: captures error output, spawns repair sub-agents, modifies code, and re-tests until all tests pass green!
 - **Script File Execution & Headless Automation (`/script` & CLI `--file`)**: Execute commands and prompts line-by-line from a script file interactively via `/script <file.txt>` or on startup via `python main.py script.txt --non-interactive` for headless CI/CD and Docker pipelines.
 - **Speculative Swarm Exploration (`explore_branches` / `/explore`)**: Runs $N$ parallel sub-agent swarm branches with distinct strategies/hypotheses to solve complex tasks simultaneously. Evaluates intermediate outputs with a Judge LLM pass and synthesizes the winning solution.
 - **Autonomous Tool Synthesis (`synthesize_tool` / `custom_tools/`)**: Enables Mesh or the user to write, AST-verify, save, and dynamically register new deterministic Python tools on the fly without restarting CLI sessions.
@@ -126,7 +128,8 @@ python main.py --file script.txt --non-interactive
 | `/version` | Show the current Mesh version. |
 | `/models [discover\|add]` | List configured models (`/models`), query endpoints (`/models discover`), or interactively/batch add models (`/models add [<provider>] [<pattern>]`). |
 | `/switch [key]` | Interactively switch models using arrow keys, or directly by model key. |
-| `/script <file.txt>` | Execute commands and prompts line-by-line from a script file. |
+| `/loop <test_cmd>` | Run an automated iterative test/fix loop until all tests pass green. |
+| `/hooks [on\|off]` | View or toggle automated post-edit linter/formatter hooks (`ruff`, `eslint`, `cargo check`). |
 | `/explore <task>` | Run parallel speculative branch exploration across $N$ strategies. |
 | `/consensus <question> \| <proposal>` | Run an adversarial multi-model audit and synthesis pass. |
 | `/squad <task>` | Execute 4-stage autonomous task squad (Architect -> Coder -> Test Engineer -> Security Auditor). |
@@ -136,6 +139,8 @@ python main.py --file script.txt --non-interactive
 | `/checkout <tag_or_branch>` | Restore session state from a checkpoint tag or branch. |
 | `/diff` | Display unified diff of recent file edits made by tools. |
 | `/undo` | Revert the last file modification made on disk by a tool. |
+| `/script <file.txt>` | Execute commands and prompts line-by-line from a script file. |
+| `/project [reload]` | View or reload workspace project rules (`PROJECT.md`). |
 | `/context` | Display conversation history, active tool schemas, and MCP statuses. |
 | `/system [text]` | Display, update, or clear (`/system clear`) the current system prompt. |
 | `/skills [enable\|disable] <name>` | List registered skills or enable/disable specific skills. |
@@ -158,24 +163,6 @@ python main.py --file script.txt --non-interactive
 | `/debug [on\|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent logs. |
 | `/clear` | Clear conversation history while keeping system prompt and skills intact. |
 | `/exit` | Safely close MCP process connections and exit. |
-
----
-
-## 📜 Script File Execution & Headless Automation (`/script` & CLI `--file`)
-
-Execute preset command macros or automated prompts line-by-line:
-
-```text
-# Example script: bootstrap_session.txt
-/mode build
-/goal Implement User Authentication | Add JWT middleware | Write unit tests
-/memory search auth_token_secret
-Explain the user authentication setup in this repository.
-```
-
-- **In interactive mode:** `/script bootstrap_session.txt`
-- **On launch (interactive):** `python main.py bootstrap_session.txt`
-- **Headless CI/CD / Docker:** `python main.py -f bootstrap_session.txt -n`
 
 ---
 
@@ -266,6 +253,31 @@ Configures declarative skills that inject specialized instructions and tools.
 
 ---
 
+## ⚡ Automated Post-Edit Linter Hooks (`hooks.py` / `/hooks`)
+
+`hooks.py` automatically detects and runs project linters and code formatters in the background whenever `write_file` or `edit_file` modifies a file:
+
+- **Python (`.py`):** `ruff check`, `black --check`, `flake8`
+- **JavaScript / TypeScript (`.js`, `.ts`):** `eslint`
+- **Rust (`.rs`):** `cargo check`
+- **Go (`.go`):** `gofmt -l`
+
+If a linter detects syntax errors, type-check warnings, or formatting violations, the feedback is attached directly into the tool output dict (`_linter_feedback`). The model sees the warnings in real-time and fixes syntax/style mistakes in the same turn before declaring the task complete.
+
+Toggle or inspect hooks using `/hooks on|off`.
+
+---
+
+## 🔄 Iterative Auto-Test Loop (`test_loop.py` / `/loop`)
+
+`test_loop.py` provides an automated test-driven repair loop:
+
+1. **Test Execution**: Runs a test or build command (e.g. `/loop pytest`, `/loop npm test`, `/loop cargo test`).
+2. **Success Check**: If the command exits with code `0`, reports success immediately.
+3. **Automated Repair Loop**: If tests fail, Mesh captures the error output, spawns a repair sub-agent to analyze logs and modify code using tools, re-runs the test command, and repeats up to 5 iterations until all tests pass green!
+
+---
+
 ## 🌲 Speculative Swarm Exploration (`explore_branches` / `/explore`)
 
 `explore.py` and `tools/explore_tool.py` introduce Monte Carlo Tree Search (MCTS) / Tree-of-Thoughts style parallel exploration to Mesh.
@@ -327,6 +339,24 @@ Run via `/consensus <question> | <proposed solution>` or via the `consult_consen
 ## ↩️ Unified Diff Previews & File Rollback (`/diff`, `/undo`)
 
 `file_history.py` intercepts `write_file` and `edit_file` executions before modifying disk, computes colorized unified diffs, and maintains an in-memory session undo stack. Use `/diff` to inspect recent edits and `/undo` to revert file changes instantly.
+
+---
+
+## 📜 Script File Execution & Headless Automation (`/script` & CLI `--file`)
+
+Execute preset command macros or automated prompts line-by-line:
+
+```text
+# Example script: bootstrap_session.txt
+/mode build
+/goal Implement User Authentication | Add JWT middleware | Write unit tests
+/memory search auth_token_secret
+Explain the user authentication setup in this repository.
+```
+
+- **In interactive mode:** `/script bootstrap_session.txt`
+- **On launch (interactive):** `python main.py bootstrap_session.txt`
+- **Headless CI/CD / Docker:** `python main.py -f bootstrap_session.txt -n`
 
 ---
 
@@ -561,6 +591,8 @@ Mesh/
 ├── symbol_search.py           # Zero-vector AST codebase symbol indexer
 ├── checkpoint.py              # Session Checkpointing & Branching manager
 ├── file_history.py            # Unified Diff Previews & File Rollback tracker
+├── hooks.py                   # Automated Post-Edit Linter & Formatter Hooks
+├── test_loop.py               # Iterative Auto-Test/Fix Loop harness
 ├── memory_search.py           # Sub-agent-based semantic memory search
 ├── self_heal.py               # Self-healing tool-error recovery
 ├── advisor.py                 # Advisor engine
@@ -599,7 +631,7 @@ Mesh/
 ├── commands/
 │   ├── __init__.py
 │   ├── registry.py            # Slash command registry
-│   ├── agent_commands.py      # /delegate, /explore, /consensus, /squad, /advisor, /guard, /mode
+│   ├── agent_commands.py      # /delegate, /explore, /consensus, /squad, /loop, /hooks, /advisor, /guard, /mode
 │   ├── model_commands.py      # /models, /switch
 │   ├── session_commands.py    # /goal, /note, /memory, /dream, /script, /project, /reflexion, /checkpoint, /fork, /checkout, /diff, /undo
 │   └── system_commands.py     # /help, /status, /version, /context, /system, /tools, /skills, /dirs, /mcps, /proxy, /selfheal, /compact, /autocompact, /clear, /retry, /debug, /exit
@@ -617,6 +649,8 @@ Mesh/
 
 ## 🩹 Changelog / Bug Fixes (v1.0.0)
 
+- **Added Automated Post-Edit Linter Hooks (`hooks.py`, `/hooks`)**: Runs background linters/formatters (`ruff`, `flake8`, `eslint`, `black`, `cargo check`, `gofmt`) automatically after file edits (`write_file`, `edit_file`) and feeds warnings back to the LLM to fix syntax/style issues in real-time.
+- **Added Iterative Auto-Test Loop (`test_loop.py`, `/loop`)**: Executes a build/test command (e.g. `/loop pytest`). If tests fail, Mesh enters an automated loop: captures error output, spawns repair sub-agents, modifies code, and re-tests until all tests pass green!
 - **Refactored Architecture (`main.py` -> `engine.py` & `commands/`)**: Split `main.py` into `MeshEngine` (`engine.py`) and 4 modular command submodules (`commands/model_commands.py`, `commands/agent_commands.py`, `commands/session_commands.py`, `commands/system_commands.py`), reducing `main.py` to a clean ~110-line CLI entry point.
 - **Added `prompt_toolkit` Tab-Completion (`terminal_ui.py`)**: Asynchronous Tab-completion for all slash commands, model keys, operating modes, and file paths.
 - **Added `PROJECT.md` Project Rules Support (`project_rules.py`)**: Automatically scans workspace roots for project rule files (`PROJECT.md`, `MESH.md`, `AGENTS.md`) and injects instructions directly into the system prompt.

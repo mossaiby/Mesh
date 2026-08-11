@@ -5,6 +5,7 @@ from typing import Dict, Any, Optional
 from tools.base import BaseTool
 from tools.permissions import PermissionManager, default_permission_manager
 from file_history import file_history_tracker
+from hooks import hook_manager
 
 
 class ReadFileTool(BaseTool):
@@ -79,11 +80,18 @@ class WriteFileTool(BaseTool):
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
 
-            return {
+            res = {
                 "status": "success",
                 "message": f"Wrote {len(content)} characters to '{path}'.",
                 "diff": diff_text
             }
+
+            # Trigger post-edit linter hook
+            linter_feedback = hook_manager.run_post_edit_hooks(path)
+            if linter_feedback:
+                res["_linter_feedback"] = linter_feedback
+
+            return res
         except Exception as e:
             return {"error": f"Failed to write file '{path}': {str(e)}"}
 
@@ -127,11 +135,18 @@ class EditFileTool(BaseTool):
             with open(path, "w", encoding="utf-8") as f:
                 f.write(updated_content)
 
-            return {
+            res = {
                 "status": "success",
                 "message": f"Successfully updated '{path}'.",
                 "diff": diff_text
             }
+
+            # Trigger post-edit linter hook
+            linter_feedback = hook_manager.run_post_edit_hooks(path)
+            if linter_feedback:
+                res["_linter_feedback"] = linter_feedback
+
+            return res
         except Exception as e:
             return {"error": f"Failed to edit file '{path}': {str(e)}"}
 

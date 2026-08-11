@@ -5,7 +5,45 @@ import consensus
 import advisor
 import squad
 import modes
+import test_loop
+import hooks
 from theme import console
+
+
+async def cmd_loop(engine: Any, args: List[str]):
+    if not args:
+        console.print("[error]Usage: /loop <test_or_build_command>[/error]")
+        return
+
+    test_cmd = " ".join(args).strip()
+    result = await test_loop.run_iterative_test_loop(
+        test_command=test_cmd,
+        tool_registry=engine.tool_registry,
+        config_mgr=engine.config_mgr,
+        max_iterations=5
+    )
+
+    if result["status"] == "success":
+        console.print(f"[success]Passed test loop for '{test_cmd}' in {result['iterations_used']} iteration(s)![/success]")
+    else:
+        console.print(f"[error]{result.get('message', 'Test loop failed.')}[/error]")
+
+
+async def cmd_hooks(engine: Any, args: List[str]):
+    if not args:
+        state_str = "[success]ENABLED[/success]" if hooks.hook_manager.enabled else "[error]DISABLED[/error]"
+        console.print(f"Automated post-edit linter/formatter hooks are currently {state_str}.\nUsage: [warning]/hooks on[/warning] | [warning]/hooks off[/warning]\n")
+        return
+
+    sub = args[0].lower()
+    if sub == "on":
+        hooks.hook_manager.enabled = True
+        console.print("[success]Post-edit linter/formatter hooks ENABLED.[/success]")
+    elif sub == "off":
+        hooks.hook_manager.enabled = False
+        console.print("[warning]Post-edit linter/formatter hooks DISABLED.[/warning]")
+    else:
+        console.print("[error]Usage: /hooks on | /hooks off[/error]")
 
 
 async def cmd_delegate(engine: Any, args: List[str]):
@@ -285,6 +323,8 @@ def register_agent_commands(engine: Any):
     engine.cmd_registry.register("explore", "Run parallel speculative branch exploration: /explore [<num_branches>] <task description>", lambda args: cmd_explore(engine, args))
     engine.cmd_registry.register("consensus", "Run an adversarial multi-model consensus audit: /consensus <question> | <proposal>", lambda args: cmd_consensus(engine, args))
     engine.cmd_registry.register("squad", "Execute 4-stage autonomous task squad (Architect -> Coder -> Test Engineer -> Security Auditor): /squad <task>", lambda args: cmd_squad(engine, args))
+    engine.cmd_registry.register("loop", "Iterative auto-test/fix loop: /loop <test_or_build_command>", lambda args: cmd_loop(engine, args))
+    engine.cmd_registry.register("hooks", "Toggle automated post-edit linter/formatter hooks: /hooks [on|off]", lambda args: cmd_hooks(engine, args))
     engine.cmd_registry.register("advisor", "Consult the advisor or configure its model: /advisor <question> | /advisor model [<key>]", lambda args: cmd_advisor(engine, args))
     engine.cmd_registry.register("guard", "View or configure the tool-call safety guard: /guard [on|off] | /guard mode [supervised|autonomous] | /guard model [<key>] | /guard trust <tool>", lambda args: cmd_guard(engine, args))
     engine.cmd_registry.register("mode", "View or switch operating mode: /mode [plan|build|review|yolo]", lambda args: cmd_mode(engine, args))
