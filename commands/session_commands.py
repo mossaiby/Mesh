@@ -1,4 +1,5 @@
 import asyncio
+import subprocess
 from typing import List, Any
 from rich.markdown import Markdown
 from tools.note_tool import _read_notes, _write_notes, _append_notes
@@ -7,6 +8,7 @@ import memory_search
 from dream import dream_extract
 from skills import DeclarativeSkill
 import project_rules
+import repo_map
 import reflexion
 import git_workflow
 from file_history import file_history_tracker
@@ -400,6 +402,16 @@ async def cmd_script(engine: Any, args: List[str]):
 
 
 async def cmd_project(engine: Any, args: List[str]):
+    if args and args[0].lower() in ("map", "graph"):
+        map_text = repo_map.get_repo_map_instructions(".", token_budget=800)
+        if map_text:
+            console.print(f"\n[success]=== Repository Architecture Map ===[/success]\n")
+            console.print(Markdown(map_text))
+            console.print()
+        else:
+            console.print("[dim]No codebase symbols found to generate repository map.[/dim]")
+        return
+
     filename, content = project_rules.find_and_read_project_rules(".")
     if args and args[0].lower() == "reload":
         engine.update_system_message()
@@ -415,7 +427,7 @@ async def cmd_project(engine: Any, args: List[str]):
         console.print()
     else:
         console.print("[dim]No project rules file (PROJECT.md, MESH.md, AGENTS.md) found in current directory.[/dim]")
-    console.print("Usage: [warning]/project[/warning] | [warning]/project reload[/warning]\n")
+    console.print("Usage: [warning]/project[/warning] | [warning]/project map[/warning] | [warning]/project reload[/warning]\n")
 
 
 async def cmd_reflexion(engine: Any, args: List[str]):
@@ -451,7 +463,7 @@ def register_session_commands(engine: Any):
     engine.cmd_registry.register("memory", "View memory, or edit it: /memory save <key> <value> | /memory get <key> | /memory search <query> | /memory delete <key> | /memory clear", lambda args: cmd_memory(engine, args))
     engine.cmd_registry.register("dream", "Analyze the conversation and extract candidate notes, memory facts, and skills", lambda args: cmd_dream(engine, args))
     engine.cmd_registry.register("script", "Execute commands and prompts line-by-line from a script file: /script <file.txt>", lambda args: cmd_script(engine, args))
-    engine.cmd_registry.register("project", "View or reload workspace project rules (PROJECT.md): /project [reload]", lambda args: cmd_project(engine, args))
+    engine.cmd_registry.register("project", "View or reload workspace project rules and repo map: /project [map|reload]", lambda args: cmd_project(engine, args))
     engine.cmd_registry.register("reflexion", "View or distill cross-session error lessons: /reflexion [distill|clear]", lambda args: cmd_reflexion(engine, args))
     engine.cmd_registry.register("checkpoint", "Save, fork, restore, or list session checkpoints: /checkpoint [save|fork|restore|list] <args>", lambda args: cmd_checkpoint(engine, args))
     engine.cmd_registry.register("diff", "Display unified diff or revert recent file edit: /diff | /diff undo", lambda args: cmd_diff(engine, args))

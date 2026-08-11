@@ -37,6 +37,7 @@ from tools import (
 import tool_synthesis
 import symbol_search
 import project_rules
+import repo_map
 import reflexion
 import modes
 import jobs
@@ -124,6 +125,10 @@ class MeshEngine:
         proj_rules_section = project_rules.get_project_rules_instructions()
         if proj_rules_section:
             full_sys += f"\n\n{proj_rules_section}"
+
+        repo_map_section = repo_map.get_repo_map_instructions(".", token_budget=500)
+        if repo_map_section:
+            full_sys += f"\n\n{repo_map_section}"
 
         sys_idx = next((i for i, m in enumerate(self.messages) if m.get("role") == "system"), None)
         
