@@ -1,5 +1,7 @@
 # ⚡ Mesh
 
+**v1.0.0**
+
 A modular, text-based AI CLI built in Python for local and cloud-hosted LLMs. Designed for developer productivity with **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **sub-agent swarm workflows**, **Git native tools**, **post-edit linter hooks**, **session checkpointing**, and **semantic context compaction**.
 
 ---
@@ -166,39 +168,83 @@ Configures Model Context Protocol (MCP) stdio servers.
 
 ```text
 Mesh/
-├── main.py                    # Clean CLI entry point and REPL loop
-├── engine.py                  # Central MeshEngine orchestration & turn loop
-├── config.py                  # Config parser & Pydantic schemas
-├── theme.py                   # Centralized Rich console color palette
-├── version.py                 # App version identifier
-├── terminal_ui.py             # Prompt_toolkit session with Tab-completion
-├── project_rules.py           # Workspace rules loader (PROJECT.md)
+├── requirements.txt           # Project Python dependencies
+├── models.json                # Provider endpoints and model configurations
+├── mcps.json                  # Model Context Protocol server definitions
+├── skills.json                # Declarative skills configuration
+├── memory.json                # Persistent key-value memory storage
+├── reflexion.json             # Cross-session reflexion error log & lessons
+├── notes.md                   # Persistent Markdown notes
+├── version.py                 # Single source of truth for the app version
+├── theme.py                   # Shared Rich theme & console instance
+├── config.py                  # Configuration manager and Pydantic schemas
+├── engine.py                  # Central MeshEngine orchestration & inference turn loop
 ├── subagent.py                # Sub-Agent Proxy distillation engine
-├── delegation.py              # Recursive task delegation engine
-├── explore.py                 # Speculative Swarm Branch Exploration
-├── tool_synthesis.py          # Dynamic Tool Synthesis & AST validation
+├── delegation.py              # Task Delegation engine
+├── explore.py                 # Speculative Swarm Branch Exploration engine
+├── tool_synthesis.py          # Dynamic Tool Synthesis and AST validation
 ├── consensus.py               # Adversarial Multi-Model Consensus engine
 ├── squad.py                   # 4-stage Multi-Role Task Squad pipeline
 ├── reflexion.py               # Cross-Session Reflexion logging & distillation
 ├── symbol_search.py           # Zero-vector AST codebase symbol indexer
-├── checkpoint.py              # Session Checkpointing & Branching
-├── file_history.py            # Unified Diff Previews & File Rollback stack
-├── hooks.py                   # Post-Edit Linter & Formatter Hooks
+├── checkpoint.py              # Session Checkpointing & Branching manager
+├── file_history.py            # Unified Diff Previews & File Rollback tracker
+├── hooks.py                   # Automated Post-Edit Linter & Formatter Hooks
 ├── test_loop.py               # Iterative Auto-Test/Fix Loop harness
 ├── jobs.py                    # Async Background Subprocess Manager
 ├── git_workflow.py            # Git Native Engine & AI Conventional Commit Generator
-├── memory_search.py           # Meaning-based memory search
+├── memory_search.py           # Sub-agent-based semantic memory search
 ├── self_heal.py               # Self-healing tool-error recovery
-├── advisor.py                 # Advisor second-opinion engine
-├── guard.py                   # Tool-Call Safety Guard
+├── advisor.py                 # Advisor engine
+├── guard.py                   # Tool-call Safety Guard
 ├── modes.py                   # Operating modes (Plan/Build/Review/YOLO)
-├── compaction.py              # Semantic context window compaction
-├── dream.py                   # Out-of-band knowledge extraction (/dream)
+├── compaction.py              # Semantic context window compaction module
+├── dream.py                   # /dream conversation analysis & knowledge extraction
+├── terminal_ui.py             # Prompt_toolkit session with Tab-completion
+├── project_rules.py           # Project instructions & rules loader (PROJECT.md)
+├── main.py                    # Clean CLI entry point and REPL loop
 ├── custom_tools/              # Directory for dynamically synthesized tools
-├── commands/                  # Command handlers (/agent, /config, /git, /checkpoint, etc.)
-├── tools/                     # Native LLM tools (shell, job, todo, note, goal, etc.)
-├── providers/                 # OpenAI-compatible API client wrapper
-└── mcp/                       # Native stdio JSON-RPC MCP client
+├── providers/
+│   ├── __init__.py
+│   └── openai_provider.py     # Async OpenAI-compatible client wrapper
+├── render/
+│   ├── __init__.py
+│   └── stream_renderer.py     # Rich Markdown & CoT streaming renderer
+├── tools/
+│   ├── __init__.py            # Tool exports
+│   ├── base.py                # BaseTool class
+│   ├── registry.py            # Central tool execution dispatcher
+│   ├── permissions.py         # PermissionManager and directory authorization
+│   ├── native_tools.py        # File, glob, and shell command tools
+│   ├── web_tools.py           # Key-less web search & fetch tools
+│   ├── memory_tool.py         # Key-value memory tool
+│   ├── note_tool.py           # Markdown note manager tool
+│   ├── todo_tool.py           # Multi-step task tracking tool
+│   ├── ask_tool.py            # Interactive decision tool
+│   ├── delegate_tool.py       # delegate_task tool
+│   ├── goal_tool.py           # goal tool
+│   ├── advisor_tool.py        # consult_advisor tool
+│   ├── explore_tool.py        # explore_branches tool
+│   ├── synthesis_tool.py      # synthesize_tool tool
+│   ├── consensus_tool.py      # consult_consensus tool
+│   ├── symbol_tool.py         # search_symbols AST search tool
+│   ├── job_tool.py            # job tool (background processes)
+│   └── git_tool.py            # git_status, git_diff, git_commit, git_push, git_branch tools
+├── commands/
+│   ├── __init__.py
+│   ├── registry.py            # Slash command registry
+│   ├── agent_commands.py      # /agent (explore, squad, consensus, delegate, advisor), /loop, /hooks, /jobs, /guard, /mode
+│   ├── model_commands.py      # /models, /switch
+│   ├── session_commands.py    # /checkpoint (save, fork, restore, list), /diff (undo), /git, /goal, /note, /memory, /dream, /script, /project, /reflexion
+│   └── system_commands.py     # /help, /status, /config (proxy, repair, hooks, compact), /context, /system, /tools, /skills, /dirs, /mcps, /clear, /retry, /debug, /exit
+├── mcp/
+│   ├── __init__.py
+│   └── client.py              # Stdio JSON-RPC MCP client
+└── skills/
+    ├── __init__.py
+    ├── base.py                # Skill base class
+    ├── registry.py            # Skill manager
+    └── code_skill.py          # Python coding skill implementation
 ```
 
 ---
