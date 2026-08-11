@@ -369,7 +369,7 @@ async def cmd_mode(engine: Any, args: List[str]):
     console.print(f"[success]Switched to {mode_def.label} Mode.[/success] {mode_def.description}")
     if engine.tool_registry.mode_blocked_tools:
         blocked_str = ", ".join(sorted(engine.tool_registry.mode_blocked_tools))
-        console.print(f"[dim]Unavailable in this mode: blocked_str[/dim]")
+        console.print(f"[dim]Unavailable in this mode: {blocked_str}[/dim]")
 
 
 def register_agent_commands(engine: Any):

@@ -1,0 +1,184 @@
+import subprocess
+import os
+from typing import Dict, Any, List, Optional, Tuple
+from config import ConfigManager
+from providers.openai_provider import OpenAIProvider
+from theme import console
+
+
+COMMIT_MSG_SYSTEM_PROMPT = (
+    "You are an expert Git Commit Message Generator. You will be given a `git diff` "
+    "of changes in a repository. Generate a concise, professional Conventional Commit "
+    "message (e.g., 'feat(cli): add git native workflow and /commit command' or "
+    "'fix(guard): prevent infinite self-healing loop on guard blocks').\n\n"
+    "Respond with ONLY the commit message text. No quotes, no markdown fences, no extra commentary."
+)
+
+
+def is_git_repository(root_dir: str = ".") -> bool:
+    """Checks if root_dir is inside a valid Git repository."""
+    try:
+        res = subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            capture_output=True,
+            text=True,
+            cwd=root_dir
+        )
+        return res.returncode == 0 and "true" in res.stdout.lower()
+    except Exception:
+        return False
+
+
+def get_git_branch(root_dir: str = ".") -> str:
+    """Returns the current active Git branch name."""
+    try:
+        res = subprocess.run(
+            ["git", "branch", "--show-current"],
+            capture_output=True,
+            text=True,
+            cwd=root_dir
+        )
+        return res.stdout.strip() or "HEAD"
+    except Exception:
+        return "unknown"
+
+
+def get_git_status(root_dir: str = ".") -> Dict[str, Any]:
+    """Returns structured status information for the workspace repository."""
+    if not is_git_repository(root_dir):
+        return {"error": "Current directory is not a Git repository."}
+
+    try:
+        branch = get_git_branch(root_dir)
+        res = subprocess.run(
+            ["git", "status", "--porcelain"],
+            capture_output=True,
+            text=True,
+            cwd=root_dir
+        )
+        lines = [l.strip() for l in res.stdout.splitlines() if l.strip()]
+        return {
+            "branch": branch,
+            "changed_files_count": len(lines),
+            "changes": lines
+        }
+    except Exception as e:
+        return {"error": f"Failed to get git status: {str(e)}"}
+
+
+def get_git_diff(staged: bool = False, root_dir: str = ".") -> str:
+    """Returns unstaged or staged git diff text."""
+    if not is_git_repository(root_dir):
+        return "Error: Not a Git repository."
+
+    cmd = ["git", "diff", "--cached"] if staged else ["git", "diff"]
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, cwd=root_dir)
+        return res.stdout.strip() or "<no git diff output>"
+    except Exception as e:
+        return f"Error executing git diff: {str(e)}"
+
+
+async def generate_commit_message(config_mgr: ConfigManager, root_dir: str = ".") -> str:
+    """Uses LLM to generate a conventional commit message from git diff."""
+    diff_text = get_git_diff(staged=False, root_dir=root_dir)
+    if not diff_text or diff_text == "<no git diff output>":
+        diff_text = get_git_diff(staged=True, root_dir=root_dir)
+
+    if not diff_text or diff_text == "<no git diff output>":
+        return "chore: update workspace files"
+
+    truncated_diff = diff_text[:4000]
+
+    messages = [
+        {"role": "system", "content": COMMIT_MSG_SYSTEM_PROMPT},
+        {"role": "user", "content": f"Git Diff:\n{truncated_diff}"}
+    ]
+
+    try:
+        model_cfg, provider_cfg = config_mgr.get_active_model_and_provider()
+        provider = OpenAIProvider(model_cfg, provider_cfg)
+
+        msg_text = ""
+        async for chunk in provider.stream_chat(messages):
+            if chunk["type"] == "content":
+                msg_text += chunk["value"]
+
+        clean_msg = msg_text.strip().strip('"').strip("'")
+        return clean_msg if clean_msg else "chore: update project files"
+    except Exception:
+        return "chore: update project files"
+
+
+def run_git_commit(message: str, add_all: bool = True, root_dir: str = ".") -> Tuple[bool, str]:
+    """Stages files and creates a Git commit."""
+    if not is_git_repository(root_dir):
+        return False, "Directory is not a Git repository."
+
+    try:
+        if add_all:
+            subprocess.run(["git", "add", "-A"], check=True, cwd=root_dir)
+
+        res = subprocess.run(
+            ["git", "commit", "-m", message],
+            capture_output=True,
+            text=True,
+            cwd=root_dir
+        )
+        if res.returncode == 0:
+            return True, res.stdout.strip()
+        else:
+            return False, res.stderr.strip() or res.stdout.strip()
+    except Exception as e:
+        return False, f"Git commit failed: {str(e)}"
+
+
+def run_git_push(
+    remote: str = "origin",
+    branch: Optional[str] = None,
+    force: bool = False,
+    root_dir: str = "."
+) -> Tuple[bool, str]:
+    """Pushes the active branch to a remote Git repository."""
+    if not is_git_repository(root_dir):
+        return False, "Directory is not a Git repository."
+
+    target_branch = branch or get_git_branch(root_dir)
+    cmd = ["git", "push", "-u", remote, target_branch]
+    if force:
+        cmd.append("--force-with-lease")
+
+    try:
+        res = subprocess.run(cmd, capture_output=True, text=True, cwd=root_dir)
+        if res.returncode == 0:
+            output = res.stdout.strip() or res.stderr.strip() or "Pushed successfully."
+            return True, output
+        return False, res.stderr.strip() or res.stdout.strip()
+    except Exception as e:
+        return False, f"Git push failed: {str(e)}"
+
+
+def create_or_switch_branch(branch_name: str, root_dir: str = ".") -> Tuple[bool, str]:
+    """Creates or switches to a Git branch."""
+    if not is_git_repository(root_dir):
+        return False, "Directory is not a Git repository."
+
+    try:
+        res = subprocess.run(
+            ["git", "checkout", "-b", branch_name],
+            capture_output=True,
+            text=True,
+            cwd=root_dir
+        )
+        if res.returncode != 0:
+            res = subprocess.run(
+                ["git", "checkout", branch_name],
+                capture_output=True,
+                text=True,
+                cwd=root_dir
+            )
+        if res.returncode == 0:
+            return True, f"Switched to branch '{branch_name}'."
+        return False, res.stderr.strip()
+    except Exception as e:
+        return False, f"Branch operation failed: {str(e)}"

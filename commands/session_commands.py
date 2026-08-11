@@ -8,8 +8,94 @@ from dream import dream_extract
 from skills import DeclarativeSkill
 import project_rules
 import reflexion
+import git_workflow
 from file_history import file_history_tracker
 from theme import console
+
+
+async def cmd_git(engine: Any, args: List[str]):
+    if not git_workflow.is_git_repository("."):
+        console.print("[error]Current directory is not a Git repository.[/error]")
+        return
+
+    if not args:
+        status = git_workflow.get_git_status(".")
+        console.print(f"\n[success]Git Status (Branch: [accent]{status.get('branch', 'unknown')}[/accent]):[/success]")
+        changes = status.get("changes", [])
+        if changes:
+            for c in changes:
+                console.print(f"  • {c}")
+        else:
+            console.print("  [dim]Working tree clean - no modified or untracked files.[/dim]")
+        console.print("\nUsage: [warning]/git status[/warning] | [warning]/git diff[/warning] | [warning]/git commit [<msg>][/warning] | [warning]/git push [<remote>] [<branch>][/warning] | [warning]/git branch [<name>][/warning]\n")
+        return
+
+    sub = args[0].lower()
+
+    if sub == "status":
+        await cmd_git(engine, [])
+
+    elif sub == "diff":
+        staged = len(args) > 1 and args[1].lower() in ("staged", "--cached")
+        diff_text = git_workflow.get_git_diff(staged=staged, root_dir=".")
+        console.print(f"\n[label]Git Diff ({'staged' if staged else 'unstaged'}):[/label]")
+        if diff_text and diff_text != "<no git diff output>":
+            for line in diff_text.splitlines():
+                if line.startswith("+") and not line.startswith("+++"):
+                    console.print(f"[success]{line}[/success]")
+                elif line.startswith("-") and not line.startswith("---"):
+                    console.print(f"[error]{line}[/error]")
+                else:
+                    console.print(f"[dim]{line}[/dim]")
+        else:
+            console.print("  [dim]<no git diff output>[/dim]")
+        console.print()
+
+    elif sub == "commit":
+        status = git_workflow.get_git_status(".")
+        if not status.get("changes"):
+            console.print("[warning]No modified or staged files to commit.[/warning]")
+            return
+
+        if len(args) > 1:
+            message = " ".join(args[1:]).strip()
+        else:
+            console.print("[brand]🧠 Generating conventional commit message from git diff...[/brand]")
+            message = await git_workflow.generate_commit_message(engine.config_mgr, ".")
+
+        console.print(f"Commit Message: [accent]'{message}'[/accent]")
+        success, output = git_workflow.run_git_commit(message=message, add_all=True)
+
+        if success:
+            console.print(f"[success]✔ Staged all changes and created commit:[/success] {message}")
+        else:
+            console.print(f"[error]Git commit failed:[/error] {output}")
+
+    elif sub == "push":
+        remote = args[1] if len(args) > 1 else "origin"
+        branch = args[2] if len(args) > 2 else git_workflow.get_git_branch(".")
+        console.print(f"[brand]🚀 Pushing active branch '[accent]{branch}[/accent]' to remote '[accent]{remote}[/accent]'...[/brand]")
+        
+        success, output = git_workflow.run_git_push(remote=remote, branch=branch)
+        if success:
+            console.print(f"[success]✔ Pushed successfully:[/success] {output}")
+        else:
+            console.print(f"[error]Git push failed:[/error] {output}")
+
+    elif sub == "branch":
+        if len(args) > 1:
+            new_branch = args[1].strip()
+            success, msg = git_workflow.create_or_switch_branch(new_branch)
+            if success:
+                console.print(f"[success]{msg}[/success]")
+            else:
+                console.print(f"[error]{msg}[/error]")
+        else:
+            current = git_workflow.get_git_branch(".")
+            console.print(f"Current Git branch: [accent]{current}[/accent]\nUsage: [warning]/git branch <branch_name>[/warning]\n")
+
+    else:
+        console.print("[error]Usage: /git status | /git diff | /git commit [<msg>] | /git push [<remote>] [<branch>] | /git branch [<name>][/error]")
 
 
 async def cmd_goal(engine: Any, args: List[str]):
@@ -353,9 +439,9 @@ async def cmd_diff(engine: Any, args: List[str]):
                 console.print(f"[error]{line}[/error]")
             else:
                 console.print(f"[dim]{line}[/dim]")
-    else:
-        console.print("[dim]No content changes detected.[/dim]")
-    console.print()
+        else:
+            console.print("[dim]No content changes detected.[/dim]")
+        console.print()
 
 
 async def cmd_undo(engine: Any, args: List[str]):
@@ -379,3 +465,4 @@ def register_session_commands(engine: Any):
     engine.cmd_registry.register("checkout", "Restore session state from a checkpoint tag or branch: /checkout <tag_or_branch>", lambda args: cmd_checkout(engine, args))
     engine.cmd_registry.register("diff", "Display unified diff of recent file edits made by tools", lambda args: cmd_diff(engine, args))
     engine.cmd_registry.register("undo", "Revert the last file modification made on disk by a tool", lambda args: cmd_undo(engine, args))
+    engine.cmd_registry.register("git", "Run native Git commands: /git [status|diff|commit|push|branch]", lambda args: cmd_git(engine, args))

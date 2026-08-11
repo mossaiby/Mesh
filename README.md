@@ -2,7 +2,7 @@
 
 **v1.0.0**
 
-A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Async Background Sub-Processes**, **Automated Linter/Formatter Hooks**, **Iterative Auto-Test Loops**, **Speculative Swarm Exploration**, **Autonomous Tool Synthesis**, **Adversarial Multi-Model Consensus**, **Multi-Role Autonomous Task Squads**, **Cross-Session Reflexion Journaling**, **AST Codebase Symbol Indexing**, **Session Checkpointing & Branching**, **Unified Diff Previews & File Rollback**, **Script File Execution & Automation**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
+A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Git Native Workflows & Auto-Commits**, **Async Background Sub-Processes**, **Automated Linter/Formatter Hooks**, **Iterative Auto-Test Loops**, **Speculative Swarm Exploration**, **Autonomous Tool Synthesis**, **Adversarial Multi-Model Consensus**, **Multi-Role Autonomous Task Squads**, **Cross-Session Reflexion Journaling**, **AST Codebase Symbol Indexing**, **Session Checkpointing & Branching**, **Unified Diff Previews & File Rollback**, **Script File Execution & Automation**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
 
 ---
 
@@ -10,11 +10,12 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 
 - **Multi-Provider OpenAI Compatibility**: Seamlessly connect to OpenAI, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint via `models.json`.
 - **Interactive Model Switcher (`/switch`)**: Switch active models on the fly using a cross-platform arrow-key selection menu or command arguments.
-- **Model Discovery & Batch Configuration (`/models discover` / `/models add`)**: Query provider REST endpoints (`/v1/models`) to discover remote models offered by backends. Interactively pick discovered models with arrow keys or batch-add models using wildcard patterns (e.g., `/models add openrouter *free*` or `/models add groq llama`).
-- **Async Background Sub-Processes & Jobs (`run_background_command` / `/jobs`)**: Spawns long-running servers or background watchers (`npm run dev`, `cargo watch`, `pytest --watch`) asynchronously without blocking Mesh or timing out. Tail live stdout/stderr logs or kill processes via `/jobs`.
+- **Git Native Workflow & AI Auto-Commits (`/git`, `git_push`)**: Pure, vendor-agnostic Git tools (`git_status`, `git_diff`, `git_commit`, `git_push`, `git_branch`). Running `/git commit` without arguments automatically runs an AI pass over `git diff` to generate a conventional commit message, stages all files, and commits automatically. `/git push` pushes the active branch to remote with upstream tracking.
+- **Async Background Sub-Processes & Jobs (`run_background_command` / `/jobs`)**: Spawns long-running servers or background watchers (`npm run dev`, `cargo watch`, `pytest --watch`) asynchronously via `run_background_command` without blocking Mesh or timing out. Tail live stdout/stderr logs or kill processes via `/jobs`.
 - **Enhanced Shell Execution (`run_shell_command`)**: Configurable execution timeouts (pass `0` or `null` for infinite execution) plus custom `shell_prefix` wrappers (e.g., `powershell -Command`, `cmd /c`, `wsl`).
 - **Automated Post-Edit Linter Hooks (`/hooks`)**: Automatically runs background linters/formatters (`ruff`, `flake8`, `eslint`, `black`, `cargo check`, `gofmt`) after file edits (`write_file`, `edit_file`) and feeds syntax/style feedback directly back to the LLM to fix errors in real-time.
 - **Iterative Auto-Test Loop (`/loop <command>`)**: Executes a build or test command (e.g. `/loop pytest` or `/loop npm test`). If tests fail, Mesh enters an automated loop: captures error output, spawns repair sub-agents, modifies code, and re-tests until all tests pass green!
+- **Model Discovery & Batch Configuration (`/models discover` / `/models add`)**: Query provider REST endpoints (`/v1/models`) to discover remote models offered by backends. Interactively pick discovered models with arrow keys or batch-add models using wildcard patterns (e.g., `/models add openrouter *free*` or `/models add groq llama`).
 - **Script File Execution & Headless Automation (`/script` & CLI `--file`)**: Execute commands and prompts line-by-line from a script file interactively via `/script <file.txt>` or on startup via `python main.py script.txt --non-interactive` for headless CI/CD and Docker pipelines.
 - **Speculative Swarm Exploration (`explore_branches` / `/explore`)**: Runs $N$ parallel sub-agent swarm branches with distinct strategies/hypotheses to solve complex tasks simultaneously. Evaluates intermediate outputs with a Judge LLM pass and synthesizes the winning solution.
 - **Autonomous Tool Synthesis (`synthesize_tool` / `custom_tools/`)**: Enables Mesh or the user to write, AST-verify, save, and dynamically register new deterministic Python tools on the fly without restarting CLI sessions.
@@ -25,26 +26,15 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 - **Session Checkpointing & Branching (`/checkpoint`, `/fork`, `/checkout`)**: Take full state snapshots of conversation history, goal state, todo graph, notes, and memory. Fork into isolated branches to test experimental plans, and checkout previous checkpoints freely.
 - **Unified Diff Previews & File Rollback (`/diff`, `/undo`)**: Displays colorized git-style unified diffs (`-`/`+`) for file mutations. Maintains a session undo stack allowing instant rollback of recent file edits.
 - **Sub-Agent Proxy Architecture (`/proxy`)**: Reduces context window noise. Heavy tools (`read_file`, `shell`, `web_search`, MCP tools) require an `_intent` parameter. A dedicated sub-agent distills raw outputs into concise, structured JSON before handing them back to the main LLM.
-- **Recursive Task Delegation (`delegate_task`)**: A separate capability from `/proxy` - the main model can hand off a whole self-contained task to an autonomous sub-agent, which runs its own multi-step tool loop independently and reports back one final summary. Sub-agents can delegate further sub-tasks themselves (up to a user-configurable depth, default 2), and multiple delegations in one turn run concurrently.
-- **Advisor (`consult_advisor`)**: A tool-free, single-shot "second opinion" the model can consult before committing to a risky or ambiguous plan - optionally from a different configured model than the one driving the conversation, for a genuinely independent perspective rather than the same model re-asked. Switch the advisor model live via `/advisor model [<key>]`.
-- **Tool-Call Safety Guard (`/guard`)**: Shell commands, file writes/edits, and MCP tool calls are automatically risk-assessed by a dedicated (ideally cheap/local) model before they run - low risk proceeds, medium risk asks for permission (or auto-approves in autonomous mode), high risk is blocked outright regardless of mode.
-- **Operating Modes (`/mode`)**: Switch between Build (default, full access), Plan/Review (read-only - investigate and propose without touching anything), and YOLO (full access, no confirmation prompts for ambiguous-risk actions). Mode restrictions are enforced twice - hidden from the model's own tool list *and* hard-blocked at execution - so a read-only mode is read-only even against a model that ignores its own tool list.
-- **Self-Healing Tool-Error Recovery (`/selfheal`)**: Failed tool calls get one automatic recovery attempt before the model ever sees the error - transient failures (timeouts, rate limits) are mechanically retried with no model call, and failures likely caused by malformed arguments are diagnosed and retried once by a focused repair sub-agent.
-- **Pinned Session Goal (`/goal`)**: A single objective (with optional success criteria) that's folded directly into the live system prompt rather than a chat message, so it stays visible to the model across `/compact`, `/switch`, and `/clear` - the one thing in a session that's designed to never get summarized away.
-- **Model Context Protocol (MCP) (`/mcps`)**: Native stdio JSON-RPC MCP client supporting `mcps.json`. Dynamically discovers and executes tools from external MCP servers (SQLite, Filesystem, GitHub, etc.) with global and per-server toggles.
-- **Modular Skills Subsystem (`/skills`)**: Package specialized system prompts and tools into reusable skills. Supports dynamic loading from `skills.json` or custom Python classes.
-- **Rich Native Tool Suite**:
-  - **File Operations**: `read_file`, `write_file`, `edit_file`, `glob_files`.
-  - **System Shell**: `run_shell_command` with execution timeouts.
-  - **Zero-Key Web Search & Fetch**: `web_search` (DuckDuckGo search without API keys) and `web_fetch` (clean HTML-to-text extraction).
-  - **Human-in-the-Loop**: `ask_user` with interactive arrow-key option selection and free-form input.
-  - **Session State**: `memory` (persistent JSON key-value store, with `search` for meaning-based recall via a dedicated sub-agent call rather than exact keys or embeddings), `note_manager` (persistent `notes.md` manager), and `todo_manager` (dependency-aware, multi-step task tracking - tasks can declare `depends_on` other tasks, and `next` surfaces what's actually unblocked).
-- **Directory Authorization & Security (`/dirs`)**: `PermissionManager` enforces directory boundaries. If a tool requests path access outside allowed directories, an interactive prompt asks the human user for access permission.
-- **Semantic Context Compaction (`/compact`)**: Summarizes older conversation context using the LLM without truncating system prompts or breaking active tool-call history pairs.
-- **Auto-Compaction (`/autocompact`)**: Automatically triggers `/compact` once the conversation's estimated token usage crosses a configurable percentage of the active model's context window - no manual intervention needed, even in long agentic sessions.
-- **Dream Extraction (`/dream`)**: Runs a dedicated analysis pass over the current conversation to surface durable notes, key-value memory facts, and reusable Skills worth keeping - with an interactive review before anything is persisted.
-- **Real-Time Token Streaming & CoT**: Live Markdown rendering with code syntax highlighting and toggleable Chain of Thought (CoT) reasoning displays (`/debug on|off`).
-- **Unified Theming**: A single shared, themed console (`theme.py`) applies one consistent, semantic color palette across every command, tool log, and prompt in the CLI.
+- **Recursive Task Delegation (`delegate_task`)**: Hand off self-contained tasks to autonomous sub-agents running independent multi-step tool loops.
+- **Advisor (`consult_advisor`)**: A tool-free, single-shot "second opinion" mechanism. Switch models live via `/advisor model [<key>]`.
+- **Tool-Call Safety Guard (`/guard`)**: Shell commands, file writes/edits, and MCP tool calls are automatically risk-assessed before execution (`low`/`medium`/`high` risk classification).
+- **Operating Modes (`/mode`)**: Switch between Build (default, full access), Plan/Review (read-only - investigate and propose without touching anything), and YOLO (full access, no confirmation prompts for ambiguous-risk actions).
+- **Self-Healing Tool-Error Recovery (`/selfheal`)**: Failed tool calls get one automatic recovery attempt before the model ever sees the error (mechanical retries + LLM argument repair).
+- **Pinned Session Goal (`/goal`)**: A single objective folded directly into the live system prompt so it stays visible across `/compact`, `/switch`, and `/clear`.
+- **Model Context Protocol (MCP) (`/mcps`)**: Native stdio JSON-RPC MCP client supporting `mcps.json`.
+- **Modular Skills Subsystem (`/skills`)**: Package specialized system prompts and tools into reusable skills.
+- **Rich Native Tool Suite**: File operations, system shell, background jobs, native git tools, zero-key web search & fetch, interactive `ask_user`, memory store, notes manager, and dependency-aware `todo_manager`.
 
 ---
 
@@ -130,6 +120,7 @@ python main.py --file script.txt --non-interactive
 | `/version` | Show the current Mesh version. |
 | `/models [discover\|add]` | List configured models (`/models`), query endpoints (`/models discover`), or interactively/batch add models (`/models add [<provider>] [<pattern>]`). |
 | `/switch [key]` | Interactively switch models using arrow keys, or directly by model key. |
+| `/git [cmd]` | Run native Git commands (`/git status`, `/git diff`, `/git commit [<msg>]`, `/git push [<remote>] [<branch>]`, `/git branch [<name>]`). |
 | `/jobs [log\|stop\|clear]` | View active background jobs (`/jobs`), tail logs (`/jobs log <id>`), or stop process (`/jobs stop <id>`). |
 | `/loop <test_cmd>` | Run an automated iterative test/fix loop until all tests pass green. |
 | `/hooks [on\|off]` | View or toggle automated post-edit linter/formatter hooks (`ruff`, `eslint`, `cargo check`). |
@@ -597,6 +588,7 @@ Mesh/
 ├── hooks.py                   # Automated Post-Edit Linter & Formatter Hooks
 ├── test_loop.py               # Iterative Auto-Test/Fix Loop harness
 ├── jobs.py                    # Async Background Subprocess Manager
+├── git_workflow.py            # Git Native Engine & AI Conventional Commit Generator
 ├── memory_search.py           # Sub-agent-based semantic memory search
 ├── self_heal.py               # Self-healing tool-error recovery
 ├── advisor.py                 # Advisor engine
@@ -632,13 +624,14 @@ Mesh/
 │   ├── synthesis_tool.py      # synthesize_tool tool
 │   ├── consensus_tool.py      # consult_consensus tool
 │   ├── symbol_tool.py         # search_symbols AST search tool
-│   └── job_tool.py            # run_background_command tool
+│   ├── job_tool.py            # run_background_command tool
+│   └── git_tool.py            # git_status, git_diff, git_commit, git_push, git_branch tools
 ├── commands/
 │   ├── __init__.py
 │   ├── registry.py            # Slash command registry
 │   ├── agent_commands.py      # /delegate, /explore, /consensus, /squad, /loop, /hooks, /jobs, /advisor, /guard, /mode
 │   ├── model_commands.py      # /models, /switch
-│   ├── session_commands.py    # /goal, /note, /memory, /dream, /script, /project, /reflexion, /checkpoint, /fork, /checkout, /diff, /undo
+│   ├── session_commands.py    # /goal, /note, /memory, /dream, /script, /project, /reflexion, /checkpoint, /fork, /checkout, /diff, /undo, /git
 │   └── system_commands.py     # /help, /status, /version, /context, /system, /tools, /skills, /dirs, /mcps, /proxy, /selfheal, /compact, /autocompact, /clear, /retry, /debug, /exit
 ├── mcp/
 │   ├── __init__.py
@@ -654,6 +647,7 @@ Mesh/
 
 ## 🩹 Changelog / Bug Fixes (v1.0.0)
 
+- **Added Unified Git Native Workflow (`git_workflow.py`, `tools/git_tool.py`, `/git`)**: Unified `/git` command namespace (`/git status`, `/git diff`, `/git commit`, `/git push`, `/git branch`). Running `/git commit` without arguments automatically generates an AI conventional commit message from `git diff`, stages all files, and commits. Added native `git_push` tool and `/git push` command (with Safety Guard risk checks). Removed GitHub-specific `/pr` and `gh` CLI dependencies for pure, vendor-agnostic Git.
 - **Added Async Background Sub-Processes & Jobs (`jobs.py`, `tools/job_tool.py`, `/jobs`)**: Spawns long-running servers or background watchers (`npm run dev`, `cargo watch`, `pytest --watch`) asynchronously via `run_background_command` without blocking Mesh or timing out. Tail live stdout/stderr logs or kill processes via `/jobs`.
 - **Enhanced `run_shell_command` (`tools/native_tools.py`)**: Added configurable execution timeouts (pass `0` or `null` for infinite execution) plus custom `shell_prefix` wrappers (e.g., `powershell -Command`, `cmd /c`, `wsl`).
 - **Added Automated Post-Edit Linter Hooks (`hooks.py`, `/hooks`)**: Runs background linters/formatters (`ruff`, `flake8`, `eslint`, `black`, `cargo check`, `gofmt`) automatically after file edits (`write_file`, `edit_file`) and feeds warnings back to the LLM to fix syntax/style issues in real-time.

@@ -28,6 +28,11 @@ from tools import (
     ConsensusTool,
     SearchSymbolsTool,
     BackgroundShellTool,
+    GitStatusTool,
+    GitDiffTool,
+    GitCommitTool,
+    GitPushTool,
+    GitBranchTool,
 )
 import tool_synthesis
 import symbol_search
@@ -135,6 +140,11 @@ class MeshEngine:
         self.tool_registry.register(GlobTool(self.permission_manager))
         self.tool_registry.register(ShellTool(self.permission_manager))
         self.tool_registry.register(BackgroundShellTool())
+        self.tool_registry.register(GitStatusTool())
+        self.tool_registry.register(GitDiffTool())
+        self.tool_registry.register(GitCommitTool())
+        self.tool_registry.register(GitPushTool())
+        self.tool_registry.register(GitBranchTool())
         self.tool_registry.register(DelegateTaskTool(self.tool_registry, self.config_mgr))
         self.goal_tool = GoalTool(on_change=lambda: self.update_system_message())
         self.tool_registry.register(self.goal_tool)

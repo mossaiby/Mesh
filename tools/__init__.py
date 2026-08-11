@@ -21,6 +21,13 @@ from tools.synthesis_tool import SynthesizeTool
 from tools.consensus_tool import ConsensusTool
 from tools.symbol_tool import SearchSymbolsTool
 from tools.job_tool import BackgroundShellTool
+from tools.git_tool import (
+    GitStatusTool,
+    GitDiffTool,
+    GitCommitTool,
+    GitPushTool,
+    GitBranchTool
+)
 
 __all__ = [
     "BaseTool",
@@ -47,4 +54,9 @@ __all__ = [
     "ConsensusTool",
     "SearchSymbolsTool",
     "BackgroundShellTool",
+    "GitStatusTool",
+    "GitDiffTool",
+    "GitCommitTool",
+    "GitPushTool",
+    "GitBranchTool",
 ]
