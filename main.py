@@ -81,6 +81,8 @@ class Mesh:
         self.subagent_proxy.debug_mode = self.debug_mode
         self.tools_enabled: bool = True
         self.current_mode: str = modes.DEFAULT_MODE
+        # Saved so YOLO mode can restore whatever the user had explicitly
+        # set before entering it, rather than resetting to hardcoded defaults.
         self._pre_yolo_guard_autonomy: Optional[str] = None
         self._pre_yolo_permission_auto_approve: Optional[bool] = None
 
@@ -169,7 +171,7 @@ class Mesh:
         self.cmd_registry.register("diff", "Display unified diff of recent file edits made by tools", self.cmd_diff)
         self.cmd_registry.register("undo", "Revert the last file modification made on disk by a tool", self.cmd_undo)
         self.cmd_registry.register("goal", "View, set, or manage the pinned session goal: /goal <text> [| criterion 1 | criterion 2 ...] | /goal done <criterion #> | /goal clear", self.cmd_goal)
-        self.cmd_registry.register("advisor", "Consult the advisor for a second opinion: /advisor <question>", self.cmd_advisor)
+        self.cmd_registry.register("advisor", "Consult the advisor or configure its model: /advisor <question> | /advisor model [<key>]", self.cmd_advisor)
         self.cmd_registry.register("guard", "View or configure the tool-call safety guard: /guard [on|off] | /guard mode [supervised|autonomous] | /guard model [<key>] | /guard trust <tool>", self.cmd_guard)
         self.cmd_registry.register("mode", "View or switch operating mode: /mode [plan|build|review|yolo]", self.cmd_mode)
         self.cmd_registry.register("retry", "Retry the last LLM response turn", self.cmd_retry)
@@ -192,6 +194,9 @@ class Mesh:
 
         table = Table(show_header=False, box=None, padding=(0, 1, 0, 2))
         table.add_column("Command", style="label", no_wrap=True)
+        # Descriptions are rendered as plain Text (not markup) so literal
+        # characters like [key] or <path> in usage hints are shown exactly
+        # as written instead of being parsed as Rich style tags and dropped.
         table.add_column("Description")
 
         for cmd, desc in self.cmd_registry.list_commands().items():
@@ -756,8 +761,36 @@ class Mesh:
                 self.goal_tool.render(console)
 
     async def cmd_advisor(self, args):
+        cfg = self.config_mgr.config
+
         if not args:
-            console.print("[error]Usage: /advisor <question>[/error]")
+            advisor_model_str = cfg.advisor_model or f"{cfg.active_model} (active model)"
+            console.print(
+                f"Advisor is currently using model: [accent]{advisor_model_str}[/accent]\n"
+                f"Usage: [warning]/advisor <question>[/warning] | [warning]/advisor model <key>[/warning] | [warning]/advisor model clear[/warning]"
+            )
+            return
+
+        sub = args[0].lower()
+
+        if sub == "model":
+            if len(args) == 1:
+                cfg.advisor_model = None
+                self.config_mgr.save()
+                console.print("[success]Advisor model reset to the active model.[/success]")
+                return
+            key = args[1]
+            if key.lower() in ("clear", "reset", "none"):
+                cfg.advisor_model = None
+                self.config_mgr.save()
+                console.print("[success]Advisor model reset to the active model.[/success]")
+                return
+            if key not in cfg.models:
+                console.print(f"[error]Unknown model key '{key}'. See /models for valid keys.[/error]")
+                return
+            cfg.advisor_model = key
+            self.config_mgr.save()
+            console.print(f"[success]Advisor model set to '[accent]{key}[/accent]'.[/success]")
             return
 
         question = " ".join(args)

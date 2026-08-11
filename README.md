@@ -136,7 +136,7 @@ python main.py
 | `/dream` | Analyze the conversation and interactively extract candidate notes, memory facts, and reusable skills. |
 | `/delegate <task>` \| `/delegate depth [<n>]` | Manually hand a task to an autonomous sub-agent and print its final report; view or set the recursive delegation depth limit. |
 | `/goal <text> [\| criterion \| ...]` | View, set (with optional success criteria), or manage the pinned session goal; `/goal done <#>` marks a criterion complete, `/goal clear` removes it. |
-| `/advisor <question>` | Manually consult the advisor for a second opinion and print its response. |
+| `/advisor <question>` | Manually consult the advisor for a second opinion or set its model via `/advisor model [<key>]`. |
 | `/guard [on\|off]` | View or configure the tool-call safety guard: `/guard mode [supervised\|autonomous]`, `/guard model [<key>]`, `/guard trust <tool>`. |
 | `/mode [plan\|build\|review\|yolo]` | View or switch operating mode - see below for what each restricts. |
 | `/retry` | Re-run the last completion turn (strips the last assistant/tool response). |
@@ -358,7 +358,7 @@ Configure via `models.json` (`guard_enabled`, `guard_model`, `guard_autonomy`) o
 - **`self_heal`**'s repair pass fixes one specific tool-call failure.
 - **`consult_advisor`** takes no action and has no tools at all - it exists purely to give a candid opinion, flag risks/tradeoffs, and suggest alternatives, which the main model is free to weigh and disagree with.
 
-Set `advisor_model` in `models.json` to always consult a specific model (e.g. a stronger reasoning model) regardless of which model is actively driving the conversation, so a "second opinion" is an opinion from somewhere genuinely different - not the same model re-asked. Leave it `null` to just use whichever model is currently active.
+Set `advisor_model` in `models.json` to always consult a specific model (e.g. a stronger reasoning model) regardless of which model is actively driving the conversation, so a "second opinion" is an opinion from somewhere genuinely different - not the same model re-asked. Leave it `null` to just use whichever model is currently active. Switch the advisor model on the fly using `/advisor model <key>` or reset it with `/advisor model clear`.
 
 ---
 
@@ -577,6 +577,7 @@ Mesh/
 
 ## 🩹 Changelog / Bug Fixes (v1.0.0)
 
+- **Added Live Advisor Model Switching (`/advisor model <key>`)**: Added live command switching to update `advisor_model` in `models.json` on the fly or reset it to fall back to the active model (`/advisor model clear`).
 - **Added Multi-Role Autonomous Task Squad (`/squad`)**: Coordinates a 4-stage pipeline of specialized persona sub-agents (Architect -> Coder -> Test Engineer -> Security Auditor) to plan, write code, run unit tests, and audit security autonomously.
 - **Added Cross-Session Reflexion Journal (`/reflexion`)**: Automatically captures tool execution failures and user corrections across sessions. Distills them into durable "Lessons Learned" (`reflexion.json`) that are injected into the system prompt so Mesh never repeats mistakes across sessions.
 - **Added AST Codebase Symbol Indexing (`search_symbols`)**: Zero-vector AST parsing indexes classes, functions, methods, and docstrings across workspace Python files, allowing the model to pinpoint function signatures instantly without globbing or reading whole files.
