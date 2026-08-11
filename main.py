@@ -1,5 +1,6 @@
 import argparse
 import asyncio
+import fnmatch
 import sys
 import os
 from typing import Optional, List
@@ -43,6 +44,8 @@ import tool_synthesis
 import squad
 import reflexion
 import symbol_search
+import project_rules
+from terminal_ui import MeshPromptSession
 from checkpoint import CheckpointManager
 from file_history import file_history_tracker
 from guard import SafetyGuard
@@ -119,6 +122,7 @@ class Mesh:
         self.safety_guard = SafetyGuard(self.config_mgr, enabled=self.config_mgr.config.guard_enabled)
         self.tool_registry.safety_guard = self.safety_guard
         self.checkpoint_mgr = CheckpointManager()
+        self.prompt_session = MeshPromptSession(self)
         
         self.permission_manager = PermissionManager()
         self.skill_registry = SkillRegistry(self.tool_registry)
@@ -157,6 +161,10 @@ class Mesh:
         reflexion_section = reflexion.get_reflexion_instructions()
         if reflexion_section:
             full_sys += f"\n\n{reflexion_section}"
+
+        proj_rules_section = project_rules.get_project_rules_instructions()
+        if proj_rules_section:
+            full_sys += f"\n\n{proj_rules_section}"
 
         sys_idx = next((i for i, m in enumerate(self.messages) if m.get("role") == "system"), None) if hasattr(self, "messages") else None
         
@@ -204,6 +212,7 @@ class Mesh:
         self.cmd_registry.register("models", "List, discover, or add models: /models | /models discover [<provider>] | /models add [<provider>] [<pattern>]", self.cmd_models)
         self.cmd_registry.register("switch", "Switch active model interactively, or directly: /switch <model_key>", self.cmd_switch)
         self.cmd_registry.register("script", "Execute commands and prompts line-by-line from a script file: /script <file.txt>", self.cmd_script)
+        self.cmd_registry.register("project", "View or reload workspace project rules (PROJECT.md): /project [reload]", self.cmd_project)
         self.cmd_registry.register("clear", "Clear the conversation context window", self.cmd_clear)
         self.cmd_registry.register("compact", "Semantically summarize older conversation context", self.cmd_compact)
         self.cmd_registry.register("autocompact", "View or set auto-compaction: /autocompact on | /autocompact off | /autocompact threshold <0-100>", self.cmd_autocompact)
@@ -270,6 +279,24 @@ class Mesh:
         filepath = " ".join(args).strip()
         await self.run_script_file(filepath)
 
+    async def cmd_project(self, args):
+        filename, content = project_rules.find_and_read_project_rules(".")
+        if args and args[0].lower() == "reload":
+            self.update_system_message()
+            if filename:
+                console.print(f"[success]Reloaded project rules from '{filename}'.[/success]")
+            else:
+                console.print("[dim]No project rules file (PROJECT.md, MESH.md, AGENTS.md) found in workspace.[/dim]")
+            return
+
+        if filename and content:
+            console.print(f"\n[success]=== Project Rules ({filename}) ===[/success]\n")
+            console.print(Markdown(content))
+            console.print()
+        else:
+            console.print("[dim]No project rules file (PROJECT.md, MESH.md, AGENTS.md) found in current directory.[/dim]")
+        console.print("Usage: [warning]/project[/warning] | [warning]/project reload[/warning]\n")
+
     async def cmd_help(self, args):
         console.print("\n[success]Available Slash Commands:[/success]\n")
 
@@ -307,6 +334,11 @@ class Mesh:
         console.print(f"• [label]Tools:[/label] {tools_state} ({len(schemas)} active schemas)")
         console.print(f"• [label]Indexed AST Symbols:[/label] {len(symbol_search.symbol_indexer.symbol_index)} codebase symbols")
         console.print(f"• [label]Active Branch:[/label] [accent]{self.checkpoint_mgr.active_branch}[/accent] ({len(self.checkpoint_mgr.checkpoints)} saved checkpoints)")
+
+        filename, _ = project_rules.find_and_read_project_rules(".")
+        proj_rules_str = f"[success]{filename}[/success]" if filename else "[dim]none[/dim]"
+        console.print(f"• [label]Project Rules:[/label] {proj_rules_str}")
+
         console.print(f"• [label]Sub-Agent Proxy Distillation:[/label] {proxy_state}")
         console.print(f"• [label]Self-Healing Tool-Error Recovery:[/label] {selfheal_state}")
         console.print(f"• [label]Delegation Recursion Depth:[/label] {self.config_mgr.config.max_delegation_depth}")
@@ -1560,7 +1592,7 @@ class Mesh:
         
         while True:
             try:
-                user_input = console.input("[info]User[/info] > ").strip()
+                user_input = await self.prompt_session.get_input_async()
                 if not user_input:
                     continue
                 if user_input.lower() in ["exit", "quit", "/exit"]:
