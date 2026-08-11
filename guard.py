@@ -156,12 +156,12 @@ class SafetyGuard:
             return True, assessment
 
         if verdict == "deny":
-            console.print(f"[error]\U0001F6E1\uFE0F  Safety Guard BLOCKED '{tool_name}':[/error] {reason}")
+            console.print(f"[error]🛡️  Safety Guard BLOCKED '{tool_name}':[/error] {reason}")
             return False, assessment
 
         # verdict == "ask"
         if self.config_mgr.config.guard_autonomy == "autonomous":
-            console.print(f"[warning]\U0001F6E1\uFE0F  Safety Guard auto-approved '{tool_name}' (autonomous mode):[/warning] {reason}")
+            console.print(f"[warning]🛡️  Safety Guard auto-approved '{tool_name}' (autonomous mode):[/warning] {reason}")
             return True, {**assessment, "resolution": "auto_approved"}
 
         # Supervised mode: ask the human, one prompt at a time.

@@ -11,6 +11,187 @@ import jobs
 from theme import console
 
 
+async def cmd_agent(engine: Any, args: List[str]):
+    if not args:
+        console.print("\n[success]Sub-Agent Swarm Workflows (/agent):[/success]")
+        console.print("  • [label]explore[/label]: Parallel speculative branch exploration (/agent explore [<num>] <task>)")
+        console.print("  • [label]squad[/label]: 4-stage pipeline (Architect -> Coder -> Tester -> Auditor) (/agent squad <task>)")
+        console.print("  • [label]consensus[/label]: Adversarial multi-model audit (/agent consensus <q> | <proposal>)")
+        console.print("  • [label]delegate[/label]: Hand task to an autonomous sub-agent (/agent delegate <task>)")
+        console.print("  • [label]advisor[/label]: Consult second opinion (/agent advisor <question> | /agent advisor model [<key>])")
+        console.print("\nUsage: [warning]/agent explore <task>[/warning] | [warning]/agent squad <task>[/warning] | [warning]/agent consensus <q> \| <p>[/warning] | [warning]/agent delegate <task>[/warning] | [warning]/agent advisor <q>[/warning]\n")
+        return
+
+    sub = args[0].lower()
+    sub_args = args[1:]
+
+    if sub == "explore":
+        if not sub_args:
+            console.print("[error]Usage: /agent explore [<num_branches>] <task description>[/error]")
+            return
+
+        num_branches = 3
+        if sub_args[0].isdigit() and 2 <= int(sub_args[0]) <= 5:
+            num_branches = int(sub_args[0])
+            task = " ".join(sub_args[1:])
+        else:
+            task = " ".join(sub_args)
+
+        if not task.strip():
+            console.print("[error]Usage: /agent explore [<num_branches>] <task description>[/error]")
+            return
+
+        result = await explore.explore_branches(
+            task=task,
+            strategies=None,
+            tool_registry=engine.tool_registry,
+            config_mgr=engine.config_mgr,
+            num_branches=num_branches,
+            debug_mode=engine.debug_mode
+        )
+
+        if result["status"] == "success":
+            console.print(f"\n[success]🌲 Exploration Swarm Synthesis:[/success]\n\n{result['synthesis']}\n")
+        else:
+            console.print(f"[error]Exploration failed:[/error] {result.get('error', 'Unknown error')}")
+
+    elif sub == "squad":
+        if not sub_args:
+            console.print("[error]Usage: /agent squad <task description>[/error]")
+            return
+
+        task = " ".join(sub_args)
+        result = await squad.run_squad_pipeline(
+            task=task,
+            tool_registry=engine.tool_registry,
+            config_mgr=engine.config_mgr,
+            verbose=engine.debug_mode
+        )
+
+        if result["status"] == "success":
+            console.print(f"\n[success]👥 Autonomous Task Squad Final Report:[/success]\n\n{result['final_report']}\n")
+        else:
+            console.print(f"[error]Task squad pipeline failed.[/error]")
+
+    elif sub == "consensus":
+        if not sub_args:
+            console.print("[error]Usage: /agent consensus <question/task> | <proposed solution>[/error]")
+            return
+
+        raw = " ".join(sub_args)
+        if "|" in raw:
+            parts = raw.split("|", 1)
+            question, proposal = parts[0].strip(), parts[1].strip()
+        else:
+            question = raw
+            proposal = "Evaluate the optimal technical solution for this task."
+
+        result = await consensus.get_consensus(
+            question=question,
+            proposal=proposal,
+            config_mgr=engine.config_mgr
+        )
+
+        if result["status"] == "success":
+            console.print(f"\n[label]Auditor Critique ({result['auditor_model']}):[/label]\n{result['critique']}\n")
+            console.print(f"[success]⚖️ Verified Consensus Recommendation ({result['proposer_model']}):[/success]\n{result['consensus_recommendation']}\n")
+        else:
+            console.print(f"[error]Consensus audit failed:[/error] {result.get('error', 'Unknown error')}")
+
+    elif sub == "delegate":
+        if not sub_args:
+            console.print("[error]Usage: /agent delegate <task description> | /agent delegate depth [<n>][/error]")
+            return
+
+        if sub_args[0].lower() == "depth":
+            if len(sub_args) == 1:
+                console.print(
+                    f"Delegation recursion depth is currently [accent]{engine.config_mgr.config.max_delegation_depth}[/accent] "
+                    f"(1 = no recursion beyond the first sub-agent).\nUsage: [warning]/agent delegate depth <n>[/warning]"
+                )
+                return
+            try:
+                n = int(sub_args[1])
+            except ValueError:
+                console.print("[error]Usage: /agent delegate depth <n> (n must be a positive integer)[/error]")
+                return
+            if n < 1:
+                console.print("[error]Depth must be at least 1.[/error]")
+                return
+            engine.config_mgr.config.max_delegation_depth = n
+            console.print(f"[success]Delegation recursion depth set to {n}.[/success]")
+            return
+
+        task = " ".join(sub_args)
+        result = await delegation.run_delegated_task(
+            task=task,
+            tool_registry=engine.tool_registry,
+            config_mgr=engine.config_mgr,
+        )
+
+        status = result.get("status")
+        turns_used = result.get("turns_used", 0)
+        n_calls = len(result.get("tool_calls", []))
+
+        if status == "success":
+            console.print(
+                f"\n[success]Sub-agent report[/success] "
+                f"[dim]({turns_used} turn(s), {n_calls} tool call(s)):[/dim]\n{result['report']}\n"
+            )
+        elif status == "max_turns_reached":
+            console.print(
+                f"\n[warning]{result['report']}[/warning] "
+                f"[dim]({n_calls} tool call(s) made)[/dim]\n"
+            )
+        else:
+            console.print(f"\n[error]Delegation failed:[/error] {result.get('error', 'Unknown error')}\n")
+
+    elif sub == "advisor":
+        cfg = engine.config_mgr.config
+
+        if not sub_args:
+            advisor_model_str = cfg.advisor_model or f"{cfg.active_model} (active model)"
+            console.print(
+                f"Advisor is currently using model: [accent]{advisor_model_str}[/accent]\n"
+                f"Usage: [warning]/agent advisor <question>[/warning] | [warning]/agent advisor model [<key>][/warning] | [warning]/agent advisor model clear[/warning]"
+            )
+            return
+
+        a_sub = sub_args[0].lower()
+
+        if a_sub == "model":
+            if len(sub_args) == 1:
+                cfg.advisor_model = None
+                engine.config_mgr.save()
+                console.print("[success]Advisor model reset to the active model.[/success]")
+                return
+            key = sub_args[1]
+            if key.lower() in ("clear", "reset", "none"):
+                cfg.advisor_model = None
+                engine.config_mgr.save()
+                console.print("[success]Advisor model reset to the active model.[/success]")
+                return
+            if key not in cfg.models:
+                console.print(f"[error]Unknown model key '{key}'. See /models for valid keys.[/error]")
+                return
+            cfg.advisor_model = key
+            engine.config_mgr.save()
+            console.print(f"[success]Advisor model set to '[accent]{key}[/accent]'.[/success]")
+            return
+
+        question = " ".join(sub_args)
+        console.print(f"[brand]🧭 Consulting advisor:[/brand] {question}")
+
+        result = await advisor.get_advice(question=question, config_mgr=engine.config_mgr)
+        if result["status"] == "error":
+            console.print(f"[error]{result['error']}[/error]")
+        else:
+            console.print(f"\n[success]Advice[/success] [dim](from {result['advisor_model']}):[/dim]\n{result['advice']}\n")
+
+    else:
+        console.print("[error]Usage: /agent [explore|squad|consensus|delegate|advisor] <args>[/error]")
+
+
 async def cmd_jobs(engine: Any, args: List[str]):
     if not args:
         job_list = jobs.job_manager.list_jobs()
@@ -81,191 +262,6 @@ async def cmd_loop(engine: Any, args: List[str]):
         console.print(f"[success]Passed test loop for '{test_cmd}' in {result['iterations_used']} iteration(s)![/success]")
     else:
         console.print(f"[error]{result.get('message', 'Test loop failed.')}[/error]")
-
-
-async def cmd_hooks(engine: Any, args: List[str]):
-    if not args:
-        state_str = "[success]ENABLED[/success]" if hooks.hook_manager.enabled else "[error]DISABLED[/error]"
-        console.print(f"Automated post-edit linter/formatter hooks are currently {state_str}.\nUsage: [warning]/hooks on[/warning] | [warning]/hooks off[/warning]\n")
-        return
-
-    sub = args[0].lower()
-    if sub == "on":
-        hooks.hook_manager.enabled = True
-        console.print("[success]Post-edit linter/formatter hooks ENABLED.[/success]")
-    elif sub == "off":
-        hooks.hook_manager.enabled = False
-        console.print("[warning]Post-edit linter/formatter hooks DISABLED.[/warning]")
-    else:
-        console.print("[error]Usage: /hooks on | /hooks off[/error]")
-
-
-async def cmd_delegate(engine: Any, args: List[str]):
-    if not args:
-        console.print("[error]Usage: /delegate <task description> | /delegate depth [<n>][/error]")
-        return
-
-    if args[0].lower() == "depth":
-        if len(args) == 1:
-            console.print(
-                f"Delegation recursion depth is currently [accent]{engine.config_mgr.config.max_delegation_depth}[/accent] "
-                f"(1 = no recursion beyond the first sub-agent).\nUsage: [warning]/delegate depth <n>[/warning]"
-            )
-            return
-        try:
-            n = int(args[1])
-        except ValueError:
-            console.print("[error]Usage: /delegate depth <n> (n must be a positive integer)[/error]")
-            return
-        if n < 1:
-            console.print("[error]Depth must be at least 1.[/error]")
-            return
-        engine.config_mgr.config.max_delegation_depth = n
-        console.print(f"[success]Delegation recursion depth set to {n}.[/success]")
-        return
-
-    task = " ".join(args)
-    result = await delegation.run_delegated_task(
-        task=task,
-        tool_registry=engine.tool_registry,
-        config_mgr=engine.config_mgr,
-    )
-
-    status = result.get("status")
-    turns_used = result.get("turns_used", 0)
-    n_calls = len(result.get("tool_calls", []))
-
-    if status == "success":
-        console.print(
-            f"\n[success]Sub-agent report[/success] "
-            f"[dim]({turns_used} turn(s), {n_calls} tool call(s)):[/dim]\n{result['report']}\n"
-        )
-    elif status == "max_turns_reached":
-        console.print(
-            f"\n[warning]{result['report']}[/warning] "
-            f"[dim]({n_calls} tool call(s) made)[/dim]\n"
-        )
-    else:
-        console.print(f"\n[error]Delegation failed:[/error] {result.get('error', 'Unknown error')}\n")
-
-
-async def cmd_explore(engine: Any, args: List[str]):
-    if not args:
-        console.print("[error]Usage: /explore [<num_branches>] <task description>[/error]")
-        return
-
-    num_branches = 3
-    if args[0].isdigit() and 2 <= int(args[0]) <= 5:
-        num_branches = int(args[0])
-        task = " ".join(args[1:])
-    else:
-        task = " ".join(args)
-
-    if not task.strip():
-        console.print("[error]Usage: /explore [<num_branches>] <task description>[/error]")
-        return
-
-    result = await explore.explore_branches(
-        task=task,
-        strategies=None,
-        tool_registry=engine.tool_registry,
-        config_mgr=engine.config_mgr,
-        num_branches=num_branches,
-        debug_mode=engine.debug_mode
-    )
-
-    if result["status"] == "success":
-        console.print(f"\n[success]🌲 Exploration Swarm Synthesis:[/success]\n\n{result['synthesis']}\n")
-    else:
-        console.print(f"[error]Exploration failed:[/error] {result.get('error', 'Unknown error')}")
-
-
-async def cmd_consensus(engine: Any, args: List[str]):
-    if not args:
-        console.print("[error]Usage: /consensus <question/task> | <proposed solution>[/error]")
-        return
-
-    raw = " ".join(args)
-    if "|" in raw:
-        parts = raw.split("|", 1)
-        question, proposal = parts[0].strip(), parts[1].strip()
-    else:
-        question = raw
-        proposal = "Evaluate the optimal technical solution for this task."
-
-    result = await consensus.get_consensus(
-        question=question,
-        proposal=proposal,
-        config_mgr=engine.config_mgr
-    )
-
-    if result["status"] == "success":
-        console.print(f"\n[label]Auditor Critique ({result['auditor_model']}):[/label]\n{result['critique']}\n")
-        console.print(f"[success]⚖️ Verified Consensus Recommendation ({result['proposer_model']}):[/success]\n{result['consensus_recommendation']}\n")
-    else:
-        console.print(f"[error]Consensus audit failed:[/error] {result.get('error', 'Unknown error')}")
-
-
-async def cmd_squad(engine: Any, args: List[str]):
-    if not args:
-        console.print("[error]Usage: /squad <task description>[/error]")
-        return
-
-    task = " ".join(args)
-    result = await squad.run_squad_pipeline(
-        task=task,
-        tool_registry=engine.tool_registry,
-        config_mgr=engine.config_mgr,
-        verbose=engine.debug_mode
-    )
-
-    if result["status"] == "success":
-        console.print(f"\n[success]👥 Autonomous Task Squad Final Report:[/success]\n\n{result['final_report']}\n")
-    else:
-        console.print(f"[error]Task squad pipeline failed.[/error]")
-
-
-async def cmd_advisor(engine: Any, args: List[str]):
-    cfg = engine.config_mgr.config
-
-    if not args:
-        advisor_model_str = cfg.advisor_model or f"{cfg.active_model} (active model)"
-        console.print(
-            f"Advisor is currently using model: [accent]{advisor_model_str}[/accent]\n"
-            f"Usage: [warning]/advisor <question>[/warning] | [warning]/advisor model <key>[/warning] | [warning]/advisor model clear[/warning]"
-        )
-        return
-
-    sub = args[0].lower()
-
-    if sub == "model":
-        if len(args) == 1:
-            cfg.advisor_model = None
-            engine.config_mgr.save()
-            console.print("[success]Advisor model reset to the active model.[/success]")
-            return
-        key = args[1]
-        if key.lower() in ("clear", "reset", "none"):
-            cfg.advisor_model = None
-            engine.config_mgr.save()
-            console.print("[success]Advisor model reset to the active model.[/success]")
-            return
-        if key not in cfg.models:
-            console.print(f"[error]Unknown model key '{key}'. See /models for valid keys.[/error]")
-            return
-        cfg.advisor_model = key
-        engine.config_mgr.save()
-        console.print(f"[success]Advisor model set to '[accent]{key}[/accent]'.[/success]")
-        return
-
-    question = " ".join(args)
-    console.print(f"[brand]🧭 Consulting advisor:[/brand] {question}")
-
-    result = await advisor.get_advice(question=question, config_mgr=engine.config_mgr)
-    if result["status"] == "error":
-        console.print(f"[error]{result['error']}[/error]")
-    else:
-        console.print(f"\n[success]Advice[/success] [dim](from {result['advisor_model']}):[/dim]\n{result['advice']}\n")
 
 
 async def cmd_guard(engine: Any, args: List[str]):
@@ -373,13 +369,8 @@ async def cmd_mode(engine: Any, args: List[str]):
 
 
 def register_agent_commands(engine: Any):
-    engine.cmd_registry.register("delegate", "Delegate a self-contained task to an autonomous sub-agent: /delegate <task description> | /delegate depth [<n>]", lambda args: cmd_delegate(engine, args))
-    engine.cmd_registry.register("explore", "Run parallel speculative branch exploration: /explore [<num_branches>] <task description>", lambda args: cmd_explore(engine, args))
-    engine.cmd_registry.register("consensus", "Run an adversarial multi-model consensus audit: /consensus <question> | <proposal>", lambda args: cmd_consensus(engine, args))
-    engine.cmd_registry.register("squad", "Execute 4-stage autonomous task squad (Architect -> Coder -> Test Engineer -> Security Auditor): /squad <task>", lambda args: cmd_squad(engine, args))
+    engine.cmd_registry.register("agent", "Sub-agent swarm & reasoning workflows: /agent [explore|squad|consensus|delegate|advisor] <args>", lambda args: cmd_agent(engine, args))
     engine.cmd_registry.register("loop", "Iterative auto-test/fix loop: /loop <test_or_build_command>", lambda args: cmd_loop(engine, args))
-    engine.cmd_registry.register("hooks", "Toggle automated post-edit linter/formatter hooks: /hooks [on|off]", lambda args: cmd_hooks(engine, args))
     engine.cmd_registry.register("jobs", "View or manage background jobs: /jobs | /jobs log <job_id> | /jobs stop <job_id> | /jobs clear", lambda args: cmd_jobs(engine, args))
-    engine.cmd_registry.register("advisor", "Consult the advisor or configure its model: /advisor <question> | /advisor model [<key>]", lambda args: cmd_advisor(engine, args))
     engine.cmd_registry.register("guard", "View or configure the tool-call safety guard: /guard [on|off] | /guard mode [supervised|autonomous] | /guard model [<key>] | /guard trust <tool>", lambda args: cmd_guard(engine, args))
     engine.cmd_registry.register("mode", "View or switch operating mode: /mode [plan|build|review|yolo]", lambda args: cmd_mode(engine, args))

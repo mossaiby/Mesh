@@ -4,7 +4,7 @@ from theme import console
 
 
 class TodoTool(BaseTool):
-    name = "todo_manager"
+    name = "todo"
     description = (
         "Manages a dependency-aware TODO list during multi-step task execution. "
         "Tasks can declare which other tasks must finish first via depends_on, "

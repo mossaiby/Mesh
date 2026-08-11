@@ -180,7 +180,7 @@ class GlobTool(BaseTool):
 
 
 class ShellTool(BaseTool):
-    name = "run_shell_command"
+    name = "shell"
     description = "Runs a shell command in the system environment and returns stdout/stderr."
     is_proxied = True
     requires_guard = True
@@ -216,7 +216,6 @@ class ShellTool(BaseTool):
                 stderr=asyncio.subprocess.PIPE
             )
 
-            # Handle infinite timeout if set to 0 or None
             if timeout and timeout > 0:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
             else:

@@ -36,8 +36,8 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                     yield Completion(cmd, start_position=-len(text), display_meta=desc[:40])
             return
 
-        # 2. Complete Model Keys for /switch, /models, /guard model, /advisor model
-        if len(words) >= 2 and words[0].lower() in ("/switch", "/models", "/advisor", "/guard"):
+        # 2. Complete Model Keys for /switch, /models, /guard model, /agent advisor model
+        if len(words) >= 2 and words[0].lower() in ("/switch", "/models", "/guard"):
             prefix = words[-1].lower() if len(words) > 1 else ""
             model_keys = list(self.mesh.config_mgr.config.models.keys())
             for key in model_keys:
@@ -54,7 +54,34 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                     yield Completion(m_key, start_position=-len(prefix), display_meta=modes_dict[m_key].description[:35])
             return
 
-        # 4. File Path Completion for /script, /dirs, /checkpoint
+        # 4. Complete Agent Workflows for /agent
+        if len(words) >= 2 and words[0].lower() == "/agent":
+            prefix = words[1].lower() if len(words) == 2 else ""
+            agent_subs = ["explore", "squad", "consensus", "delegate", "advisor"]
+            for sub in agent_subs:
+                if sub.startswith(prefix):
+                    yield Completion(sub, start_position=-len(prefix))
+            return
+
+        # 5. Complete Config Toggles for /config
+        if len(words) >= 2 and words[0].lower() == "/config":
+            prefix = words[1].lower() if len(words) == 2 else ""
+            cfg_subs = ["proxy", "repair", "hooks", "compact"]
+            for sub in cfg_subs:
+                if sub.startswith(prefix):
+                    yield Completion(sub, start_position=-len(prefix))
+            return
+
+        # 6. Complete Git Subcommands for /git
+        if len(words) >= 2 and words[0].lower() == "/git":
+            prefix = words[1].lower() if len(words) == 2 else ""
+            git_subs = ["status", "diff", "commit", "push", "branch"]
+            for sub in git_subs:
+                if sub.startswith(prefix):
+                    yield Completion(sub, start_position=-len(prefix))
+            return
+
+        # 7. File Path Completion for /script, /dirs, /checkpoint
         if len(words) >= 2 and words[0].lower() in ("/script", "/dirs", "/checkpoint"):
             partial_path = words[-1]
             dirname, basename = os.path.split(partial_path)

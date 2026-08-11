@@ -4,7 +4,7 @@ import jobs
 
 
 class BackgroundShellTool(BaseTool):
-    name = "run_background_command"
+    name = "job"
     description = (
         "Spawns a shell command in the background without blocking. Use this for "
         "long-running servers, watchers, or processes (e.g. 'npm run dev', 'pytest --watch'). "

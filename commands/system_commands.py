@@ -6,6 +6,7 @@ from rich.markup import escape
 from compaction import compact_messages, estimate_tokens
 import symbol_search
 import project_rules
+import hooks
 from theme import console
 from version import __version__
 
@@ -24,10 +25,6 @@ async def cmd_help(engine: Any, args: List[str]):
     console.print()
 
 
-async def cmd_version(engine: Any, args: List[str]):
-    console.print(f"[brand]Mesh[/brand] version [accent]{__version__}[/accent]")
-
-
 async def cmd_status(engine: Any, args: List[str]):
     model_cfg, provider_cfg = engine.config_mgr.get_active_model_and_provider()
     sys_idx = next((i for i, m in enumerate(engine.messages) if m.get("role") == "system"), None)
@@ -40,6 +37,7 @@ async def cmd_status(engine: Any, args: List[str]):
     tools_state = "[success]ENABLED[/success]" if engine.tools_enabled else "[error]DISABLED[/error]"
     proxy_state = "[success]ON[/success]" if engine.subagent_proxy.enabled else "[error]OFF[/error]"
     selfheal_state = "[success]ON[/success]" if engine.self_healer.enabled else "[error]OFF[/error]"
+    hooks_state = "[success]ON[/success]" if hooks.hook_manager.enabled else "[error]OFF[/error]"
     debug_state = "[success]ON[/success]" if engine.debug_mode else "[error]OFF[/error]"
     
     schemas = engine.tool_registry.get_schemas()
@@ -53,6 +51,7 @@ async def cmd_status(engine: Any, args: List[str]):
 
     console.print(f"• [label]Sub-Agent Proxy Distillation:[/label] {proxy_state}")
     console.print(f"• [label]Self-Healing Tool-Error Recovery:[/label] {selfheal_state}")
+    console.print(f"• [label]Post-Edit Linter Hooks:[/label] {hooks_state}")
     console.print(f"• [label]Delegation Recursion Depth:[/label] {engine.config_mgr.config.max_delegation_depth}")
     guard_state = "[success]ON[/success]" if engine.safety_guard.enabled else "[error]OFF[/error]"
     guard_model_str = engine.config_mgr.config.guard_model or f"{engine.config_mgr.config.active_model} (active)"
@@ -96,6 +95,89 @@ async def cmd_status(engine: Any, args: List[str]):
         console.print(f"• [label]Goal:[/label] {snapshot['goal']}{crit_str}\n")
     else:
         console.print("• [label]Goal:[/label] [muted]none set[/muted]\n")
+
+
+async def cmd_config(engine: Any, args: List[str]):
+    cfg = engine.config_mgr.config
+
+    if not args:
+        proxy_s = "[success]ON[/success]" if engine.subagent_proxy.enabled else "[error]OFF[/error]"
+        heal_s = "[success]ON[/success]" if engine.self_healer.enabled else "[error]OFF[/error]"
+        hooks_s = "[success]ON[/success]" if hooks.hook_manager.enabled else "[error]OFF[/error]"
+        compact_s = "[success]ON[/success]" if cfg.auto_compact else "[error]OFF[/error]"
+
+        console.print("\n[success]Mesh System Configuration:[/success]")
+        console.print(f"  • [label]proxy[/label]: {proxy_s}")
+        console.print(f"  • [label]repair[/label]: {heal_s}")
+        console.print(f"  • [label]hooks[/label]: {hooks_s}")
+        console.print(f"  • [label]compact[/label]: {compact_s} (threshold: {int(cfg.auto_compact_threshold * 100)}%)\n")
+        console.print("Usage: [warning]/config proxy [on|off][/warning] | [warning]/config repair [on|off][/warning] | [warning]/config hooks [on|off][/warning] | [warning]/config compact [on|off|threshold <0-100>][/warning]\n")
+        return
+
+    sub = args[0].lower()
+    sub_args = args[1:]
+
+    if sub == "proxy":
+        if not sub_args:
+            state_str = "[success]ON[/success]" if engine.subagent_proxy.enabled else "[error]OFF[/error]"
+            console.print(f"Proxy distillation is {state_str}.")
+            return
+        if sub_args[0].lower() == "on":
+            engine.subagent_proxy.enabled = True
+            console.print("[success]Sub-agent proxy distillation ENABLED.[/success]")
+        elif sub_args[0].lower() == "off":
+            engine.subagent_proxy.enabled = False
+            console.print("[warning]Sub-agent proxy distillation DISABLED.[/warning]")
+
+    elif sub in ("repair", "selfheal"):
+        if not sub_args:
+            state_str = "[success]ON[/success]" if engine.self_healer.enabled else "[error]OFF[/error]"
+            console.print(f"Self-healing repair is {state_str}.")
+            return
+        if sub_args[0].lower() == "on":
+            engine.self_healer.enabled = True
+            console.print("[success]Self-healing tool recovery ENABLED.[/success]")
+        elif sub_args[0].lower() == "off":
+            engine.self_healer.enabled = False
+            console.print("[warning]Self-healing tool recovery DISABLED.[/warning]")
+
+    elif sub == "hooks":
+        if not sub_args:
+            state_str = "[success]ON[/success]" if hooks.hook_manager.enabled else "[error]OFF[/error]"
+            console.print(f"Post-edit hooks are {state_str}.")
+            return
+        if sub_args[0].lower() == "on":
+            hooks.hook_manager.enabled = True
+            console.print("[success]Post-edit linter hooks ENABLED.[/success]")
+        elif sub_args[0].lower() == "off":
+            hooks.hook_manager.enabled = False
+            console.print("[warning]Post-edit linter hooks DISABLED.[/warning]")
+
+    elif sub == "compact":
+        if not sub_args:
+            state_str = "[success]ON[/success]" if cfg.auto_compact else "[error]OFF[/error]"
+            console.print(f"Auto-compaction is {state_str} (threshold: {int(cfg.auto_compact_threshold * 100)}%).")
+            return
+        act = sub_args[0].lower()
+        if act == "on":
+            cfg.auto_compact = True
+            console.print("[success]Auto-compaction ENABLED.[/success]")
+        elif act == "off":
+            cfg.auto_compact = False
+            console.print("[warning]Auto-compaction DISABLED.[/warning]")
+        elif act == "threshold" and len(sub_args) > 1:
+            try:
+                pct = float(sub_args[1])
+                if 0 < pct <= 100:
+                    cfg.auto_compact_threshold = pct / 100.0
+                    console.print(f"[success]Auto-compaction threshold set to {pct:.0f}%.[/success]")
+                else:
+                    console.print("[error]Threshold must be between 0 and 100.[/error]")
+            except ValueError:
+                console.print("[error]Threshold must be a number between 0 and 100.[/error]")
+
+    else:
+        console.print("[error]Usage: /config [proxy|repair|hooks|compact] <args>[/error]")
 
 
 async def cmd_context(engine: Any, args: List[str]):
@@ -331,44 +413,6 @@ async def cmd_mcps(engine: Any, args: List[str]):
     console.print("Usage: [warning]/mcps on[/warning] | [warning]/mcps off[/warning] | [warning]/mcps enable <server_name>[/warning] | [warning]/mcps disable <server_name>[/warning]\n")
 
 
-async def cmd_proxy(engine: Any, args: List[str]):
-    if not args:
-        state_str = "[success]ON[/success]" if engine.subagent_proxy.enabled else "[error]OFF[/error]"
-        console.print(f"Sub-agent tool proxy distillation is currently {state_str}.\nUsage: [warning]/proxy on[/warning] or [warning]/proxy off[/warning]")
-        return
-
-    arg = args[0].lower()
-    if arg == "on":
-        engine.subagent_proxy.enabled = True
-        console.print("[success]Sub-agent tool proxy distillation ENABLED.[/success]")
-    elif arg == "off":
-        engine.subagent_proxy.enabled = False
-        console.print("[warning]Sub-agent tool proxy distillation DISABLED.[/warning]")
-    else:
-        console.print("[error]Invalid option. Use '/proxy on' or '/proxy off'.[/error]")
-
-
-async def cmd_selfheal(engine: Any, args: List[str]):
-    if not args:
-        state_str = "[success]ON[/success]" if engine.self_healer.enabled else "[error]OFF[/error]"
-        console.print(
-            f"Self-healing tool-error recovery is currently {state_str} "
-            f"(mechanical retries: {engine.self_healer.mechanical_retries}).\n"
-            f"Usage: [warning]/selfheal on[/warning] or [warning]/selfheal off[/warning]"
-        )
-        return
-
-    arg = args[0].lower()
-    if arg == "on":
-        engine.self_healer.enabled = True
-        console.print("[success]Self-healing tool-error recovery ENABLED.[/success]")
-    elif arg == "off":
-        engine.self_healer.enabled = False
-        console.print("[warning]Self-healing tool-error recovery DISABLED.[/warning]")
-    else:
-        console.print("[error]Invalid option. Use '/selfheal on' or '/selfheal off'.[/error]")
-
-
 async def cmd_compact(engine: Any, args: List[str]):
     console.print("[warning]Analyzing and compacting conversation history...[/warning]")
     new_messages, success, details = await compact_messages(engine.messages, engine.config_mgr)
@@ -377,46 +421,6 @@ async def cmd_compact(engine: Any, args: List[str]):
         console.print(f"[success]Compaction Successful![/success] {details}")
     else:
         console.print(f"[warning]{details}[/warning]")
-
-
-async def cmd_autocompact(engine: Any, args: List[str]):
-    cfg = engine.config_mgr.config
-
-    if not args:
-        state_str = "[success]ON[/success]" if cfg.auto_compact else "[error]OFF[/error]"
-        try:
-            model_cfg, _ = engine.config_mgr.get_active_model_and_provider()
-            window_info = f" (active model context window: {model_cfg.context_window} tokens)"
-        except Exception:
-            window_info = ""
-        console.print(
-            f"Auto-compaction is currently {state_str}, triggering at "
-            f"[accent]{int(cfg.auto_compact_threshold * 100)}%[/accent] of the active model's "
-            f"context window{window_info}."
-        )
-        console.print("Usage: [warning]/autocompact on[/warning] | [warning]/autocompact off[/warning] | [warning]/autocompact threshold <0-100>[/warning]")
-        return
-
-    action = args[0].lower()
-    if action == "on":
-        cfg.auto_compact = True
-        console.print("[success]Auto-compaction ENABLED.[/success]")
-    elif action == "off":
-        cfg.auto_compact = False
-        console.print("[warning]Auto-compaction DISABLED.[/warning]")
-    elif action == "threshold" and len(args) > 1:
-        try:
-            pct = float(args[1])
-        except ValueError:
-            console.print("[error]Threshold must be a number between 0 and 100.[/error]")
-            return
-        if not (0 < pct <= 100):
-            console.print("[error]Threshold must be between 0 and 100.[/error]")
-            return
-        cfg.auto_compact_threshold = pct / 100.0
-        console.print(f"[success]Auto-compaction threshold set to {pct:.0f}% of the context window.[/success]")
-    else:
-        console.print("[error]Usage: /autocompact on | /autocompact off | /autocompact threshold <0-100>[/error]")
 
 
 async def cmd_clear(engine: Any, args: List[str]):
@@ -471,17 +475,14 @@ async def cmd_exit(engine: Any, args: List[str]):
 def register_system_commands(engine: Any):
     engine.cmd_registry.register("help", "Show available slash commands", lambda args: cmd_help(engine, args))
     engine.cmd_registry.register("status", "Show current Mesh status overview", lambda args: cmd_status(engine, args))
-    engine.cmd_registry.register("version", "Show the current Mesh version", lambda args: cmd_version(engine, args))
+    engine.cmd_registry.register("config", "View or set automation toggles: /config [proxy|repair|hooks|compact]", lambda args: cmd_config(engine, args))
     engine.cmd_registry.register("context", "Display context window, tool schemas, and MCP status", lambda args: cmd_context(engine, args))
     engine.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", lambda args: cmd_system(engine, args))
     engine.cmd_registry.register("tools", "List registered tools, or toggle inclusion: /tools on | /tools off", lambda args: cmd_tools(engine, args))
     engine.cmd_registry.register("skills", "List skills, or toggle one: /skills enable <name> | /skills disable <name>", lambda args: cmd_skills(engine, args))
     engine.cmd_registry.register("dirs", "List allowed directories, or edit them: /dirs add <path> | /dirs remove <path> | /dirs clear", lambda args: cmd_dirs(engine, args))
     engine.cmd_registry.register("mcps", "List MCP servers, or toggle them: /mcps on | /mcps off | /mcps enable <server_name> | /mcps disable <server_name>", lambda args: cmd_mcps(engine, args))
-    engine.cmd_registry.register("proxy", "Toggle sub-agent tool proxy distillation: /proxy on | /proxy off", lambda args: cmd_proxy(engine, args))
-    engine.cmd_registry.register("selfheal", "Toggle automatic tool-error recovery: /selfheal on | /selfheal off", lambda args: cmd_selfheal(engine, args))
     engine.cmd_registry.register("compact", "Semantically summarize older conversation context", lambda args: cmd_compact(engine, args))
-    engine.cmd_registry.register("autocompact", "View or set auto-compaction: /autocompact on | /autocompact off | /autocompact threshold <0-100>", lambda args: cmd_autocompact(engine, args))
     engine.cmd_registry.register("clear", "Clear the conversation context window", lambda args: cmd_clear(engine, args))
     engine.cmd_registry.register("retry", "Retry the last LLM response turn", lambda args: cmd_retry(engine, args))
     engine.cmd_registry.register("debug", "Toggle debug mode (CoT & tool traces): /debug on | /debug off", lambda args: cmd_debug(engine, args))

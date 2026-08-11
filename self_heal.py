@@ -43,7 +43,7 @@ NON_HEALABLE_PATTERNS = [
 # of blindly re-running corrected arguments is too severe to do without a
 # human in the loop (arbitrary shell execution), or the tool is about human
 # interaction rather than a "wrong argument" situation.
-REPAIR_EXCLUDED_TOOLS = {"run_shell_command", "ask_user"}
+REPAIR_EXCLUDED_TOOLS = {"shell", "ask_user"}
 
 
 def is_transient(error_message: str) -> bool:

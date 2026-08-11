@@ -4,12 +4,12 @@ from tools.base import BaseTool
 
 class GoalTool(BaseTool):
     """
-    Tracks a single pinned session objective, separate from todo_manager's
+    Tracks a single pinned session objective, separate from todo's
     step-by-step task list: a goal is the *why* ("ship a working CLI export
     feature"), while todos are the *how* (the individual steps to get there).
     success_criteria define what "done" actually looks like.
 
-    Unlike todo_manager, this isn't just a tool the model calls - once set,
+    Unlike todo, this isn't just a tool the model calls - once set,
     the goal (and remaining/completed criteria) is folded directly into the
     system prompt via the on_change callback, so it stays visible to the
     model even after /compact summarizes the conversation, after /switch
@@ -18,10 +18,10 @@ class GoalTool(BaseTool):
     does, by design.
     """
 
-    name = "goal_manager"
+    name = "goal"
     description = (
         "Tracks a single pinned session objective (the overall 'why', as opposed to "
-        "todo_manager's step-by-step 'how'), with optional success criteria defining "
+        "todo's step-by-step 'how'), with optional success criteria defining "
         "what 'done' looks like. Once set, the goal stays visible to you in the system "
         "prompt even after the conversation is compacted, the model is switched, or the "
         "chat is cleared - use it to anchor long sessions on what actually matters."
@@ -59,9 +59,6 @@ class GoalTool(BaseTool):
     is_proxied = False  # Small, structured state - no benefit to distillation.
 
     def __init__(self, on_change: Optional[Callable[[], None]] = None):
-        # on_change is called after any state-changing action (set/complete_criterion/clear)
-        # so the caller (main.py) can immediately fold the new goal state into the
-        # live system prompt, rather than waiting for the next unrelated rebuild.
         self._on_change = on_change
         self._goal: Optional[str] = None
         self._criteria: List[Dict[str, Any]] = []

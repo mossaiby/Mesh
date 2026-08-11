@@ -13,6 +13,75 @@ from file_history import file_history_tracker
 from theme import console
 
 
+async def cmd_checkpoint(engine: Any, args: List[str]):
+    if not args:
+        info = engine.checkpoint_mgr.list_checkpoints()
+        console.print(f"\n[success]Checkpoints (Active Branch: [accent]{info['active_branch']}[/accent]):[/success]")
+        if not info["checkpoints"]:
+            console.print("  [dim]No saved checkpoints.[/dim]\n")
+        else:
+            for tag, details in info["checkpoints"].items():
+                console.print(f"  • [label]{tag}[/label] (Branch: {details['branch']}, Messages: {details['messages_count']}, Mode: {details['mode']})")
+            console.print()
+        console.print("Usage: [warning]/checkpoint save <tag>[/warning] | [warning]/checkpoint fork <branch>[/warning] | [warning]/checkpoint restore <tag_or_branch>[/warning] | [warning]/checkpoint list[/warning]\n")
+        return
+
+    sub = args[0].lower()
+
+    if sub == "save" and len(args) >= 2:
+        tag = args[1]
+        engine.checkpoint_mgr.create_snapshot(tag, engine)
+        console.print(f"[success]Checkpoint '[label]{tag}[/label]' saved on branch '[accent]{engine.checkpoint_mgr.active_branch}[/accent]'.[/success]")
+
+    elif sub == "fork" and len(args) >= 2:
+        branch_name = args[1].strip()
+        engine.checkpoint_mgr.active_branch = branch_name
+        engine.checkpoint_mgr.create_snapshot(f"branch_{branch_name}_start", engine)
+        console.print(f"[success]Forked current session into new branch: [accent]{branch_name}[/accent].[/success]")
+
+    elif sub in ("restore", "checkout") and len(args) >= 2:
+        target = args[1].strip()
+        success = engine.checkpoint_mgr.restore_snapshot(target, engine)
+        if success:
+            console.print(f"[success]Restored session state from checkpoint/branch: [accent]{target}[/accent].[/success]")
+        else:
+            console.print(f"[error]Checkpoint or branch '[accent]{target}[/accent]' not found. See /checkpoint list for available tags.[/error]")
+
+    elif sub == "list":
+        await cmd_checkpoint(engine, [])
+
+    else:
+        console.print("[error]Usage: /checkpoint [save|fork|restore|list] <args>[/error]")
+
+
+async def cmd_diff(engine: Any, args: List[str]):
+    if args and args[0].lower() == "undo":
+        success, message = file_history_tracker.undo_last()
+        if success:
+            console.print(f"[success]{message}[/success]")
+        else:
+            console.print(f"[error]{message}[/error]")
+        return
+
+    diff_info = file_history_tracker.get_last_diff()
+    if not diff_info:
+        console.print("[dim]No file edits recorded in current session history.[/dim]")
+        return
+
+    console.print(f"\n[label]Unified Diff ({diff_info['action']} -> '{diff_info['path']}'):[/label]")
+    if diff_info["diff_text"]:
+        for line in diff_info["diff_text"].splitlines():
+            if line.startswith("+"):
+                console.print(f"[success]{line}[/success]")
+            elif line.startswith("-"):
+                console.print(f"[error]{line}[/error]")
+            else:
+                console.print(f"[dim]{line}[/dim]")
+    else:
+        console.print("[dim]No content changes detected.[/dim]")
+    console.print("Usage: [warning]/diff[/warning] | [warning]/diff undo[/warning] (revert last file edit)\n")
+
+
 async def cmd_git(engine: Any, args: List[str]):
     if not git_workflow.is_git_repository("."):
         console.print("[error]Current directory is not a Git repository.[/error]")
@@ -376,82 +445,6 @@ async def cmd_reflexion(engine: Any, args: List[str]):
         console.print("[error]Usage: /reflexion distill | /reflexion clear[/error]")
 
 
-async def cmd_checkpoint(engine: Any, args: List[str]):
-    if not args:
-        info = engine.checkpoint_mgr.list_checkpoints()
-        console.print(f"\n[success]Checkpoints (Active Branch: [accent]{info['active_branch']}[/accent]):[/success]")
-        if not info["checkpoints"]:
-            console.print("  [dim]No saved checkpoints.[/dim]\n")
-        else:
-            for tag, details in info["checkpoints"].items():
-                console.print(f"  • [label]{tag}[/label] (Branch: {details['branch']}, Messages: {details['messages_count']}, Mode: {details['mode']})")
-            console.print()
-        console.print("Usage: [warning]/checkpoint save <tag>[/warning] | [warning]/checkpoint list[/warning]\n")
-        return
-
-    sub = args[0].lower()
-    if sub == "save" and len(args) >= 2:
-        tag = args[1]
-        engine.checkpoint_mgr.create_snapshot(tag, engine)
-        console.print(f"[success]Checkpoint '[label]{tag}[/label]' saved on branch '[accent]{engine.checkpoint_mgr.active_branch}[/accent]'.[/success]")
-    elif sub == "list":
-        await cmd_checkpoint(engine, [])
-    else:
-        console.print("[error]Usage: /checkpoint save <tag> | /checkpoint list[/error]")
-
-
-async def cmd_fork(engine: Any, args: List[str]):
-    if not args:
-        console.print("[error]Usage: /fork <branch_name>[/error]")
-        return
-
-    branch_name = args[0].strip()
-    engine.checkpoint_mgr.active_branch = branch_name
-    engine.checkpoint_mgr.create_snapshot(f"branch_{branch_name}_start", engine)
-    console.print(f"[success]Forked current session into new branch: [accent]{branch_name}[/accent].[/success]")
-
-
-async def cmd_checkout(engine: Any, args: List[str]):
-    if not args:
-        console.print("[error]Usage: /checkout <tag_or_branch>[/error]")
-        return
-
-    target = args[0].strip()
-    success = engine.checkpoint_mgr.restore_snapshot(target, engine)
-    if success:
-        console.print(f"[success]Restored session state from checkpoint/branch: [accent]{target}[/accent].[/success]")
-    else:
-        console.print(f"[error]Checkpoint or branch '[accent]{target}[/accent]' not found. See /checkpoint list for available tags.[/error]")
-
-
-async def cmd_diff(engine: Any, args: List[str]):
-    diff_info = file_history_tracker.get_last_diff()
-    if not diff_info:
-        console.print("[dim]No file edits recorded in current session history.[/dim]")
-        return
-
-    console.print(f"\n[label]Unified Diff ({diff_info['action']} -> '{diff_info['path']}'):[/label]")
-    if diff_info["diff_text"]:
-        for line in diff_info["diff_text"].splitlines():
-            if line.startswith("+"):
-                console.print(f"[success]{line}[/success]")
-            elif line.startswith("-"):
-                console.print(f"[error]{line}[/error]")
-            else:
-                console.print(f"[dim]{line}[/dim]")
-        else:
-            console.print("[dim]No content changes detected.[/dim]")
-        console.print()
-
-
-async def cmd_undo(engine: Any, args: List[str]):
-    success, message = file_history_tracker.undo_last()
-    if success:
-        console.print(f"[success]{message}[/success]")
-    else:
-        console.print(f"[error]{message}[/error]")
-
-
 def register_session_commands(engine: Any):
     engine.cmd_registry.register("goal", "View, set, or manage the pinned session goal: /goal <text> [| criterion 1 | criterion 2 ...] | /goal done <criterion #> | /goal clear", lambda args: cmd_goal(engine, args))
     engine.cmd_registry.register("note", "View notes, or edit them: /note append <text> | /note clear", lambda args: cmd_note(engine, args))
@@ -460,9 +453,6 @@ def register_session_commands(engine: Any):
     engine.cmd_registry.register("script", "Execute commands and prompts line-by-line from a script file: /script <file.txt>", lambda args: cmd_script(engine, args))
     engine.cmd_registry.register("project", "View or reload workspace project rules (PROJECT.md): /project [reload]", lambda args: cmd_project(engine, args))
     engine.cmd_registry.register("reflexion", "View or distill cross-session error lessons: /reflexion [distill|clear]", lambda args: cmd_reflexion(engine, args))
-    engine.cmd_registry.register("checkpoint", "Save or list session checkpoints: /checkpoint save <tag> | /checkpoint list", lambda args: cmd_checkpoint(engine, args))
-    engine.cmd_registry.register("fork", "Fork current session state into a new working branch: /fork <branch_name>", lambda args: cmd_fork(engine, args))
-    engine.cmd_registry.register("checkout", "Restore session state from a checkpoint tag or branch: /checkout <tag_or_branch>", lambda args: cmd_checkout(engine, args))
-    engine.cmd_registry.register("diff", "Display unified diff of recent file edits made by tools", lambda args: cmd_diff(engine, args))
-    engine.cmd_registry.register("undo", "Revert the last file modification made on disk by a tool", lambda args: cmd_undo(engine, args))
+    engine.cmd_registry.register("checkpoint", "Save, fork, restore, or list session checkpoints: /checkpoint [save|fork|restore|list] <args>", lambda args: cmd_checkpoint(engine, args))
+    engine.cmd_registry.register("diff", "Display unified diff or revert recent file edit: /diff | /diff undo", lambda args: cmd_diff(engine, args))
     engine.cmd_registry.register("git", "Run native Git commands: /git [status|diff|commit|push|branch]", lambda args: cmd_git(engine, args))
