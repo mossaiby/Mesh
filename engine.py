@@ -299,25 +299,7 @@ class MeshEngine:
                         else:
                             yield chunk
 
-                # Fallback estimation if API endpoint doesn't return exact stream usage
-                if turn_prompt_tokens == 0:
-                    turn_prompt_tokens = estimate_tokens(self.messages)
-
-                # Header rendering with real-time cost calculation
-                active_key = self.config_mgr.config.active_model
-                _, _, turn_cost = pricing_manager.get_token_cost(active_key, turn_prompt_tokens, turn_completion_tokens)
-
-                self.session_prompt_tokens += turn_prompt_tokens
-                self.session_completion_tokens += turn_completion_tokens
-                self.session_cost_usd += turn_cost
-
-                cost_str = f"${turn_cost:.4f} turn, ${self.session_cost_usd:.4f} session"
-                token_str = f"{turn_prompt_tokens} in, {turn_completion_tokens} out"
-
-                console.print(
-                    f"\n[info]Assistant ({model_cfg.name} via {provider_cfg.name})[/info] "
-                    f"[dim][{token_str} | {cost_str}][/dim] >"
-                )
+                console.print(f"\n[info]Assistant ({model_cfg.name} via {provider_cfg.name})[/info] >")
 
                 try:
                     response_text, reasoning_text = await self.renderer.render_stream(
@@ -332,6 +314,26 @@ class MeshEngine:
                         f"[warning]Tip: Ensure your local server (e.g. LM Studio / Ollama) is running, or switch models using /switch.[/warning]"
                     )
                     return
+
+                # Calculate tokens post-stream if not returned in API usage chunk
+                if turn_prompt_tokens == 0:
+                    turn_prompt_tokens = estimate_tokens(self.messages)
+                if turn_completion_tokens == 0 and response_text:
+                    turn_completion_tokens = max(1, len(response_text) // 4)
+
+                # Real-time USD cost calculation
+                active_key = self.config_mgr.config.active_model
+                _, _, turn_cost = pricing_manager.get_token_cost(active_key, turn_prompt_tokens, turn_completion_tokens)
+
+                self.session_prompt_tokens += turn_prompt_tokens
+                self.session_completion_tokens += turn_completion_tokens
+                self.session_cost_usd += turn_cost
+
+                cost_str = f"${turn_cost:.4f} turn, ${self.session_cost_usd:.4f} session"
+                token_str = f"{turn_prompt_tokens} in, {turn_completion_tokens} out"
+
+                # Render post-stream turn metrics footer
+                console.print(f"[dim][{token_str} | {cost_str}][/dim]\n")
 
                 assistant_msg = {"role": "assistant"}
                 if response_text:

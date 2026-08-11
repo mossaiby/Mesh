@@ -98,7 +98,7 @@ python main.py --file script.txt --non-interactive
 * **Async Background Jobs (`job` / `/jobs`):** Spawns background servers/watchers (`npm run dev`, `cargo watch`, `pytest --watch`) asynchronously without timing out or blocking Mesh.
 * **Post-Edit Linter Hooks (`/config hooks`):** Runs background linters/formatters (`ruff`, `eslint`, `black`, `cargo check`, `gofmt`) after file edits and feeds warnings back to the LLM to fix syntax errors in real-time.
 * **Iterative Auto-Test Loop (`/loop <command>`):** Runs a test command (`pytest`, `npm test`). If tests fail, Mesh captures errors, spawns repair sub-agents, modifies code, and re-tests until green.
-* **AST Symbol Search (`search_symbols`):** Zero-vector AST parsing indexes classes, functions, and docstrings across workspace Python files for instant navigation.
+* **Universal Tree-sitter Symbol Search (`search_symbols`):** Polyglot AST parsing indexes classes, functions, methods, interfaces, and docstrings across Python, JavaScript, TypeScript, Rust, Go, C/C++, Java, C#, PHP, and Ruby files.
 * **Diff Previews & File Rollback (`/diff`, `/diff undo`):** Displays colorized unified diffs (`-`/`+`) for file mutations and maintains a session undo stack allowing instant rollback of recent file edits.
 * **Autonomous Tool Synthesis (`synthesize_tool`):** Writes, AST-validates, saves, and dynamically registers new Python tools in `custom_tools/` at runtime.
 
@@ -210,7 +210,7 @@ Mesh/
 ├── consensus.py               # Adversarial Multi-Model Consensus engine
 ├── squad.py                   # 4-stage Multi-Role Task Squad pipeline
 ├── reflexion.py               # Cross-Session Reflexion logging & distillation
-├── symbol_search.py           # Zero-vector AST codebase symbol indexer
+├── symbol_search.py           # Universal Tree-sitter AST codebase symbol indexer
 ├── checkpoint.py              # Session Checkpointing & Branching manager
 ├── file_history.py            # Unified Diff Previews & File Rollback tracker
 ├── hooks.py                   # Automated Post-Edit Linter & Formatter Hooks

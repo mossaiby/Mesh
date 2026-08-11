@@ -6,9 +6,9 @@ import symbol_search
 class SearchSymbolsTool(BaseTool):
     name = "search_symbols"
     description = (
-        "Fast AST codebase symbol search. Finds function, class, and method definitions, "
-        "signatures, line numbers, and docstrings across workspace Python files without "
-        "reading entire files."
+        "Universal Tree-sitter codebase symbol search. Finds function, class, interface, and method "
+        "definitions, signatures, line numbers, and docstrings across Python, JavaScript, TypeScript, "
+        "Rust, Go, C/C++, Java, C#, PHP, and Ruby files without reading whole files."
     )
     is_proxied = True
     parameters = {
@@ -20,7 +20,7 @@ class SearchSymbolsTool(BaseTool):
             },
             "kind": {
                 "type": "string",
-                "enum": ["class", "function", "async_function"],
+                "enum": ["class", "function", "method"],
                 "description": "Optional symbol kind filter."
             }
         },
@@ -29,7 +29,7 @@ class SearchSymbolsTool(BaseTool):
 
     async def execute(self, query: str, kind: Optional[str] = None) -> Dict[str, Any]:
         if not symbol_search.symbol_indexer.symbol_index:
-            indexed_count = symbol_search.symbol_indexer.index_directory(".")
+            symbol_search.symbol_indexer.index_directory(".")
         
         matches = symbol_search.symbol_indexer.search_symbols(query, kind=kind)
         return {
