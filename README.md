@@ -2,7 +2,7 @@
 
 **v1.0.0**
 
-A modular, text-based AI CLI built in Python for local and cloud-hosted LLMs. Designed for developer productivity with **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **sub-agent swarm workflows**, **Git native tools**, **post-edit linter hooks**, **session checkpointing**, and **semantic context compaction**.
+A modular, text-based AI CLI built in Python for local and cloud-hosted LLMs. Designed for developer productivity with **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **sub-agent swarm workflows**, **Git native tools**, **post-edit linter hooks**, **graceful turn cancellation**, **session checkpointing**, and **semantic context compaction**.
 
 ---
 
@@ -83,8 +83,9 @@ python main.py --file script.txt --non-interactive
 * **Remote Model Discovery:** Query provider `/v1/models` endpoints dynamically (`/models discover`) and batch-add models using wildcard patterns (`/models add openrouter *free*`).
 * **Real-Time $ USD Cost Tracking:** Editable `pricing.json` tracks exact prompt/completion token usage and cumulative session cost in USD (`$0.003 turn | $0.015 session`) in response headers and `/status`.
 
-### 📎 Inline Prompt Shortcuts (`@filename`)
+### 📎 Inline Prompt Shortcuts (`@filename`) & Graceful Interrupts
 * **Autocomplete & Auto-Attach:** Typing `@` in prompts triggers Tab-completion for workspace files (`@src/engine.py`). Mentioning files automatically reads and attaches their formatted code blocks directly into the prompt payload.
+* **Graceful `Ctrl+C` Turn Cancellation:** Pressing `Ctrl+C` during streaming or tool execution cancels *only* the current turn, cleans up context, and returns safely to the prompt without exiting Mesh.
 
 ### 🐝 Sub-Agent Swarms & Advanced Reasoning (`/agent`)
 * **Speculative Swarm Exploration (`/agent explore`):** Spawns $N$ parallel sub-agents with distinct strategies to attempt a task, then uses an LLM Judge pass to synthesize the winning solution.

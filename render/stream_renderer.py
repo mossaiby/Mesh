@@ -1,3 +1,4 @@
+import asyncio
 from typing import AsyncGenerator, Dict, Any, Tuple
 from rich.console import Group
 from rich.live import Live
@@ -19,41 +20,45 @@ class StreamRenderer:
         Consumes chunks (reasoning & content) and streams them cleanly.
         Unifies rendering through rich.console.Group inside Live context
         to avoid screen corruption and cursor overwrites.
+        Gracefully handles KeyboardInterrupt / CancelledError context cleanup.
 
         Returns: (accumulated_content, accumulated_reasoning)
         """
         accumulated_content = ""
         accumulated_reasoning = ""
         
-        with Live(
-            Text(""),
-            console=self.console,
-            refresh_per_second=12,
-            vertical_overflow="visible"
-        ) as live:
-            async for chunk in async_chunk_generator:
-                ctype = chunk["type"]
-                cval = chunk["value"]
-                
-                if ctype == "reasoning":
-                    accumulated_reasoning += cval
-                elif ctype == "content":
-                    accumulated_content += cval
-                
-                renderables = []
-                
-                # Render Chain of Thought in debug mode without borders
-                if debug_mode and accumulated_reasoning:
-                    renderables.append(Text(accumulated_reasoning, style="dim italic"))
+        try:
+            with Live(
+                Text(""),
+                console=self.console,
+                refresh_per_second=12,
+                vertical_overflow="visible"
+            ) as live:
+                async for chunk in async_chunk_generator:
+                    ctype = chunk["type"]
+                    cval = chunk["value"]
                     
-                # Render response Markdown
-                if accumulated_content:
-                    renderables.append(Markdown(accumulated_content))
+                    if ctype == "reasoning":
+                        accumulated_reasoning += cval
+                    elif ctype == "content":
+                        accumulated_content += cval
                     
-                # Update Live context atomically
-                if renderables:
-                    live.update(Group(*renderables))
-                else:
-                    live.update(Text(""))
+                    renderables = []
+                    
+                    # Render Chain of Thought in debug mode without borders
+                    if debug_mode and accumulated_reasoning:
+                        renderables.append(Text(accumulated_reasoning, style="dim italic"))
+                        
+                    # Render response Markdown
+                    if accumulated_content:
+                        renderables.append(Markdown(accumulated_content))
+                        
+                    # Update Live context atomically
+                    if renderables:
+                        live.update(Group(*renderables))
+                    else:
+                        live.update(Text(""))
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            raise
 
         return accumulated_content, accumulated_reasoning

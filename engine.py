@@ -200,8 +200,9 @@ class MeshEngine:
                     console.print("[error]Unknown command in script. Type /help for options.[/error]")
             else:
                 formatted_input, _ = context_mentions.process_prompt_context_mentions(line, ".")
+                pre_prompt_count = len(self.messages)
                 self.messages.append({"role": "user", "content": formatted_input})
-                await self.process_inference()
+                await self.process_inference(pre_prompt_count)
 
     async def run(self, script_file: Optional[str] = None, non_interactive: bool = False):
         console.print(f"[brand]Mesh v{__import__('version').__version__} Started.[/brand] Initializing MCP servers...")
@@ -234,8 +235,9 @@ class MeshEngine:
                 # Parse @filename context mentions
                 formatted_input, _ = context_mentions.process_prompt_context_mentions(user_input, ".")
 
+                pre_prompt_count = len(self.messages)
                 self.messages.append({"role": "user", "content": formatted_input})
-                await self.process_inference()
+                await self.process_inference(pre_prompt_count)
 
             except (KeyboardInterrupt, EOFError):
                 console.print("\n[warning]Exiting...[/warning]")
@@ -246,134 +248,141 @@ class MeshEngine:
                     pass
                 break
 
-    async def process_inference(self):
+    async def process_inference(self, pre_prompt_count: Optional[int] = None):
         max_turns = 10
         current_turn = 0
+        rollback_count = pre_prompt_count if pre_prompt_count is not None else max(0, len(self.messages) - 1)
 
-        while current_turn < max_turns:
-            current_turn += 1
+        try:
+            while current_turn < max_turns:
+                current_turn += 1
 
-            try:
-                model_cfg, provider_cfg = self.config_mgr.get_active_model_and_provider()
-            except Exception as e:
-                console.print(f"[error]Configuration Error:[/error] {e}")
-                return
+                try:
+                    model_cfg, provider_cfg = self.config_mgr.get_active_model_and_provider()
+                except Exception as e:
+                    console.print(f"[error]Configuration Error:[/error] {e}")
+                    return
 
-            self.messages, auto_compacted, compact_details = await maybe_auto_compact(self.messages, self.config_mgr)
-            if auto_compacted:
-                console.print(f"[warning]🗜️  {compact_details}[/warning]")
+                self.messages, auto_compacted, compact_details = await maybe_auto_compact(self.messages, self.config_mgr)
+                if auto_compacted:
+                    console.print(f"[warning]🗜️  {compact_details}[/warning]")
 
-            provider = OpenAIProvider(model_cfg, provider_cfg)
-            schemas = self.tool_registry.get_schemas() if self.tools_enabled else None
-            if schemas and self.tool_registry.mode_blocked_tools:
-                schemas = [s for s in schemas if s["function"]["name"] not in self.tool_registry.mode_blocked_tools]
+                provider = OpenAIProvider(model_cfg, provider_cfg)
+                schemas = self.tool_registry.get_schemas() if self.tools_enabled else None
+                if schemas and self.tool_registry.mode_blocked_tools:
+                    schemas = [s for s in schemas if s["function"]["name"] not in self.tool_registry.mode_blocked_tools]
 
-            tool_calls_to_run = []
-            turn_prompt_tokens = 0
-            turn_completion_tokens = 0
+                tool_calls_to_run = []
+                turn_prompt_tokens = 0
+                turn_completion_tokens = 0
 
-            async def chunk_generator():
-                nonlocal turn_prompt_tokens, turn_completion_tokens
-                async for chunk in provider.stream_chat(self.messages, tools=schemas):
-                    ctype = chunk["type"]
-                    cval = chunk["value"]
+                async def chunk_generator():
+                    nonlocal turn_prompt_tokens, turn_completion_tokens
+                    async for chunk in provider.stream_chat(self.messages, tools=schemas):
+                        ctype = chunk["type"]
+                        cval = chunk["value"]
 
-                    if ctype == "usage":
-                        turn_prompt_tokens = cval.get("prompt_tokens", 0)
-                        turn_completion_tokens = cval.get("completion_tokens", 0)
-                    elif ctype == "tool_calls" and self.tools_enabled:
-                        for tc in cval:
-                            idx = tc.index
-                            while len(tool_calls_to_run) <= idx:
-                                tool_calls_to_run.append({"id": "", "name": "", "args": ""})
-                            if tc.id:
-                                tool_calls_to_run[idx]["id"] = tc.id
-                            if tc.function and tc.function.name:
-                                tool_calls_to_run[idx]["name"] = tc.function.name
-                            if tc.function and tc.function.arguments:
-                                tool_calls_to_run[idx]["args"] += tc.function.arguments
-                    else:
-                        yield chunk
+                        if ctype == "usage":
+                            turn_prompt_tokens = cval.get("prompt_tokens", 0)
+                            turn_completion_tokens = cval.get("completion_tokens", 0)
+                        elif ctype == "tool_calls" and self.tools_enabled:
+                            for tc in cval:
+                                idx = tc.index
+                                while len(tool_calls_to_run) <= idx:
+                                    tool_calls_to_run.append({"id": "", "name": "", "args": ""})
+                                if tc.id:
+                                    tool_calls_to_run[idx]["id"] = tc.id
+                                if tc.function and tc.function.name:
+                                    tool_calls_to_run[idx]["name"] = tc.function.name
+                                if tc.function and tc.function.arguments:
+                                    tool_calls_to_run[idx]["args"] += tc.function.arguments
+                        else:
+                            yield chunk
 
-            # Fallback estimation if API endpoint doesn't return exact stream usage
-            if turn_prompt_tokens == 0:
-                turn_prompt_tokens = estimate_tokens(self.messages)
+                # Fallback estimation if API endpoint doesn't return exact stream usage
+                if turn_prompt_tokens == 0:
+                    turn_prompt_tokens = estimate_tokens(self.messages)
 
-            # Header rendering with real-time cost calculation
-            active_key = self.config_mgr.config.active_model
-            _, _, turn_cost = pricing_manager.get_token_cost(active_key, turn_prompt_tokens, turn_completion_tokens)
+                # Header rendering with real-time cost calculation
+                active_key = self.config_mgr.config.active_model
+                _, _, turn_cost = pricing_manager.get_token_cost(active_key, turn_prompt_tokens, turn_completion_tokens)
 
-            self.session_prompt_tokens += turn_prompt_tokens
-            self.session_completion_tokens += turn_completion_tokens
-            self.session_cost_usd += turn_cost
+                self.session_prompt_tokens += turn_prompt_tokens
+                self.session_completion_tokens += turn_completion_tokens
+                self.session_cost_usd += turn_cost
 
-            cost_str = f"${turn_cost:.4f} turn, ${self.session_cost_usd:.4f} session"
-            token_str = f"{turn_prompt_tokens} in, {turn_completion_tokens} out"
+                cost_str = f"${turn_cost:.4f} turn, ${self.session_cost_usd:.4f} session"
+                token_str = f"{turn_prompt_tokens} in, {turn_completion_tokens} out"
 
-            console.print(
-                f"\n[info]Assistant ({model_cfg.name} via {provider_cfg.name})[/info] "
-                f"[dim][{token_str} | {cost_str}][/dim] >"
-            )
-
-            try:
-                response_text, reasoning_text = await self.renderer.render_stream(
-                    chunk_generator(), 
-                    debug_mode=self.debug_mode
-                )
-            except Exception as e:
                 console.print(
-                    f"\n[error]API/Provider Error ({provider_cfg.name}):[/error] "
-                    f"Could not connect to [dim]{provider_cfg.base_url}[/dim].\n"
-                    f"[error]Details: {str(e)}[/error]\n"
-                    f"[warning]Tip: Ensure your local server (e.g. LM Studio / Ollama) is running, or switch models using /switch.[/warning]"
+                    f"\n[info]Assistant ({model_cfg.name} via {provider_cfg.name})[/info] "
+                    f"[dim][{token_str} | {cost_str}][/dim] >"
                 )
-                return
 
-            assistant_msg = {"role": "assistant"}
-            if response_text:
-                assistant_msg["content"] = response_text
-
-            formatted_tool_calls = []
-            if tool_calls_to_run and self.tools_enabled:
-                for i, tool_call in enumerate(tool_calls_to_run):
-                    tool_call_id = tool_call["id"] or f"call_{i+1}"
-                    tool_call["id"] = tool_call_id
-                    
-                    formatted_tool_calls.append({
-                        "id": tool_call_id,
-                        "type": "function",
-                        "function": {
-                            "name": tool_call["name"],
-                            "arguments": tool_call["args"]
-                        }
-                    })
-                assistant_msg["tool_calls"] = formatted_tool_calls
-
-            self.messages.append(assistant_msg)
-
-            if not tool_calls_to_run or not self.tools_enabled:
-                break
-
-            for tool_call in tool_calls_to_run:
-                if self.debug_mode:
-                    console.print(f"\n[brand]🔧 DEBUG - Tool Execution Request:[/brand] {tool_call['name']}({tool_call['args']})")
-                else:
-                    console.print(f"\n[accent]⚡ Tool Execution Request: {tool_call['name']}({tool_call['args']})[/accent]")
-
-                tool_result = await self.tool_registry.execute(tool_call["name"], tool_call["args"])
-
-                if self.debug_mode:
-                    console.print(f"[brand]🔧 DEBUG - Tool Execution Result:[/brand]\n{tool_result}")
-
-                # Log errors to reflexion event recorder
-                if isinstance(tool_result, str) and '"error":' in tool_result:
-                    reflexion.record_reflexion_event(
-                        event_type="tool_failure",
-                        details=f"Tool '{tool_call['name']}' failed with args {tool_call['args']}: {tool_result[:300]}"
+                try:
+                    response_text, reasoning_text = await self.renderer.render_stream(
+                        chunk_generator(), 
+                        debug_mode=self.debug_mode
                     )
+                except Exception as e:
+                    console.print(
+                        f"\n[error]API/Provider Error ({provider_cfg.name}):[/error] "
+                        f"Could not connect to [dim]{provider_cfg.base_url}[/dim].\n"
+                        f"[error]Details: {str(e)}[/error]\n"
+                        f"[warning]Tip: Ensure your local server (e.g. LM Studio / Ollama) is running, or switch models using /switch.[/warning]"
+                    )
+                    return
 
-                self.messages.append({
-                    "role": "tool",
-                    "tool_call_id": tool_call["id"],
-                    "content": tool_result
-                })
+                assistant_msg = {"role": "assistant"}
+                if response_text:
+                    assistant_msg["content"] = response_text
+
+                formatted_tool_calls = []
+                if tool_calls_to_run and self.tools_enabled:
+                    for i, tool_call in enumerate(tool_calls_to_run):
+                        tool_call_id = tool_call["id"] or f"call_{i+1}"
+                        tool_call["id"] = tool_call_id
+                        
+                        formatted_tool_calls.append({
+                            "id": tool_call_id,
+                            "type": "function",
+                            "function": {
+                                "name": tool_call["name"],
+                                "arguments": tool_call["args"]
+                            }
+                        })
+                    assistant_msg["tool_calls"] = formatted_tool_calls
+
+                self.messages.append(assistant_msg)
+
+                if not tool_calls_to_run or not self.tools_enabled:
+                    break
+
+                for tool_call in tool_calls_to_run:
+                    if self.debug_mode:
+                        console.print(f"\n[brand]🔧 DEBUG - Tool Execution Request:[/brand] {tool_call['name']}({tool_call['args']})")
+                    else:
+                        console.print(f"\n[accent]⚡ Tool Execution Request: {tool_call['name']}({tool_call['args']})[/accent]")
+
+                    tool_result = await self.tool_registry.execute(tool_call["name"], tool_call["args"])
+
+                    if self.debug_mode:
+                        console.print(f"[brand]🔧 DEBUG - Tool Execution Result:[/brand]\n{tool_result}")
+
+                    # Log errors to reflexion event recorder
+                    if isinstance(tool_result, str) and '"error":' in tool_result:
+                        reflexion.record_reflexion_event(
+                            event_type="tool_failure",
+                            details=f"Tool '{tool_call['name']}' failed with args {tool_call['args']}: {tool_result[:300]}"
+                        )
+
+                    self.messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call["id"],
+                        "content": tool_result
+                    })
+
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            console.print("\n[warning]⛔ Turn cancelled by user.[/warning]\n")
+            # Clean up incomplete user prompt and partial assistant/tool messages from cancelled turn
+            self.messages = self.messages[:rollback_count]
