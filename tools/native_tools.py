@@ -4,6 +4,7 @@ import asyncio
 from typing import Dict, Any, Optional
 from tools.base import BaseTool
 from tools.permissions import PermissionManager, default_permission_manager
+from file_history import file_history_tracker
 
 
 class ReadFileTool(BaseTool):
@@ -70,12 +71,19 @@ class WriteFileTool(BaseTool):
             return {"error": f"Permission denied for path '{path}'."}
 
         try:
+            diff_text = file_history_tracker.record_edit(path, content, action="write_file")
+
             dir_name = os.path.dirname(path)
             if dir_name:
                 os.makedirs(dir_name, exist_ok=True)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
-            return {"status": "success", "message": f"Wrote {len(content)} characters to '{path}'."}
+
+            return {
+                "status": "success",
+                "message": f"Wrote {len(content)} characters to '{path}'.",
+                "diff": diff_text
+            }
         except Exception as e:
             return {"error": f"Failed to write file '{path}': {str(e)}"}
 
@@ -113,10 +121,17 @@ class EditFileTool(BaseTool):
                 return {"error": f"Target string 'old_str' not found in '{path}'."}
 
             updated_content = content.replace(old_str, new_str, 1)
+
+            diff_text = file_history_tracker.record_edit(path, updated_content, action="edit_file")
+
             with open(path, "w", encoding="utf-8") as f:
                 f.write(updated_content)
 
-            return {"status": "success", "message": f"Successfully updated '{path}'."}
+            return {
+                "status": "success",
+                "message": f"Successfully updated '{path}'.",
+                "diff": diff_text
+            }
         except Exception as e:
             return {"error": f"Failed to edit file '{path}': {str(e)}"}
 

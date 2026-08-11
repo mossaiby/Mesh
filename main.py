@@ -38,6 +38,8 @@ import advisor
 import explore
 import consensus
 import tool_synthesis
+from checkpoint import CheckpointManager
+from file_history import file_history_tracker
 from guard import SafetyGuard
 from tools.ask_tool import _read_single_key
 from tools.note_tool import _read_notes, _write_notes, _append_notes
@@ -65,6 +67,7 @@ class Mesh:
         self.tool_registry.self_healer = self.self_healer
         self.safety_guard = SafetyGuard(self.config_mgr, enabled=self.config_mgr.config.guard_enabled)
         self.tool_registry.safety_guard = self.safety_guard
+        self.checkpoint_mgr = CheckpointManager()
         
         self.permission_manager = PermissionManager()
         self.skill_registry = SkillRegistry(self.tool_registry)
@@ -146,6 +149,11 @@ class Mesh:
         self.cmd_registry.register("delegate", "Delegate a self-contained task to an autonomous sub-agent: /delegate <task description> | /delegate depth [<n>]", self.cmd_delegate)
         self.cmd_registry.register("explore", "Run parallel speculative branch exploration: /explore [<num_branches>] <task description>", self.cmd_explore)
         self.cmd_registry.register("consensus", "Run an adversarial multi-model consensus audit: /consensus <question> | <proposal>", self.cmd_consensus)
+        self.cmd_registry.register("checkpoint", "Save or list session checkpoints: /checkpoint save <tag> | /checkpoint list", self.cmd_checkpoint)
+        self.cmd_registry.register("fork", "Fork current session state into a new working branch: /fork <branch_name>", self.cmd_fork)
+        self.cmd_registry.register("checkout", "Restore session state from a checkpoint tag or branch: /checkout <tag_or_branch>", self.cmd_checkout)
+        self.cmd_registry.register("diff", "Display unified diff of recent file edits made by tools", self.cmd_diff)
+        self.cmd_registry.register("undo", "Revert the last file modification made on disk by a tool", self.cmd_undo)
         self.cmd_registry.register("goal", "View, set, or manage the pinned session goal: /goal <text> [| criterion 1 | criterion 2 ...] | /goal done <criterion #> | /goal clear", self.cmd_goal)
         self.cmd_registry.register("advisor", "Consult the advisor for a second opinion: /advisor <question>", self.cmd_advisor)
         self.cmd_registry.register("guard", "View or configure the tool-call safety guard: /guard [on|off] | /guard mode [supervised|autonomous] | /guard model [<key>] | /guard trust <tool>", self.cmd_guard)
@@ -197,6 +205,7 @@ class Mesh:
         
         schemas = self.tool_registry.get_schemas()
         console.print(f"• [label]Tools:[/label] {tools_state} ({len(schemas)} active schemas)")
+        console.print(f"• [label]Active Branch:[/label] [accent]{self.checkpoint_mgr.active_branch}[/accent] ({len(self.checkpoint_mgr.checkpoints)} saved checkpoints)")
         console.print(f"• [label]Sub-Agent Proxy Distillation:[/label] {proxy_state}")
         console.print(f"• [label]Self-Healing Tool-Error Recovery:[/label] {selfheal_state}")
         console.print(f"• [label]Delegation Recursion Depth:[/label] {self.config_mgr.config.max_delegation_depth}")
@@ -330,6 +339,77 @@ class Mesh:
             console.print(f"[success]Switched active model to: [label]{selected_key}[/label] ({model_cfg.name} via {provider_cfg.name})[/success]")
         except Exception as e:
             console.print(f"[error]Error switching model: {e}[/error]")
+
+    async def cmd_checkpoint(self, args):
+        if not args:
+            info = self.checkpoint_mgr.list_checkpoints()
+            console.print(f"\n[success]Checkpoints (Active Branch: [accent]{info['active_branch']}[/accent]):[/success]")
+            if not info["checkpoints"]:
+                console.print("  [dim]No saved checkpoints.[/dim]\n")
+            else:
+                for tag, details in info["checkpoints"].items():
+                    console.print(f"  • [label]{tag}[/label] (Branch: {details['branch']}, Messages: {details['messages_count']}, Mode: {details['mode']})")
+                console.print()
+            console.print("Usage: [warning]/checkpoint save <tag>[/warning] | [warning]/checkpoint list[/warning]\n")
+            return
+
+        sub = args[0].lower()
+        if sub == "save" and len(args) >= 2:
+            tag = args[1]
+            self.checkpoint_mgr.create_snapshot(tag, self)
+            console.print(f"[success]Checkpoint '[label]{tag}[/label]' saved on branch '[accent]{self.checkpoint_mgr.active_branch}[/accent]'.[/success]")
+        elif sub == "list":
+            await self.cmd_checkpoint([])
+        else:
+            console.print("[error]Usage: /checkpoint save <tag> | /checkpoint list[/error]")
+
+    async def cmd_fork(self, args):
+        if not args:
+            console.print("[error]Usage: /fork <branch_name>[/error]")
+            return
+
+        branch_name = args[0].strip()
+        self.checkpoint_mgr.active_branch = branch_name
+        self.checkpoint_mgr.create_snapshot(f"branch_{branch_name}_start", self)
+        console.print(f"[success]Forked current session into new branch: [accent]{branch_name}[/accent].[/success]")
+
+    async def cmd_checkout(self, args):
+        if not args:
+            console.print("[error]Usage: /checkout <tag_or_branch>[/error]")
+            return
+
+        target = args[0].strip()
+        success = self.checkpoint_mgr.restore_snapshot(target, self)
+        if success:
+            console.print(f"[success]Restored session state from checkpoint/branch: [accent]{target}[/accent].[/success]")
+        else:
+            console.print(f"[error]Checkpoint or branch '[accent]{target}[/accent]' not found. See /checkpoint list for available tags.[/error]")
+
+    async def cmd_diff(self, args):
+        diff_info = file_history_tracker.get_last_diff()
+        if not diff_info:
+            console.print("[dim]No file edits recorded in current session history.[/dim]")
+            return
+
+        console.print(f"\n[label]Unified Diff ({diff_info['action']} -> '{diff_info['path']}'):[/label]")
+        if diff_info["diff_text"]:
+            for line in diff_info["diff_text"].splitlines():
+                if line.startswith("+"):
+                    console.print(f"[success]{line}[/success]")
+                elif line.startswith("-"):
+                    console.print(f"[error]{line}[/error]")
+                else:
+                    console.print(f"[dim]{line}[/dim]")
+        else:
+            console.print("[dim]No content changes detected.[/dim]")
+        console.print()
+
+    async def cmd_undo(self, args):
+        success, message = file_history_tracker.undo_last()
+        if success:
+            console.print(f"[success]{message}[/success]")
+        else:
+            console.print(f"[error]{message}[/error]")
 
     async def cmd_clear(self, args):
         self.update_system_message()
@@ -643,7 +723,7 @@ class Mesh:
                 f"Session-trusted tools: [dim]{trusted}[/dim]\n"
                 f"Usage: [warning]/guard on[/warning] | [warning]/guard off[/warning] | "
                 f"[warning]/guard mode supervised[/warning] | [warning]/guard mode autonomous[/warning] | "
-                f"[warning]/guard model <key>[/warning] | [warning]/guard trust <tool_name>[/warning]"
+                f"[warning]/guard model [<key>][/warning] | [warning]/guard trust <tool_name>[/warning]"
             )
             return
 
