@@ -2,7 +2,7 @@
 
 **v1.0.0**
 
-A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Automated Linter/Formatter Hooks**, **Iterative Auto-Test Loops**, **Speculative Swarm Exploration**, **Autonomous Tool Synthesis**, **Adversarial Multi-Model Consensus**, **Multi-Role Autonomous Task Squads**, **Cross-Session Reflexion Journaling**, **AST Codebase Symbol Indexing**, **Session Checkpointing & Branching**, **Unified Diff Previews & File Rollback**, **Script File Execution & Automation**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
+A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Async Background Sub-Processes**, **Automated Linter/Formatter Hooks**, **Iterative Auto-Test Loops**, **Speculative Swarm Exploration**, **Autonomous Tool Synthesis**, **Adversarial Multi-Model Consensus**, **Multi-Role Autonomous Task Squads**, **Cross-Session Reflexion Journaling**, **AST Codebase Symbol Indexing**, **Session Checkpointing & Branching**, **Unified Diff Previews & File Rollback**, **Script File Execution & Automation**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
 
 ---
 
@@ -11,6 +11,8 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 - **Multi-Provider OpenAI Compatibility**: Seamlessly connect to OpenAI, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint via `models.json`.
 - **Interactive Model Switcher (`/switch`)**: Switch active models on the fly using a cross-platform arrow-key selection menu or command arguments.
 - **Model Discovery & Batch Configuration (`/models discover` / `/models add`)**: Query provider REST endpoints (`/v1/models`) to discover remote models offered by backends. Interactively pick discovered models with arrow keys or batch-add models using wildcard patterns (e.g., `/models add openrouter *free*` or `/models add groq llama`).
+- **Async Background Sub-Processes & Jobs (`run_background_command` / `/jobs`)**: Spawns long-running servers or background watchers (`npm run dev`, `cargo watch`, `pytest --watch`) asynchronously without blocking Mesh or timing out. Tail live stdout/stderr logs or kill processes via `/jobs`.
+- **Enhanced Shell Execution (`run_shell_command`)**: Configurable execution timeouts (pass `0` or `null` for infinite execution) plus custom `shell_prefix` wrappers (e.g., `powershell -Command`, `cmd /c`, `wsl`).
 - **Automated Post-Edit Linter Hooks (`/hooks`)**: Automatically runs background linters/formatters (`ruff`, `flake8`, `eslint`, `black`, `cargo check`, `gofmt`) after file edits (`write_file`, `edit_file`) and feeds syntax/style feedback directly back to the LLM to fix errors in real-time.
 - **Iterative Auto-Test Loop (`/loop <command>`)**: Executes a build or test command (e.g. `/loop pytest` or `/loop npm test`). If tests fail, Mesh enters an automated loop: captures error output, spawns repair sub-agents, modifies code, and re-tests until all tests pass green!
 - **Script File Execution & Headless Automation (`/script` & CLI `--file`)**: Execute commands and prompts line-by-line from a script file interactively via `/script <file.txt>` or on startup via `python main.py script.txt --non-interactive` for headless CI/CD and Docker pipelines.
@@ -128,6 +130,7 @@ python main.py --file script.txt --non-interactive
 | `/version` | Show the current Mesh version. |
 | `/models [discover\|add]` | List configured models (`/models`), query endpoints (`/models discover`), or interactively/batch add models (`/models add [<provider>] [<pattern>]`). |
 | `/switch [key]` | Interactively switch models using arrow keys, or directly by model key. |
+| `/jobs [log\|stop\|clear]` | View active background jobs (`/jobs`), tail logs (`/jobs log <id>`), or stop process (`/jobs stop <id>`). |
 | `/loop <test_cmd>` | Run an automated iterative test/fix loop until all tests pass green. |
 | `/hooks [on\|off]` | View or toggle automated post-edit linter/formatter hooks (`ruff`, `eslint`, `cargo check`). |
 | `/explore <task>` | Run parallel speculative branch exploration across $N$ strategies. |
@@ -593,6 +596,7 @@ Mesh/
 ├── file_history.py            # Unified Diff Previews & File Rollback tracker
 ├── hooks.py                   # Automated Post-Edit Linter & Formatter Hooks
 ├── test_loop.py               # Iterative Auto-Test/Fix Loop harness
+├── jobs.py                    # Async Background Subprocess Manager
 ├── memory_search.py           # Sub-agent-based semantic memory search
 ├── self_heal.py               # Self-healing tool-error recovery
 ├── advisor.py                 # Advisor engine
@@ -627,11 +631,12 @@ Mesh/
 │   ├── explore_tool.py        # explore_branches tool
 │   ├── synthesis_tool.py      # synthesize_tool tool
 │   ├── consensus_tool.py      # consult_consensus tool
-│   └── symbol_tool.py         # search_symbols AST search tool
+│   ├── symbol_tool.py         # search_symbols AST search tool
+│   └── job_tool.py            # run_background_command tool
 ├── commands/
 │   ├── __init__.py
 │   ├── registry.py            # Slash command registry
-│   ├── agent_commands.py      # /delegate, /explore, /consensus, /squad, /loop, /hooks, /advisor, /guard, /mode
+│   ├── agent_commands.py      # /delegate, /explore, /consensus, /squad, /loop, /hooks, /jobs, /advisor, /guard, /mode
 │   ├── model_commands.py      # /models, /switch
 │   ├── session_commands.py    # /goal, /note, /memory, /dream, /script, /project, /reflexion, /checkpoint, /fork, /checkout, /diff, /undo
 │   └── system_commands.py     # /help, /status, /version, /context, /system, /tools, /skills, /dirs, /mcps, /proxy, /selfheal, /compact, /autocompact, /clear, /retry, /debug, /exit
@@ -649,6 +654,8 @@ Mesh/
 
 ## 🩹 Changelog / Bug Fixes (v1.0.0)
 
+- **Added Async Background Sub-Processes & Jobs (`jobs.py`, `tools/job_tool.py`, `/jobs`)**: Spawns long-running servers or background watchers (`npm run dev`, `cargo watch`, `pytest --watch`) asynchronously via `run_background_command` without blocking Mesh or timing out. Tail live stdout/stderr logs or kill processes via `/jobs`.
+- **Enhanced `run_shell_command` (`tools/native_tools.py`)**: Added configurable execution timeouts (pass `0` or `null` for infinite execution) plus custom `shell_prefix` wrappers (e.g., `powershell -Command`, `cmd /c`, `wsl`).
 - **Added Automated Post-Edit Linter Hooks (`hooks.py`, `/hooks`)**: Runs background linters/formatters (`ruff`, `flake8`, `eslint`, `black`, `cargo check`, `gofmt`) automatically after file edits (`write_file`, `edit_file`) and feeds warnings back to the LLM to fix syntax/style issues in real-time.
 - **Added Iterative Auto-Test Loop (`test_loop.py`, `/loop`)**: Executes a build/test command (e.g. `/loop pytest`). If tests fail, Mesh enters an automated loop: captures error output, spawns repair sub-agents, modifies code, and re-tests until all tests pass green!
 - **Refactored Architecture (`main.py` -> `engine.py` & `commands/`)**: Split `main.py` into `MeshEngine` (`engine.py`) and 4 modular command submodules (`commands/model_commands.py`, `commands/agent_commands.py`, `commands/session_commands.py`, `commands/system_commands.py`), reducing `main.py` to a clean ~110-line CLI entry point.

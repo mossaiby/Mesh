@@ -187,7 +187,15 @@ class ShellTool(BaseTool):
     parameters = {
         "type": "object",
         "properties": {
-            "command": {"type": "string", "description": "Shell command to execute."}
+            "command": {"type": "string", "description": "Shell command to execute."},
+            "timeout": {
+                "type": "number",
+                "description": "Optional timeout in seconds (default: 30.0). Set to 0 or null for infinite timeout."
+            },
+            "shell_prefix": {
+                "type": "string",
+                "description": "Optional shell processor wrapper (e.g. 'powershell -Command', 'cmd /c', 'wsl')."
+            }
         },
         "required": ["command"]
     }
@@ -195,24 +203,32 @@ class ShellTool(BaseTool):
     def __init__(self, permission_manager: Optional[PermissionManager] = None):
         self.permission_manager = permission_manager or default_permission_manager
 
-    async def execute(self, command: str) -> Dict[str, Any]:
+    async def execute(self, command: str, timeout: Optional[float] = 30.0, shell_prefix: Optional[str] = None) -> Dict[str, Any]:
         if not await self.permission_manager.check_and_request_permission(self.name, os.getcwd()):
             return {"error": "Permission denied for command execution in current working directory."}
 
+        full_command = f"{shell_prefix} {command}" if shell_prefix else command
+
         try:
             proc = await asyncio.create_subprocess_shell(
-                command,
+                full_command,
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=30.0)
+
+            # Handle infinite timeout if set to 0 or None
+            if timeout and timeout > 0:
+                stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+            else:
+                stdout, stderr = await proc.communicate()
+
             return {
-                "command": command,
+                "command": full_command,
                 "exit_code": proc.returncode,
                 "stdout": stdout.decode('utf-8', errors='replace').strip(),
                 "stderr": stderr.decode('utf-8', errors='replace').strip()
             }
         except asyncio.TimeoutError:
-            return {"error": "Command execution timed out after 30 seconds."}
+            return {"error": f"Command execution timed out after {timeout} seconds."}
         except Exception as e:
             return {"error": f"Command execution failed: {str(e)}"}

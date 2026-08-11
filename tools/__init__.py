@@ -20,6 +20,7 @@ from tools.explore_tool import ExploreTool
 from tools.synthesis_tool import SynthesizeTool
 from tools.consensus_tool import ConsensusTool
 from tools.symbol_tool import SearchSymbolsTool
+from tools.job_tool import BackgroundShellTool
 
 __all__ = [
     "BaseTool",
@@ -45,4 +46,5 @@ __all__ = [
     "SynthesizeTool",
     "ConsensusTool",
     "SearchSymbolsTool",
+    "BackgroundShellTool",
 ]

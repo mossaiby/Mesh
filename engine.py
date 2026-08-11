@@ -27,12 +27,14 @@ from tools import (
     SynthesizeTool,
     ConsensusTool,
     SearchSymbolsTool,
+    BackgroundShellTool,
 )
 import tool_synthesis
 import symbol_search
 import project_rules
 import reflexion
 import modes
+import jobs
 from checkpoint import CheckpointManager
 from guard import SafetyGuard
 from subagent import SubAgentProxy
@@ -132,6 +134,7 @@ class MeshEngine:
         self.tool_registry.register(EditFileTool(self.permission_manager))
         self.tool_registry.register(GlobTool(self.permission_manager))
         self.tool_registry.register(ShellTool(self.permission_manager))
+        self.tool_registry.register(BackgroundShellTool())
         self.tool_registry.register(DelegateTaskTool(self.tool_registry, self.config_mgr))
         self.goal_tool = GoalTool(on_change=lambda: self.update_system_message())
         self.tool_registry.register(self.goal_tool)
@@ -201,6 +204,7 @@ class MeshEngine:
                 if not user_input:
                     continue
                 if user_input.lower() in ["exit", "quit", "/exit"]:
+                    await jobs.job_manager.stop_all()
                     await self.cmd_registry.dispatch("/exit")
 
                 if self.cmd_registry.is_command(user_input):
@@ -215,6 +219,7 @@ class MeshEngine:
             except (KeyboardInterrupt, EOFError):
                 console.print("\n[warning]Exiting...[/warning]")
                 try:
+                    await jobs.job_manager.stop_all()
                     await asyncio.wait_for(self.mcp_manager.close_all(), timeout=2.0)
                 except Exception:
                     pass

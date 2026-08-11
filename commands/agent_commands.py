@@ -7,7 +7,61 @@ import squad
 import modes
 import test_loop
 import hooks
+import jobs
 from theme import console
+
+
+async def cmd_jobs(engine: Any, args: List[str]):
+    if not args:
+        job_list = jobs.job_manager.list_jobs()
+        console.print("\n[success]Background Jobs:[/success]")
+        if not job_list:
+            console.print("  [dim]No background jobs currently registered.[/dim]\n")
+        else:
+            for j in job_list:
+                status_color = "success" if "running" in j["status"] else ("error" if "fail" in j["status"] else "dim")
+                console.print(f"  • [label]Job #{j['job_id']}[/label] (PID: {j['pid']}, Runtime: {j['runtime']}) [{status_color}]{j['status']}[/{status_color}]: [dim]{j['command']}[/dim]")
+            console.print()
+        console.print("Usage: [warning]/jobs[/warning] | [warning]/jobs log <job_id>[/warning] | [warning]/jobs stop <job_id>[/warning] | [warning]/jobs clear[/warning]\n")
+        return
+
+    sub = args[0].lower()
+
+    if sub == "log" and len(args) >= 2:
+        if not args[1].isdigit():
+            console.print("[error]Usage: /jobs log <job_id>[/error]")
+            return
+        j_id = int(args[1])
+        info = jobs.job_manager.get_job_info(j_id)
+        if not info:
+            console.print(f"[error]Job #{j_id} not found.[/error]")
+            return
+        console.print(f"\n[label]Logs for Job #{j_id} (PID: {info['pid']}, Status: {info['status']}):[/label]")
+        logs = info.get("recent_logs", [])
+        if logs:
+            for line in logs:
+                console.print(f"  {line}")
+        else:
+            console.print("  [dim]<no output logged yet>[/dim]")
+        console.print()
+
+    elif sub == "stop" and len(args) >= 2:
+        if not args[1].isdigit():
+            console.print("[error]Usage: /jobs stop <job_id>[/error]")
+            return
+        j_id = int(args[1])
+        success, msg = await jobs.job_manager.stop_job(j_id)
+        if success:
+            console.print(f"[success]{msg}[/success]")
+        else:
+            console.print(f"[error]{msg}[/error]")
+
+    elif sub == "clear":
+        jobs.job_manager.jobs = {k: v for k, v in jobs.job_manager.jobs.items() if v.status == "running"}
+        console.print("[warning]Cleared completed/stopped background job entries.[/warning]")
+
+    else:
+        console.print("[error]Usage: /jobs | /jobs log <job_id> | /jobs stop <job_id> | /jobs clear[/error]")
 
 
 async def cmd_loop(engine: Any, args: List[str]):
@@ -315,7 +369,7 @@ async def cmd_mode(engine: Any, args: List[str]):
     console.print(f"[success]Switched to {mode_def.label} Mode.[/success] {mode_def.description}")
     if engine.tool_registry.mode_blocked_tools:
         blocked_str = ", ".join(sorted(engine.tool_registry.mode_blocked_tools))
-        console.print(f"[dim]Unavailable in this mode: {blocked_str}[/dim]")
+        console.print(f"[dim]Unavailable in this mode: blocked_str[/dim]")
 
 
 def register_agent_commands(engine: Any):
@@ -325,6 +379,7 @@ def register_agent_commands(engine: Any):
     engine.cmd_registry.register("squad", "Execute 4-stage autonomous task squad (Architect -> Coder -> Test Engineer -> Security Auditor): /squad <task>", lambda args: cmd_squad(engine, args))
     engine.cmd_registry.register("loop", "Iterative auto-test/fix loop: /loop <test_or_build_command>", lambda args: cmd_loop(engine, args))
     engine.cmd_registry.register("hooks", "Toggle automated post-edit linter/formatter hooks: /hooks [on|off]", lambda args: cmd_hooks(engine, args))
+    engine.cmd_registry.register("jobs", "View or manage background jobs: /jobs | /jobs log <job_id> | /jobs stop <job_id> | /jobs clear", lambda args: cmd_jobs(engine, args))
     engine.cmd_registry.register("advisor", "Consult the advisor or configure its model: /advisor <question> | /advisor model [<key>]", lambda args: cmd_advisor(engine, args))
     engine.cmd_registry.register("guard", "View or configure the tool-call safety guard: /guard [on|off] | /guard mode [supervised|autonomous] | /guard model [<key>] | /guard trust <tool>", lambda args: cmd_guard(engine, args))
     engine.cmd_registry.register("mode", "View or switch operating mode: /mode [plan|build|review|yolo]", lambda args: cmd_mode(engine, args))
