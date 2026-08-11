@@ -1,0 +1,381 @@
+import asyncio
+from typing import List, Any
+from rich.markdown import Markdown
+from tools.note_tool import _read_notes, _write_notes, _append_notes
+from tools.memory_tool import _load_memory, _save_memory
+import memory_search
+from dream import dream_extract
+from skills import DeclarativeSkill
+import project_rules
+import reflexion
+from file_history import file_history_tracker
+from theme import console
+
+
+async def cmd_goal(engine: Any, args: List[str]):
+    if not args:
+        engine.goal_tool.render(console)
+        return
+
+    subcmd = args[0].lower()
+
+    if subcmd == "clear":
+        await engine.goal_tool.execute("clear")
+        console.print("[warning]Goal cleared.[/warning]")
+
+    elif subcmd == "done" and len(args) >= 2:
+        try:
+            idx = int(args[1])
+        except ValueError:
+            console.print("[error]Usage: /goal done <criterion number>[/error]")
+            return
+        result = await engine.goal_tool.execute("complete_criterion", criterion_index=idx)
+        if "error" in result:
+            console.print(f"[error]{result['error']}[/error]")
+        else:
+            console.print(f"[success]Marked criterion #{idx} complete.[/success]")
+            engine.goal_tool.render(console)
+
+    else:
+        raw = " ".join(args)
+        parts = [p.strip() for p in raw.split("|")]
+        goal_text, criteria = parts[0], [p for p in parts[1:] if p]
+
+        result = await engine.goal_tool.execute("set", goal=goal_text, success_criteria=criteria)
+        if "error" in result:
+            console.print(f"[error]{result['error']}[/error]")
+        else:
+            engine.goal_tool.render(console)
+
+
+async def cmd_note(engine: Any, args: List[str]):
+    if not args:
+        notes = _read_notes()
+        if not notes.strip():
+            console.print("[dim]notes.md is currently empty.[/dim]")
+        else:
+            console.print("\n[success]=== Current Notes (notes.md) ===[/success]\n")
+            console.print(Markdown(notes))
+            console.print()
+        console.print("Usage: [warning]/note[/warning], [warning]/note append <text>[/warning], or [warning]/note clear[/warning]\n")
+        return
+
+    subcmd = args[0].lower()
+    if subcmd == "clear":
+        _write_notes("")
+        console.print("[warning]notes.md cleared.[/warning]")
+    elif subcmd == "append":
+        text_to_append = " ".join(args[1:]).strip()
+        if not text_to_append:
+            console.print("[error]Usage: /note append <text>[/error]")
+            return
+        _append_notes(text_to_append)
+        console.print("[success]Appended text to notes.md.[/success]")
+    else:
+        text_to_append = " ".join(args).strip()
+        _append_notes(text_to_append)
+        console.print("[success]Appended text to notes.md.[/success]")
+
+
+async def cmd_memory(engine: Any, args: List[str]):
+    mem = _load_memory()
+
+    if not args:
+        console.print("\n[success]=== Saved Memory Items (memory.json) ===[/success]\n")
+        if not mem:
+            console.print("  [dim]No memory keys saved.[/dim]")
+        else:
+            for k, v in mem.items():
+                console.print(f"  • [label]{k}[/label]: {v}")
+        console.print("\nUsage: [warning]/memory[/warning], [warning]/memory save <key> <value>[/warning], [warning]/memory get <key>[/warning], [warning]/memory search <query>[/warning], [warning]/memory delete <key>[/warning], or [warning]/memory clear[/warning]\n")
+        return
+
+    subcmd = args[0].lower()
+
+    if subcmd == "save" and len(args) >= 3:
+        key = args[1]
+        val = " ".join(args[2:]).strip()
+        mem[key] = val
+        _save_memory(mem)
+        console.print(f"[success]Saved memory key '{key}'.[/success]")
+
+    elif subcmd == "get" and len(args) >= 2:
+        key = args[1]
+        if key in mem:
+            console.print(f"[label]{key}:[/label] {mem[key]}")
+        else:
+            console.print(f"[error]Memory key '{key}' not found.[/error]")
+
+    elif subcmd == "search" and len(args) >= 2:
+        query = " ".join(args[1:]).strip()
+        result = await memory_search.semantic_memory_search(query, mem, engine.config_mgr, verbose=True)
+
+        if result["status"] == "empty":
+            console.print("[dim]Memory is empty - nothing to search.[/dim]")
+        elif result["status"] == "error":
+            console.print(f"[error]Search failed:[/error] {result.get('error', 'Unknown error')}")
+        else:
+            matches = result["matches"]
+            if result.get("answer"):
+                console.print(f"\n[success]Answer:[/success] {result['answer']}")
+            if matches:
+                console.print("\n[label]Matching memory entries:[/label]")
+                for m in matches:
+                    console.print(f"  • [accent]{m['key']}[/accent]: {m['value']}  [dim]({m['why']})[/dim]")
+            elif not result.get("answer"):
+                console.print("[dim]No relevant memory entries found.[/dim]")
+
+    elif subcmd == "delete" and len(args) >= 2:
+        key = args[1]
+        if key in mem:
+            del mem[key]
+            _save_memory(mem)
+            console.print(f"[warning]Deleted memory key '{key}'.[/warning]")
+        else:
+            console.print(f"[error]Memory key '{key}' not found.[/error]")
+
+    elif subcmd == "clear":
+        _save_memory({})
+        console.print("[warning]Cleared all persistent memories from memory.json.[/warning]")
+
+    else:
+        console.print("[error]Usage: /memory save <key> <value> | /memory get <key> | /memory search <query> | /memory delete <key> | /memory clear[/error]")
+
+
+async def cmd_dream(engine: Any, args: List[str]):
+    console.print("[brand]💤 Dreaming...[/brand] [dim]Analyzing the conversation for reusable notes, memories, and skills.[/dim]")
+
+    extraction, error = await dream_extract(engine.messages, engine.config_mgr)
+    if error:
+        console.print(f"[warning]{error}[/warning]")
+        return
+
+    notes = extraction["notes"]
+    memory_items = extraction["memory"]
+    skills = extraction["skills"]
+
+    if not notes and not memory_items and not skills:
+        console.print("[dim]Nothing worth extracting from this conversation.[/dim]")
+        return
+
+    def prompt_selection() -> str:
+        try:
+            return input("Selection > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return ""
+
+    def resolve_indices(raw: str, count: int) -> set:
+        raw = raw.lower().strip()
+        if raw in ("all", "a", "y", "yes"):
+            return set(range(count))
+        if raw in ("none", "n", "no", "", "skip"):
+            return set()
+        indices = set()
+        for part in raw.replace(" ", "").split(","):
+            if part.isdigit():
+                idx = int(part) - 1
+                if 0 <= idx < count:
+                    indices.add(idx)
+        return indices
+
+    loop = asyncio.get_running_loop()
+    applied_notes = applied_memory = applied_skills = 0
+
+    if notes:
+        console.print(f"\n[label]📝 Candidate Notes ({len(notes)}):[/label]")
+        for i, n in enumerate(notes, 1):
+            console.print(f"  {i}. {n}")
+        console.print("[dim]Enter numbers to save (e.g. 1,3), 'all', or 'none':[/dim]")
+        raw = await loop.run_in_executor(None, prompt_selection)
+        chosen = resolve_indices(raw, len(notes))
+        for i in sorted(chosen):
+            _append_notes(f"- {notes[i]}")
+        applied_notes = len(chosen)
+
+    if memory_items:
+        console.print(f"\n[label]🧠 Candidate Memory Facts ({len(memory_items)}):[/label]")
+        for i, m in enumerate(memory_items, 1):
+            console.print(f"  {i}. [accent]{m['key']}[/accent] = {m['value']}")
+        console.print("[dim]Enter numbers to save (e.g. 1,3), 'all', or 'none':[/dim]")
+        raw = await loop.run_in_executor(None, prompt_selection)
+        chosen = resolve_indices(raw, len(memory_items))
+        if chosen:
+            mem = _load_memory()
+            for i in chosen:
+                mem[memory_items[i]["key"]] = memory_items[i]["value"]
+            _save_memory(mem)
+        applied_memory = len(chosen)
+
+    if skills:
+        console.print(f"\n[label]🛠️ Candidate Skills ({len(skills)}):[/label]")
+        existing_names = set(engine.skill_registry.list_skills().keys())
+        for i, s in enumerate(skills, 1):
+            dup_tag = " [warning](exists - will be overwritten)[/warning]" if s["name"] in existing_names else ""
+            console.print(f"  {i}. [accent]{s['name']}[/accent]{dup_tag} - {s['description']}")
+        console.print("[dim]Enter numbers to save (e.g. 1,3), 'all', or 'none':[/dim]")
+        raw = await loop.run_in_executor(None, prompt_selection)
+        chosen = resolve_indices(raw, len(skills))
+        for i in chosen:
+            s = skills[i]
+            decl = DeclarativeSkill(
+                name=s["name"],
+                description=s["description"] or "Skill extracted via /dream.",
+                system_instruction=s["system_instruction"],
+                enabled=True
+            )
+            engine.skill_registry.register(decl)
+        if chosen:
+            engine.skill_registry.save_to_file()
+            engine.update_system_message()
+        applied_skills = len(chosen)
+
+    console.print(
+        f"\n[success]Dream complete.[/success] Saved {applied_notes} note(s), "
+        f"{applied_memory} memory fact(s), and {applied_skills} skill(s)."
+    )
+
+
+async def cmd_script(engine: Any, args: List[str]):
+    if not args:
+        console.print("[error]Usage: /script <path/to/script.txt>[/error]")
+        return
+
+    filepath = " ".join(args).strip()
+    await engine.run_script_file(filepath)
+
+
+async def cmd_project(engine: Any, args: List[str]):
+    filename, content = project_rules.find_and_read_project_rules(".")
+    if args and args[0].lower() == "reload":
+        engine.update_system_message()
+        if filename:
+            console.print(f"[success]Reloaded project rules from '{filename}'.[/success]")
+        else:
+            console.print("[dim]No project rules file (PROJECT.md, MESH.md, AGENTS.md) found in workspace.[/dim]")
+        return
+
+    if filename and content:
+        console.print(f"\n[success]=== Project Rules ({filename}) ===[/success]\n")
+        console.print(Markdown(content))
+        console.print()
+    else:
+        console.print("[dim]No project rules file (PROJECT.md, MESH.md, AGENTS.md) found in current directory.[/dim]")
+    console.print("Usage: [warning]/project[/warning] | [warning]/project reload[/warning]\n")
+
+
+async def cmd_reflexion(engine: Any, args: List[str]):
+    if not args:
+        lessons_text = reflexion.get_reflexion_instructions()
+        if lessons_text:
+            console.print(f"\n[success]{lessons_text}[/success]\n")
+        else:
+            console.print("[dim]No distilled reflexion lessons currently saved.[/dim]")
+        console.print("Usage: [warning]/reflexion distill[/warning] | [warning]/reflexion clear[/warning]\n")
+        return
+
+    sub = args[0].lower()
+    if sub == "distill":
+        console.print("[brand]🧠 Distilling reflexion lessons...[/brand]")
+        success, msg = await reflexion.distill_reflexion_lessons(engine.config_mgr)
+        if success:
+            engine.update_system_message()
+            console.print(f"[success]{msg}[/success]")
+        else:
+            console.print(f"[warning]{msg}[/warning]")
+    elif sub == "clear":
+        reflexion.clear_reflexion()
+        engine.update_system_message()
+        console.print("[warning]Reflexion journal cleared.[/warning]")
+    else:
+        console.print("[error]Usage: /reflexion distill | /reflexion clear[/error]")
+
+
+async def cmd_checkpoint(engine: Any, args: List[str]):
+    if not args:
+        info = engine.checkpoint_mgr.list_checkpoints()
+        console.print(f"\n[success]Checkpoints (Active Branch: [accent]{info['active_branch']}[/accent]):[/success]")
+        if not info["checkpoints"]:
+            console.print("  [dim]No saved checkpoints.[/dim]\n")
+        else:
+            for tag, details in info["checkpoints"].items():
+                console.print(f"  • [label]{tag}[/label] (Branch: {details['branch']}, Messages: {details['messages_count']}, Mode: {details['mode']})")
+            console.print()
+        console.print("Usage: [warning]/checkpoint save <tag>[/warning] | [warning]/checkpoint list[/warning]\n")
+        return
+
+    sub = args[0].lower()
+    if sub == "save" and len(args) >= 2:
+        tag = args[1]
+        engine.checkpoint_mgr.create_snapshot(tag, engine)
+        console.print(f"[success]Checkpoint '[label]{tag}[/label]' saved on branch '[accent]{engine.checkpoint_mgr.active_branch}[/accent]'.[/success]")
+    elif sub == "list":
+        await cmd_checkpoint(engine, [])
+    else:
+        console.print("[error]Usage: /checkpoint save <tag> | /checkpoint list[/error]")
+
+
+async def cmd_fork(engine: Any, args: List[str]):
+    if not args:
+        console.print("[error]Usage: /fork <branch_name>[/error]")
+        return
+
+    branch_name = args[0].strip()
+    engine.checkpoint_mgr.active_branch = branch_name
+    engine.checkpoint_mgr.create_snapshot(f"branch_{branch_name}_start", engine)
+    console.print(f"[success]Forked current session into new branch: [accent]{branch_name}[/accent].[/success]")
+
+
+async def cmd_checkout(engine: Any, args: List[str]):
+    if not args:
+        console.print("[error]Usage: /checkout <tag_or_branch>[/error]")
+        return
+
+    target = args[0].strip()
+    success = engine.checkpoint_mgr.restore_snapshot(target, engine)
+    if success:
+        console.print(f"[success]Restored session state from checkpoint/branch: [accent]{target}[/accent].[/success]")
+    else:
+        console.print(f"[error]Checkpoint or branch '[accent]{target}[/accent]' not found. See /checkpoint list for available tags.[/error]")
+
+
+async def cmd_diff(engine: Any, args: List[str]):
+    diff_info = file_history_tracker.get_last_diff()
+    if not diff_info:
+        console.print("[dim]No file edits recorded in current session history.[/dim]")
+        return
+
+    console.print(f"\n[label]Unified Diff ({diff_info['action']} -> '{diff_info['path']}'):[/label]")
+    if diff_info["diff_text"]:
+        for line in diff_info["diff_text"].splitlines():
+            if line.startswith("+"):
+                console.print(f"[success]{line}[/success]")
+            elif line.startswith("-"):
+                console.print(f"[error]{line}[/error]")
+            else:
+                console.print(f"[dim]{line}[/dim]")
+    else:
+        console.print("[dim]No content changes detected.[/dim]")
+    console.print()
+
+
+async def cmd_undo(engine: Any, args: List[str]):
+    success, message = file_history_tracker.undo_last()
+    if success:
+        console.print(f"[success]{message}[/success]")
+    else:
+        console.print(f"[error]{message}[/error]")
+
+
+def register_session_commands(engine: Any):
+    engine.cmd_registry.register("goal", "View, set, or manage the pinned session goal: /goal <text> [| criterion 1 | criterion 2 ...] | /goal done <criterion #> | /goal clear", lambda args: cmd_goal(engine, args))
+    engine.cmd_registry.register("note", "View notes, or edit them: /note append <text> | /note clear", lambda args: cmd_note(engine, args))
+    engine.cmd_registry.register("memory", "View memory, or edit it: /memory save <key> <value> | /memory get <key> | /memory search <query> | /memory delete <key> | /memory clear", lambda args: cmd_memory(engine, args))
+    engine.cmd_registry.register("dream", "Analyze the conversation and extract candidate notes, memory facts, and skills", lambda args: cmd_dream(engine, args))
+    engine.cmd_registry.register("script", "Execute commands and prompts line-by-line from a script file: /script <file.txt>", lambda args: cmd_script(engine, args))
+    engine.cmd_registry.register("project", "View or reload workspace project rules (PROJECT.md): /project [reload]", lambda args: cmd_project(engine, args))
+    engine.cmd_registry.register("reflexion", "View or distill cross-session error lessons: /reflexion [distill|clear]", lambda args: cmd_reflexion(engine, args))
+    engine.cmd_registry.register("checkpoint", "Save or list session checkpoints: /checkpoint save <tag> | /checkpoint list", lambda args: cmd_checkpoint(engine, args))
+    engine.cmd_registry.register("fork", "Fork current session state into a new working branch: /fork <branch_name>", lambda args: cmd_fork(engine, args))
+    engine.cmd_registry.register("checkout", "Restore session state from a checkpoint tag or branch: /checkout <tag_or_branch>", lambda args: cmd_checkout(engine, args))
+    engine.cmd_registry.register("diff", "Display unified diff of recent file edits made by tools", lambda args: cmd_diff(engine, args))
+    engine.cmd_registry.register("undo", "Revert the last file modification made on disk by a tool", lambda args: cmd_undo(engine, args))

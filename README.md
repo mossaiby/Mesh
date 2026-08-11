@@ -2,7 +2,7 @@
 
 **v1.0.0**
 
-A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Speculative Swarm Exploration**, **Autonomous Tool Synthesis**, **Adversarial Multi-Model Consensus**, **Multi-Role Autonomous Task Squads**, **Cross-Session Reflexion Journaling**, **AST Codebase Symbol Indexing**, **Session Checkpointing & Branching**, **Unified Diff Previews & File Rollback**, **Script File Execution & Automation**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
+A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Speculative Swarm Exploration**, **Autonomous Tool Synthesis**, **Adversarial Multi-Model Consensus**, **Multi-Role Autonomous Task Squads**, **Cross-Session Reflexion Journaling**, **AST Codebase Symbol Indexing**, **Session Checkpointing & Branching**, **Unified Diff Previews & File Rollback**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
 
 ---
 
@@ -550,6 +550,7 @@ Mesh/
 ├── version.py                 # Single source of truth for the app version
 ├── theme.py                   # Shared Rich theme & console instance
 ├── config.py                  # Configuration manager and Pydantic schemas
+├── engine.py                  # Central MeshEngine orchestration & inference turn loop
 ├── subagent.py                # Sub-Agent Proxy distillation engine
 ├── delegation.py              # Task Delegation engine
 ├── explore.py                 # Speculative Swarm Branch Exploration engine
@@ -567,7 +568,9 @@ Mesh/
 ├── modes.py                   # Operating modes (Plan/Build/Review/YOLO)
 ├── compaction.py              # Semantic context window compaction module
 ├── dream.py                   # /dream conversation analysis & knowledge extraction
-├── main.py                    # Main CLI entry point and orchestration loop
+├── terminal_ui.py             # Prompt_toolkit session with Tab-completion
+├── project_rules.py           # Project instructions & rules loader (PROJECT.md)
+├── main.py                    # Clean CLI entry point and REPL loop
 ├── custom_tools/              # Directory for dynamically synthesized tools
 ├── providers/
 │   ├── __init__.py
@@ -595,7 +598,11 @@ Mesh/
 │   └── symbol_tool.py         # search_symbols AST search tool
 ├── commands/
 │   ├── __init__.py
-│   └── registry.py            # Slash command registry
+│   ├── registry.py            # Slash command registry
+│   ├── agent_commands.py      # /delegate, /explore, /consensus, /squad, /advisor, /guard, /mode
+│   ├── model_commands.py      # /models, /switch
+│   ├── session_commands.py    # /goal, /note, /memory, /dream, /script, /project, /reflexion, /checkpoint, /fork, /checkout, /diff, /undo
+│   └── system_commands.py     # /help, /status, /version, /context, /system, /tools, /skills, /dirs, /mcps, /proxy, /selfheal, /compact, /autocompact, /clear, /retry, /debug, /exit
 ├── mcp/
 │   ├── __init__.py
 │   └── client.py              # Stdio JSON-RPC MCP client
@@ -610,6 +617,9 @@ Mesh/
 
 ## 🩹 Changelog / Bug Fixes (v1.0.0)
 
+- **Refactored Architecture (`main.py` -> `engine.py` & `commands/`)**: Split `main.py` into `MeshEngine` (`engine.py`) and 4 modular command submodules (`commands/model_commands.py`, `commands/agent_commands.py`, `commands/session_commands.py`, `commands/system_commands.py`), reducing `main.py` to a clean ~110-line CLI entry point.
+- **Added `prompt_toolkit` Tab-Completion (`terminal_ui.py`)**: Asynchronous Tab-completion for all slash commands, model keys, operating modes, and file paths.
+- **Added `PROJECT.md` Project Rules Support (`project_rules.py`)**: Automatically scans workspace roots for project rule files (`PROJECT.md`, `MESH.md`, `AGENTS.md`) and injects instructions directly into the system prompt.
 - **Added Script File Execution & Headless Automation (`/script`, CLI `-f`/`-n`)**: Execute commands and prompts line-by-line from a file interactively or headlessly (`python main.py script.txt --non-interactive`).
 - **Added Pattern-Based Batch Model Addition (`/models add [<provider>] [<pattern>]`)**: Allows interactively picking discovered models or batch-adding models matching wildcard patterns (e.g. `/models add openrouter *free*` or `/models add groq llama`) directly into `models.json`.
 - **Added Model Discovery (`/models discover`)**: Queries provider REST endpoints (`/v1/models`) to discover models offered by local or cloud backends dynamically.
