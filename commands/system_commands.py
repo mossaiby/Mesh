@@ -7,6 +7,7 @@ from compaction import compact_messages, estimate_tokens
 import symbol_search
 import project_rules
 import hooks
+from pricing import pricing_manager
 from theme import console
 from version import __version__
 
@@ -82,6 +83,10 @@ async def cmd_status(engine: Any, args: List[str]):
     console.print(
         f"• [label]Context Window:[/label] {len(engine.messages)} messages, "
         f"~{est_tokens}/{window} est. tokens ({usage_pct}%)"
+    )
+    console.print(
+        f"• [label]Session Usage & Cost:[/label] {engine.session_prompt_tokens} in, {engine.session_completion_tokens} out "
+        f"([accent]${engine.session_cost_usd:.4f} USD total[/accent])"
     )
     console.print(
         f"• [label]Auto-Compaction:[/label] {autocompact_state} "

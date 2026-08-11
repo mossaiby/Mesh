@@ -40,6 +40,8 @@ import project_rules
 import reflexion
 import modes
 import jobs
+import context_mentions
+from pricing import pricing_manager
 from checkpoint import CheckpointManager
 from guard import SafetyGuard
 from subagent import SubAgentProxy
@@ -54,7 +56,7 @@ from commands import (
 )
 from mcp.client import MCPManager
 from skills import SkillRegistry, PythonCodingSkill
-from compaction import maybe_auto_compact
+from compaction import maybe_auto_compact, estimate_tokens
 from theme import console
 
 
@@ -88,6 +90,11 @@ class MeshEngine:
         self._pre_yolo_guard_autonomy: Optional[str] = None
         self._pre_yolo_permission_auto_approve: Optional[bool] = None
         self.messages: List[Dict[str, Any]] = []
+
+        # Session metrics tracking
+        self.session_prompt_tokens: int = 0
+        self.session_completion_tokens: int = 0
+        self.session_cost_usd: float = 0.0
 
         self.setup_defaults()
         self.tool_registry.mode_blocked_tools = modes.blocked_tools_for_mode(self.current_mode, self.tool_registry)
@@ -192,7 +199,8 @@ class MeshEngine:
                 if not handled:
                     console.print("[error]Unknown command in script. Type /help for options.[/error]")
             else:
-                self.messages.append({"role": "user", "content": line})
+                formatted_input, _ = context_mentions.process_prompt_context_mentions(line, ".")
+                self.messages.append({"role": "user", "content": formatted_input})
                 await self.process_inference()
 
     async def run(self, script_file: Optional[str] = None, non_interactive: bool = False):
@@ -223,7 +231,10 @@ class MeshEngine:
                         console.print("[error]Unknown command. Type /help for options.[/error]")
                     continue
 
-                self.messages.append({"role": "user", "content": user_input})
+                # Parse @filename context mentions
+                formatted_input, _ = context_mentions.process_prompt_context_mentions(user_input, ".")
+
+                self.messages.append({"role": "user", "content": formatted_input})
                 await self.process_inference()
 
             except (KeyboardInterrupt, EOFError):
@@ -257,16 +268,20 @@ class MeshEngine:
             if schemas and self.tool_registry.mode_blocked_tools:
                 schemas = [s for s in schemas if s["function"]["name"] not in self.tool_registry.mode_blocked_tools]
 
-            console.print(f"\n[info]Assistant ({model_cfg.name} via {provider_cfg.name})[/info] >")
-
             tool_calls_to_run = []
+            turn_prompt_tokens = 0
+            turn_completion_tokens = 0
 
             async def chunk_generator():
+                nonlocal turn_prompt_tokens, turn_completion_tokens
                 async for chunk in provider.stream_chat(self.messages, tools=schemas):
                     ctype = chunk["type"]
                     cval = chunk["value"]
 
-                    if ctype == "tool_calls" and self.tools_enabled:
+                    if ctype == "usage":
+                        turn_prompt_tokens = cval.get("prompt_tokens", 0)
+                        turn_completion_tokens = cval.get("completion_tokens", 0)
+                    elif ctype == "tool_calls" and self.tools_enabled:
                         for tc in cval:
                             idx = tc.index
                             while len(tool_calls_to_run) <= idx:
@@ -279,6 +294,26 @@ class MeshEngine:
                                 tool_calls_to_run[idx]["args"] += tc.function.arguments
                     else:
                         yield chunk
+
+            # Fallback estimation if API endpoint doesn't return exact stream usage
+            if turn_prompt_tokens == 0:
+                turn_prompt_tokens = estimate_tokens(self.messages)
+
+            # Header rendering with real-time cost calculation
+            active_key = self.config_mgr.config.active_model
+            _, _, turn_cost = pricing_manager.get_token_cost(active_key, turn_prompt_tokens, turn_completion_tokens)
+
+            self.session_prompt_tokens += turn_prompt_tokens
+            self.session_completion_tokens += turn_completion_tokens
+            self.session_cost_usd += turn_cost
+
+            cost_str = f"${turn_cost:.4f} turn, ${self.session_cost_usd:.4f} session"
+            token_str = f"{turn_prompt_tokens} in, {turn_completion_tokens} out"
+
+            console.print(
+                f"\n[info]Assistant ({model_cfg.name} via {provider_cfg.name})[/info] "
+                f"[dim][{token_str} | {cost_str}][/dim] >"
+            )
 
             try:
                 response_text, reasoning_text = await self.renderer.render_stream(

@@ -15,7 +15,7 @@ except ImportError:
 class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
     """
     Custom completion engine for Mesh: autocomplete slash commands,
-    model keys, operating modes, and local workspace file paths.
+    model keys, operating modes, and local workspace file paths (including @file mentions).
     """
     def __init__(self, mesh_instance: Any):
         self.mesh = mesh_instance
@@ -81,7 +81,24 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                     yield Completion(sub, start_position=-len(prefix))
             return
 
-        # 7. File Path Completion for /script, /dirs, /checkpoint
+        # 7. Complete @file Mentions anywhere in prompt
+        if "@" in text:
+            at_idx = text.rfind("@")
+            partial = text[at_idx + 1:]
+            dirname, basename = os.path.split(partial)
+            search_dir = dirname if dirname else "."
+            if os.path.exists(search_dir) and os.path.isdir(search_dir):
+                try:
+                    for entry in os.listdir(search_dir):
+                        if entry.startswith(basename) and not entry.startswith(".git"):
+                            full_rel = os.path.join(dirname, entry) if dirname else entry
+                            display = entry + ("/" if os.path.isdir(os.path.join(search_dir, entry)) else "")
+                            yield Completion(f"@{full_rel}", start_position=-len(partial) - 1, display=display)
+                except Exception:
+                    pass
+            return
+
+        # 8. File Path Completion for /script, /dirs, /checkpoint
         if len(words) >= 2 and words[0].lower() in ("/script", "/dirs", "/checkpoint"):
             partial_path = words[-1]
             dirname, basename = os.path.split(partial_path)

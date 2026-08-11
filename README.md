@@ -44,7 +44,7 @@ python main.py --file script.txt --non-interactive
 
 | Command | Description |
 | :--- | :--- |
-| **`/status`** | Display active model, tools, MCPs, symbol count, branch, and context status. |
+| **`/status`** | Display active model, tools, MCPs, symbol count, branch, session token usage, USD cost, and context status. |
 | **`/models [discover\|add]`** | List configured models, query endpoints (`/models discover`), or batch-add models (`/models add openrouter *free*`). |
 | **`/switch [key]`** | Switch active model using cross-platform arrow keys or model key. |
 | **`/agent <subcmd>`** | Sub-agent swarms: `/agent explore` (branch search), `/agent squad` (4-stage pipeline), `/agent consensus` (audit), `/agent delegate` (handoff), `/agent advisor` (opinion). |
@@ -78,9 +78,13 @@ python main.py --file script.txt --non-interactive
 
 ## 🌟 Key Capabilities
 
-### 🔌 Multi-Provider & Model Discovery
+### 🔌 Multi-Provider, Model Discovery & Cost Metering
 * **REST Compatibility:** Connect to OpenAI, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible backend.
 * **Remote Model Discovery:** Query provider `/v1/models` endpoints dynamically (`/models discover`) and batch-add models using wildcard patterns (`/models add openrouter *free*`).
+* **Real-Time $ USD Cost Tracking:** Editable `pricing.json` tracks exact prompt/completion token usage and cumulative session cost in USD (`$0.003 turn | $0.015 session`) in response headers and `/status`.
+
+### 📎 Inline Prompt Shortcuts (`@filename`)
+* **Autocomplete & Auto-Attach:** Typing `@` in prompts triggers Tab-completion for workspace files (`@src/engine.py`). Mentioning files automatically reads and attaches their formatted code blocks directly into the prompt payload.
 
 ### 🐝 Sub-Agent Swarms & Advanced Reasoning (`/agent`)
 * **Speculative Swarm Exploration (`/agent explore`):** Spawns $N$ parallel sub-agents with distinct strategies to attempt a task, then uses an LLM Judge pass to synthesize the winning solution.
@@ -144,6 +148,22 @@ Defines provider REST endpoints and model configurations, plus a single global s
 }
 ```
 
+### `pricing.json`
+Defines input/output costs per 1,000,000 tokens for real-time USD cost tracking.
+
+```json
+{
+  "prices_per_1m_tokens": {
+    "openai:gpt-4o": { "input": 2.50, "output": 10.00 },
+    "groq:llama-3.3-70b-versatile": { "input": 0.59, "output": 0.79 },
+    "openrouter:anthropic/claude-3.5-sonnet": { "input": 3.00, "output": 15.00 },
+    "lmstudio:*": { "input": 0.00, "output": 0.00 },
+    "ollama:*": { "input": 0.00, "output": 0.00 },
+    "default": { "input": 0.00, "output": 0.00 }
+  }
+}
+```
+
 ### `mcps.json`
 Configures Model Context Protocol (MCP) stdio servers.
 
@@ -170,6 +190,7 @@ Configures Model Context Protocol (MCP) stdio servers.
 Mesh/
 ├── requirements.txt           # Project Python dependencies
 ├── models.json                # Provider endpoints and model configurations
+├── pricing.json               # Per-1M token pricing tables for USD cost tracking
 ├── mcps.json                  # Model Context Protocol server definitions
 ├── skills.json                # Declarative skills configuration
 ├── memory.json                # Persistent key-value memory storage
@@ -178,7 +199,9 @@ Mesh/
 ├── version.py                 # Single source of truth for the app version
 ├── theme.py                   # Shared Rich theme & console instance
 ├── config.py                  # Configuration manager and Pydantic schemas
-├── engine.py                  # Central MeshEngine orchestration & inference turn loop
+├── pricing.py                 # Real-time USD cost & token metering manager
+├── context_mentions.py        # @filename prompt mention parser & attachment engine
+├── engine.py                  # Central MeshEngine orchestration & turn loop
 ├── subagent.py                # Sub-Agent Proxy distillation engine
 ├── delegation.py              # Task Delegation engine
 ├── explore.py                 # Speculative Swarm Branch Exploration engine

@@ -46,25 +46,32 @@ class OpenAIProvider:
     ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Streams completion responses. Yields dictionary objects containing
-        either incremental content text, reasoning/CoT tokens, or tool call fragments.
+        incremental content text, reasoning/CoT tokens, tool call fragments,
+        or exact API token usage metadata.
         """
         kwargs: Dict[str, Any] = {
             "model": self.model_config.model_id,
             "messages": messages,
-            "stream": True
+            "stream": True,
+            "stream_options": {"include_usage": True}
         }
         if tools:
             kwargs["tools"] = tools
-            # Explicitly request "auto" tool choice. This is the implicit
-            # default per the OpenAI spec when omitted, but several local
-            # OpenAI-compatible backends (llama.cpp server, LM Studio, etc.)
-            # don't reliably switch on tool-calling/grammar-constrained
-            # decoding unless tool_choice is present in the request body.
             kwargs["tool_choice"] = "auto"
 
         response_stream = await self.client.chat.completions.create(**kwargs)
 
         async for chunk in response_stream:
+            # Yield usage metadata if returned in final stream chunk
+            if hasattr(chunk, "usage") and chunk.usage:
+                yield {
+                    "type": "usage",
+                    "value": {
+                        "prompt_tokens": getattr(chunk.usage, "prompt_tokens", 0),
+                        "completion_tokens": getattr(chunk.usage, "completion_tokens", 0)
+                    }
+                }
+
             if not chunk.choices:
                 continue
             
