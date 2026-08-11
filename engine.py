@@ -367,9 +367,9 @@ class MeshEngine:
 
                 for tool_call in tool_calls_to_run:
                     if self.debug_mode:
-                        console.print(f"\n[brand]🔧 DEBUG - Tool Execution Request:[/brand] {tool_call['name']}({tool_call['args']})")
+                        console.print(f"[brand]🔧 DEBUG - Tool Execution Request:[/brand] {tool_call['name']}({tool_call['args']})")
                     else:
-                        console.print(f"\n[accent]⚡ Tool Execution Request: {tool_call['name']}({tool_call['args']})[/accent]")
+                        console.print(f"[accent]⚡ Tool Execution Request: {tool_call['name']}({tool_call['args']})[/accent]")
 
                     tool_result = await self.tool_registry.execute(tool_call["name"], tool_call["args"])
 

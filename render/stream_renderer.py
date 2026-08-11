@@ -18,23 +18,27 @@ class StreamRenderer:
     ) -> Tuple[str, str]:
         """
         Consumes chunks (reasoning & content) and streams them cleanly.
+        Displays [Waiting...] until the first token arrives.
+        Displays [Thinking...] in /debug off mode while reasoning models stream Chain-of-Thought tokens,
+        and removes it once response content arrives.
         Unifies rendering through rich.console.Group inside Live context
         to avoid screen corruption and cursor overwrites.
-        Gracefully handles KeyboardInterrupt / CancelledError context cleanup.
 
         Returns: (accumulated_content, accumulated_reasoning)
         """
         accumulated_content = ""
         accumulated_reasoning = ""
+        received_first_chunk = False
         
         try:
             with Live(
-                Text(""),
+                Text("[Waiting...]", style="dim italic"),
                 console=self.console,
                 refresh_per_second=12,
                 vertical_overflow="visible"
             ) as live:
                 async for chunk in async_chunk_generator:
+                    received_first_chunk = True
                     ctype = chunk["type"]
                     cval = chunk["value"]
                     
@@ -45,11 +49,14 @@ class StreamRenderer:
                     
                     renderables = []
                     
-                    # Render Chain of Thought in debug mode without borders
-                    if debug_mode and accumulated_reasoning:
-                        renderables.append(Text(accumulated_reasoning, style="dim italic"))
-                        
-                    # Render response Markdown
+                    # 1. Reasoning / Thinking indicator logic
+                    if accumulated_reasoning:
+                        if debug_mode:
+                            renderables.append(Text(accumulated_reasoning, style="dim italic"))
+                        elif not accumulated_content:
+                            renderables.append(Text("[Thinking...]", style="dim italic"))
+                            
+                    # 2. Response Markdown content
                     if accumulated_content:
                         renderables.append(Markdown(accumulated_content))
                         
@@ -58,6 +65,7 @@ class StreamRenderer:
                         live.update(Group(*renderables))
                     else:
                         live.update(Text(""))
+
         except (KeyboardInterrupt, asyncio.CancelledError):
             raise
 

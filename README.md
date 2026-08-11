@@ -69,7 +69,7 @@ python main.py --file script.txt --non-interactive
 | `/mcps` | View connected Model Context Protocol servers or toggle tools. |
 | `/skills` | Enable, disable, or register custom system skills. |
 | `/dirs` | Manage authorized directory paths enforced by `PermissionManager`. |
-| `/compact` | Semantically summarize older conversation context using the LLM. |
+| `/compact` | Semantically compact older conversation context using the LLM. |
 | `/debug [on\|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent traces. |
 | `/clear` | Clear conversation history while preserving system prompt, goal, and skills. |
 | `/exit` | Gracefully terminate background processes and exit Mesh. |
@@ -83,12 +83,13 @@ python main.py --file script.txt --non-interactive
 * **Remote Model Discovery:** Query provider `/v1/models` endpoints dynamically (`/models discover`) and batch-add models using wildcard patterns (`/models add openrouter *free*`).
 * **Real-Time $ USD Cost Tracking:** Editable `pricing.json` tracks exact prompt/completion token usage and cumulative session cost in USD (`$0.003 turn | $0.015 session`) in response headers and `/status`.
 
+### ⚡ Real-Time Streaming & Thinking Indicators
+* **`[Waiting...]` & `[Thinking...]` UX:** Displays `[Waiting...]` in dim italic while waiting for the first token to arrive. Displays `[Thinking...]` in `/debug off` mode while reasoning models generate Chain-of-Thought tokens, clearing it automatically when response content streams in.
+* **Inline Prompt Shortcuts (`@filename`):** Typing `@` in prompts triggers Tab-completion for workspace files (`@src/engine.py`). Mentioning files automatically reads and attaches their formatted code blocks directly into the prompt payload.
+* **Graceful `Ctrl+C` Turn Cancellation:** Pressing `Ctrl+C` during streaming or tool execution cancels *only* the current turn, cleans up context, and returns safely to the prompt without exiting Mesh.
+
 ### 🕸️ Automated Repository Map (Dependency Graph & PageRank)
 * **Token-Compact Codebase Map (`repo_map.py` / `/project map`):** Pre-computes a PageRank dependency graph across codebase symbols and injects a 500-token repository architecture map into the system prompt. The LLM understands full codebase topology on Turn 1!
-
-### 📎 Inline Prompt Shortcuts (`@filename`) & Graceful Interrupts
-* **Autocomplete & Auto-Attach:** Typing `@` in prompts triggers Tab-completion for workspace files (`@src/engine.py`). Mentioning files automatically reads and attaches their formatted code blocks directly into the prompt payload.
-* **Graceful `Ctrl+C` Turn Cancellation:** Pressing `Ctrl+C` during streaming or tool execution cancels *only* the current turn, cleans up context, and returns safely to the prompt without exiting Mesh.
 
 ### 🐝 Sub-Agent Swarms & Advanced Reasoning (`/agent`)
 * **Speculative Swarm Exploration (`/agent explore`):** Spawns $N$ parallel sub-agents with distinct strategies to attempt a task, then uses an LLM Judge pass to synthesize the winning solution.
@@ -279,6 +280,7 @@ Mesh/
 
 ## 🩹 Changelog / Bug Fixes (v1.0.0)
 
+- **Added Streaming `[Waiting...]` and `[Thinking...]` Indicators (`stream_renderer.py`)**: Displays `[Waiting...]` before the first response chunk arrives, and `[Thinking...]` in `/debug off` mode while reasoning models stream Chain-of-Thought tokens, clearing automatically when response content streams in.
 - **Added Automated Repository Map (`repo_map.py`, `/project map`)**: Pre-computes a PageRank dependency graph across codebase symbols and injects a 500-token repository architecture map into system prompts.
 - **Fixed Stream Output Token Metering & Post-Stream Calculations**: Fixed a streaming lifecycle ordering bug where completion tokens previously showed 0. Completion tokens and real-time USD costs now calculate post-stream and display in turn footers.
 - **Simplified Native Tool Names to Single Words**: Renamed native LLM tools to clean single words (`run_shell_command` ➔ `shell`, `run_background_command` ➔ `job`, `todo_manager` ➔ `todo`, `note_manager` ➔ `note`, `goal_manager` ➔ `goal`).
