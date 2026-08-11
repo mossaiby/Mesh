@@ -1,5 +1,5 @@
+import argparse
 import asyncio
-import fnmatch
 import sys
 import os
 from typing import Optional, List
@@ -203,6 +203,7 @@ class Mesh:
         self.cmd_registry.register("status", "Show current Mesh status overview", self.cmd_status)
         self.cmd_registry.register("models", "List, discover, or add models: /models | /models discover [<provider>] | /models add [<provider>] [<pattern>]", self.cmd_models)
         self.cmd_registry.register("switch", "Switch active model interactively, or directly: /switch <model_key>", self.cmd_switch)
+        self.cmd_registry.register("script", "Execute commands and prompts line-by-line from a script file: /script <file.txt>", self.cmd_script)
         self.cmd_registry.register("clear", "Clear the conversation context window", self.cmd_clear)
         self.cmd_registry.register("compact", "Semantically summarize older conversation context", self.cmd_compact)
         self.cmd_registry.register("autocompact", "View or set auto-compaction: /autocompact on | /autocompact off | /autocompact threshold <0-100>", self.cmd_autocompact)
@@ -235,6 +236,39 @@ class Mesh:
         self.cmd_registry.register("debug", "Toggle debug mode (CoT & tool traces): /debug on | /debug off", self.cmd_debug)
         self.cmd_registry.register("version", "Show the current Mesh version", self.cmd_version)
         self.cmd_registry.register("exit", "Exit Mesh", self.cmd_exit)
+
+    async def run_script_file(self, filepath: str):
+        """Reads and executes a script file line-by-line (commands & prompts)."""
+        if not os.path.exists(filepath):
+            console.print(f"[error]Script file '{filepath}' not found.[/error]")
+            return
+
+        try:
+            with open(filepath, "r", encoding="utf-8") as f:
+                lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+        except Exception as e:
+            console.print(f"[error]Failed to read script file '{filepath}': {e}[/error]")
+            return
+
+        console.print(f"[brand]📜 Executing script file:[/brand] [label]{filepath}[/label] ({len(lines)} lines)\n")
+
+        for idx, line in enumerate(lines, 1):
+            console.print(f"[info]Script [{idx}/{len(lines)}]> [/info] {line}")
+            if self.cmd_registry.is_command(line):
+                handled = await self.cmd_registry.dispatch(line)
+                if not handled:
+                    console.print("[error]Unknown command in script. Type /help for options.[/error]")
+            else:
+                self.messages.append({"role": "user", "content": line})
+                await self.process_inference()
+
+    async def cmd_script(self, args):
+        if not args:
+            console.print("[error]Usage: /script <path/to/script.txt>[/error]")
+            return
+
+        filepath = " ".join(args).strip()
+        await self.run_script_file(filepath)
 
     async def cmd_help(self, args):
         console.print("\n[success]Available Slash Commands:[/success]\n")
@@ -1511,10 +1545,16 @@ class Mesh:
             pass
         sys.exit(0)
 
-    async def run(self):
+    async def run(self, script_file: Optional[str] = None, non_interactive: bool = False):
         console.print(f"[brand]Mesh v{__version__} Started.[/brand] Initializing MCP servers...")
         
         await self.mcp_manager.initialize_all(self.tool_registry)
+
+        if script_file:
+            await self.run_script_file(script_file)
+            if non_interactive:
+                console.print("\n[warning]Script execution complete in non-interactive mode. Exiting...[/warning]")
+                await self.cmd_exit([])
 
         console.print("[brand]Ready.[/brand] Type [warning]/help[/warning] for commands or start chatting.\n")
         
@@ -1653,5 +1693,13 @@ class Mesh:
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Mesh - Modular AI CLI")
+    parser.add_argument("script", nargs="?", help="Optional path to a script file to execute on launch")
+    parser.add_argument("-f", "--file", help="Path to a script file to execute on launch")
+    parser.add_argument("-n", "--non-interactive", action="store_true", help="Exit automatically after running script file")
+    
+    parsed_args = parser.parse_args()
+    script_path = parsed_args.file or parsed_args.script
+
     mesh = Mesh()
-    asyncio.run(mesh.run())
+    asyncio.run(mesh.run(script_file=script_path, non_interactive=parsed_args.non_interactive))
