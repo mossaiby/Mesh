@@ -209,45 +209,28 @@ async def cmd_context(engine: Any, args: List[str]):
         console.print()
 
     tools_state = "[success]ENABLED[/success]" if engine.tools_enabled else "[error]DISABLED[/error]"
-    proxy_state = "[success]ON[/success]" if engine.subagent_proxy.enabled else "[error]OFF[/error]"
-    console.print(f"[success]=== ACTIVE TOOL SCHEMAS ({tools_state} | Proxy Distillation: {proxy_state}) ===[/success]\n")
+    console.print(f"[success]=== ACTIVE TOOL NAMES ({tools_state}) ===[/success]\n")
     if engine.tools_enabled:
         schemas = engine.tool_registry.get_schemas()
         if schemas:
-            for s in schemas:
-                fn = s.get("function", {})
-                name = fn.get("name", "unnamed")
-                desc = fn.get("description", "No description")
-                params = fn.get("parameters", {}).get("properties", {})
-                param_keys = ", ".join(params.keys()) if params else "none"
-                console.print(f"• [label]{name}[/label]: {escape(desc)}")
-                console.print(f"  [dim]Parameters: ({param_keys})[/dim]")
+            tool_names = [s.get("function", {}).get("name", "unnamed") for s in schemas]
+            console.print(f"  • [label]Registered ({len(tool_names)}):[/label] {', '.join(tool_names)}")
         else:
             console.print("  [dim]No tools currently registered.[/dim]")
     else:
-        console.print("  [dim]Tools are disabled (/tools off). No schemas are sent to the model.[/dim]")
+        console.print("  [dim]Tools are disabled (/tools off). No schemas sent to model.[/dim]")
     console.print()
 
     global_mcp_str = "[success]ENABLED[/success]" if engine.mcp_manager.global_enabled else "[error]DISABLED[/error]"
-    console.print(f"[success]=== MCP SERVERS & TOOLS (Global MCP: {global_mcp_str}) ===[/success]\n")
+    console.print(f"[success]=== MCP SERVERS (Global MCP: {global_mcp_str}) ===[/success]\n")
     mcp_info = engine.mcp_manager.get_server_info()
     if mcp_info:
         for name, details in mcp_info.items():
             status = "[success]CONNECTED[/success]" if details["connected"] else "[error]DISCONNECTED[/error]"
             enabled_str = "[success]ENABLED[/success]" if details["enabled"] else "[error]DISABLED[/error]"
-            cmd_str = f"{details['command']} {' '.join(details['args'])}" if details['command'] else "N/A"
-            console.print(f"• [label]{name}[/label] ({status}) ({enabled_str}) — [dim]{escape(cmd_str)}[/dim]")
-            
             tools = details.get("tools", [])
-            if tools:
-                for t in tools:
-                    t_name = t.get("name", "unnamed")
-                    t_desc = t.get("description", "No description")
-                    t_props = t.get("inputSchema", {}).get("properties", {})
-                    t_args = ", ".join(t_props.keys()) if t_props else "none"
-                    console.print(f"    - [accent]{t_name}[/accent]: {t_desc} [dim]({t_args})[/dim]")
-            else:
-                console.print("    [dim]No tools exposed.[/dim]")
+            mcp_tool_names = ", ".join([t.get("name", "") for t in tools]) if tools else "none"
+            console.print(f"• [label]{name}[/label] ({status}) ({enabled_str}) — [dim]Tools: {mcp_tool_names}[/dim]")
     else:
         console.print("  [dim]No MCP servers configured in mcps.json.[/dim]")
     console.print()
@@ -277,27 +260,32 @@ async def cmd_system(engine: Any, args: List[str]):
 
 async def cmd_tools(engine: Any, args: List[str]):
     if not args:
-        state_str = "[success]ON[/success]" if engine.tools_enabled else "[error]OFF[/error]"
-        console.print(f"Tool inclusion & execution is currently {state_str}.\n")
-        console.print("[success]Available Registered Tools:[/success]")
+        state_str = "[success]ENABLED[/success]" if engine.tools_enabled else "[error]DISABLED[/error]"
+        proxy_s = "[success]ON[/success]" if engine.subagent_proxy.enabled else "[error]OFF[/error]"
+        console.print(f"\n[success]=== REGISTERED TOOLS & SCHEMAS ({state_str} | Proxy Distillation: {proxy_s}) ===[/success]\n")
         schemas = engine.tool_registry.get_schemas()
         if not schemas:
-            console.print("  [dim]No tools registered.[/dim]")
-        for s in schemas:
-            fn = s.get("function", {})
-            name = fn.get("name", "unnamed")
-            desc = fn.get("description", "No description")
-            console.print(f"  • [label]{name}[/label]: {escape(desc)}")
-        console.print("\nUsage: [warning]/tools on[/warning] or [warning]/tools off[/warning]")
+            console.print("  [dim]No tools currently registered.[/dim]\n")
+        else:
+            for s in schemas:
+                fn = s.get("function", {})
+                name = fn.get("name", "unnamed")
+                desc = fn.get("description", "No description")
+                params = fn.get("parameters", {}).get("properties", {})
+                param_keys = ", ".join(params.keys()) if params else "none"
+                console.print(f"• [label]{name}[/label]: {escape(desc)}")
+                console.print(f"  [dim]Parameters: ({param_keys})[/dim]")
+            console.print()
+        console.print("Usage: [warning]/tools on[/warning] | [warning]/tools off[/warning]\n")
         return
 
     arg = args[0].lower()
     if arg == "on":
         engine.tools_enabled = True
-        console.print("[success]Tool context inclusion & execution enabled.[/success]")
+        console.print("[success]Tool context inclusion & execution ENABLED.[/success]")
     elif arg == "off":
         engine.tools_enabled = False
-        console.print("[warning]Tool context inclusion & execution disabled.[/warning]")
+        console.print("[warning]Tool context inclusion & execution DISABLED.[/warning]")
     else:
         console.print("[error]Invalid option. Use '/tools on' or '/tools off'.[/error]")
 
@@ -481,9 +469,9 @@ def register_system_commands(engine: Any):
     engine.cmd_registry.register("help", "Show available slash commands", lambda args: cmd_help(engine, args))
     engine.cmd_registry.register("status", "Show current Mesh status overview", lambda args: cmd_status(engine, args))
     engine.cmd_registry.register("config", "View or set automation toggles: /config [proxy|repair|hooks|compact]", lambda args: cmd_config(engine, args))
-    engine.cmd_registry.register("context", "Display context window, tool schemas, and MCP status", lambda args: cmd_context(engine, args))
+    engine.cmd_registry.register("context", "Display context window and active tool names", lambda args: cmd_context(engine, args))
     engine.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", lambda args: cmd_system(engine, args))
-    engine.cmd_registry.register("tools", "List registered tools, or toggle inclusion: /tools on | /tools off", lambda args: cmd_tools(engine, args))
+    engine.cmd_registry.register("tools", "List registered tools with full schemas, or toggle inclusion: /tools [on|off]", lambda args: cmd_tools(engine, args))
     engine.cmd_registry.register("skills", "List skills, or toggle one: /skills enable <name> | /skills disable <name>", lambda args: cmd_skills(engine, args))
     engine.cmd_registry.register("dirs", "List allowed directories, or edit them: /dirs add <path> | /dirs remove <path> | /dirs clear", lambda args: cmd_dirs(engine, args))
     engine.cmd_registry.register("mcps", "List MCP servers, or toggle them: /mcps on | /mcps off | /mcps enable <server_name> | /mcps disable <server_name>", lambda args: cmd_mcps(engine, args))

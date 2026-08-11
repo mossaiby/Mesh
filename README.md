@@ -2,7 +2,7 @@
 
 **v1.0.0**
 
-A modular, text-based AI CLI built in Python for local and cloud-hosted LLMs. Designed for developer productivity with **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **sub-agent swarm workflows**, **Git native tools**, **post-edit linter hooks**, **graceful turn cancellation**, **session checkpointing**, and **semantic context compaction**.
+A modular, text-based AI CLI built in Python for local and cloud-hosted LLMs. Designed for developer productivity with **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **sub-agent swarm workflows**, **Git native tools**, **post-edit linter hooks**, **session checkpointing**, and **semantic context compaction**.
 
 ---
 
@@ -60,14 +60,14 @@ python main.py --file script.txt --non-interactive
 | `/project [reload]` | View or reload workspace project rules (`PROJECT.md`). |
 | `/goal <text>` | View, set, or update pinned session goals folded directly into system prompt. |
 | `/reflexion [distill\|clear]` | View or distill cross-session error lessons into durable system rules. |
-| `/context` | Display raw conversation history, active tool schemas, and MCP statuses. |
+| `/context` | Display raw conversation history, active tool names, and MCP status. |
+| `/tools [on\|off]` | View registered tools with full detailed descriptions and schemas, or toggle tool inclusion. |
 | `/system [text]` | View, update, or clear the live system prompt. |
 | `/memory` | Manage persistent key-value facts (`memory.json`) and semantic meaning search. |
 | `/note` | Manage persistent Markdown project notes (`notes.md`). |
 | `/dream` | Interactively extract durable notes, memory facts, and skills from conversation history. |
 | `/mcps` | View connected Model Context Protocol servers or toggle tools. |
 | `/skills` | Enable, disable, or register custom system skills. |
-| `/tools` | View registered tools or toggle global tool execution. |
 | `/dirs` | Manage authorized directory paths enforced by `PermissionManager`. |
 | `/compact` | Semantically summarize older conversation context using the LLM. |
 | `/debug [on\|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent traces. |
