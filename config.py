@@ -94,3 +94,25 @@ class ConfigManager:
             raise ValueError(f"Model key '{key}' does not exist.")
         self.config.active_model = key
         self.save()
+
+    def add_model(
+        self,
+        key: str,
+        provider: str,
+        model_id: str,
+        name: Optional[str] = None,
+        context_window: int = 8192
+    ) -> None:
+        """Adds or updates a model entry in models.json."""
+        if provider not in self.config.providers:
+            raise KeyError(f"Provider '{provider}' not found in providers configuration.")
+
+        display_name = name or model_id.split("/")[-1].replace("-", " ").title()
+        model_cfg = ModelConfig(
+            name=display_name,
+            provider=provider,
+            model_id=model_id,
+            context_window=context_window
+        )
+        self.config.models[key] = model_cfg
+        self.save()

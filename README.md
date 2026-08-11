@@ -10,6 +10,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 
 - **Multi-Provider OpenAI Compatibility**: Seamlessly connect to OpenAI, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint via `models.json`.
 - **Interactive Model Switcher (`/switch`)**: Switch active models on the fly using a cross-platform arrow-key selection menu or command arguments.
+- **Model Discovery & Batch Configuration (`/models discover` / `/models add`)**: Query provider REST endpoints (`/v1/models`) to discover remote models offered by backends. Interactively pick discovered models with arrow keys or batch-add models using wildcard patterns (e.g., `/models add openrouter *free*` or `/models add groq llama`).
 - **Speculative Swarm Exploration (`explore_branches` / `/explore`)**: Runs $N$ parallel sub-agent swarm branches with distinct strategies/hypotheses to solve complex tasks simultaneously. Evaluates intermediate outputs with a Judge LLM pass and synthesizes the winning solution.
 - **Autonomous Tool Synthesis (`synthesize_tool` / `custom_tools/`)**: Enables Mesh or the user to write, AST-verify, save, and dynamically register new deterministic Python tools on the fly without restarting CLI sessions.
 - **Adversarial Multi-Model Consensus (`consult_consensus` / `/consensus`)**: Cross-examines critical plans or code patches. Model A generates a proposal, Model B red-teams and audits it for security/logic bugs, and a Referee pass synthesizes a verified consensus recommendation.
@@ -20,7 +21,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 - **Unified Diff Previews & File Rollback (`/diff`, `/undo`)**: Displays colorized git-style unified diffs (`-`/`+`) for file mutations. Maintains a session undo stack allowing instant rollback of recent file edits.
 - **Sub-Agent Proxy Architecture (`/proxy`)**: Reduces context window noise. Heavy tools (`read_file`, `shell`, `web_search`, MCP tools) require an `_intent` parameter. A dedicated sub-agent distills raw outputs into concise, structured JSON before handing them back to the main LLM.
 - **Recursive Task Delegation (`delegate_task`)**: A separate capability from `/proxy` - the main model can hand off a whole self-contained task to an autonomous sub-agent, which runs its own multi-step tool loop independently and reports back one final summary. Sub-agents can delegate further sub-tasks themselves (up to a user-configurable depth, default 2), and multiple delegations in one turn run concurrently.
-- **Advisor (`consult_advisor`)**: A tool-free, single-shot "second opinion" the model can consult before committing to a risky or ambiguous plan - optionally from a different configured model than the one driving the conversation, for a genuinely independent perspective rather than the same model re-asked.
+- **Advisor (`consult_advisor`)**: A tool-free, single-shot "second opinion" the model can consult before committing to a risky or ambiguous plan - optionally from a different configured model than the one driving the conversation, for a genuinely independent perspective rather than the same model re-asked. Switch the advisor model live via `/advisor model [<key>]`.
 - **Tool-Call Safety Guard (`/guard`)**: Shell commands, file writes/edits, and MCP tool calls are automatically risk-assessed by a dedicated (ideally cheap/local) model before they run - low risk proceeds, medium risk asks for permission (or auto-approves in autonomous mode), high risk is blocked outright regardless of mode.
 - **Operating Modes (`/mode`)**: Switch between Build (default, full access), Plan/Review (read-only - investigate and propose without touching anything), and YOLO (full access, no confirmation prompts for ambiguous-risk actions). Mode restrictions are enforced twice - hidden from the model's own tool list *and* hard-blocked at execution - so a read-only mode is read-only even against a model that ignores its own tool list.
 - **Self-Healing Tool-Error Recovery (`/selfheal`)**: Failed tool calls get one automatic recovery attempt before the model ever sees the error - transient failures (timeouts, rate limits) are mechanically retried with no model call, and failures likely caused by malformed arguments are diagnosed and retried once by a focused repair sub-agent.
@@ -110,7 +111,7 @@ python main.py
 | `/help` | List all available slash commands. |
 | `/status` | Display a detailed status overview of active models, tools, MCPs, skills, memory, symbols, and checkpoints. |
 | `/version` | Show the current Mesh version. |
-| `/models` | List all configured models and their provider endpoints. |
+| `/models [discover\|add]` | List configured models (`/models`), query endpoints (`/models discover`), or interactively/batch add models (`/models add [<provider>] [<pattern>]`). |
 | `/switch [key]` | Interactively switch models using arrow keys, or directly by model key. |
 | `/explore <task>` | Run parallel speculative branch exploration across $N$ strategies. |
 | `/consensus <question> \| <proposal>` | Run an adversarial multi-model audit and synthesis pass. |
@@ -358,7 +359,7 @@ Configure via `models.json` (`guard_enabled`, `guard_model`, `guard_autonomy`) o
 - **`self_heal`**'s repair pass fixes one specific tool-call failure.
 - **`consult_advisor`** takes no action and has no tools at all - it exists purely to give a candid opinion, flag risks/tradeoffs, and suggest alternatives, which the main model is free to weigh and disagree with.
 
-Set `advisor_model` in `models.json` to always consult a specific model (e.g. a stronger reasoning model) regardless of which model is actively driving the conversation, so a "second opinion" is an opinion from somewhere genuinely different - not the same model re-asked. Leave it `null` to just use whichever model is currently active. Switch the advisor model on the fly using `/advisor model <key>` or reset it with `/advisor model clear`.
+Set `advisor_model` in `models.json` to always consult a specific model (e.g. a stronger reasoning model) regardless of which model is actively driving the conversation, so a "second opinion" is an opinion from somewhere genuinely different - not the same model re-asked. Leave it `null` to just use whichever model is currently active. Switch the advisor model on the fly using `/advisor model [<key>]` or reset it with `/advisor model clear`.
 
 ---
 
@@ -577,6 +578,8 @@ Mesh/
 
 ## 🩹 Changelog / Bug Fixes (v1.0.0)
 
+- **Added Pattern-Based Batch Model Addition (`/models add [<provider>] [<pattern>]`)**: Allows interactively picking discovered models or batch-adding models matching wildcard patterns (e.g. `/models add openrouter *free*` or `/models add groq llama`) directly into `models.json`.
+- **Added Model Discovery (`/models discover`)**: Queries provider REST endpoints (`/v1/models`) to discover models offered by local or cloud backends dynamically.
 - **Added Live Advisor Model Switching (`/advisor model <key>`)**: Added live command switching to update `advisor_model` in `models.json` on the fly or reset it to fall back to the active model (`/advisor model clear`).
 - **Added Multi-Role Autonomous Task Squad (`/squad`)**: Coordinates a 4-stage pipeline of specialized persona sub-agents (Architect -> Coder -> Test Engineer -> Security Auditor) to plan, write code, run unit tests, and audit security autonomously.
 - **Added Cross-Session Reflexion Journal (`/reflexion`)**: Automatically captures tool execution failures and user corrections across sessions. Distills them into durable "Lessons Learned" (`reflexion.json`) that are injected into the system prompt so Mesh never repeats mistakes across sessions.

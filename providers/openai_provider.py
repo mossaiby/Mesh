@@ -1,4 +1,5 @@
-from typing import List, Dict, Any, Optional, AsyncGenerator
+import asyncio
+from typing import List, Dict, Any, Optional, AsyncGenerator, Tuple
 from openai import AsyncOpenAI
 from config import ModelConfig, ProviderConfig
 
@@ -16,6 +17,27 @@ class OpenAIProvider:
             client_kwargs["default_headers"] = provider_config.default_headers
 
         self.client = AsyncOpenAI(**client_kwargs)
+
+    @staticmethod
+    async def fetch_available_models(provider_config: ProviderConfig) -> Tuple[bool, List[str], str]:
+        """
+        Queries the provider's /models REST endpoint to discover models offered by the provider.
+        Returns (success, list_of_model_ids, error_message).
+        """
+        try:
+            client_kwargs: Dict[str, Any] = {
+                "base_url": provider_config.base_url,
+                "api_key": provider_config.api_key,
+            }
+            if provider_config.default_headers:
+                client_kwargs["default_headers"] = provider_config.default_headers
+
+            client = AsyncOpenAI(**client_kwargs)
+            response = await asyncio.wait_for(client.models.list(), timeout=12.0)
+            model_ids = [m.id for m in response.data if hasattr(m, "id")]
+            return True, sorted(model_ids), ""
+        except Exception as e:
+            return False, [], str(e)
 
     async def stream_chat(
         self, 
