@@ -2,7 +2,7 @@
 
 **v1.0.0**
 
-A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Speculative Swarm Exploration**, **Autonomous Tool Synthesis**, **Adversarial Multi-Model Consensus**, **Multi-Role Autonomous Task Squads**, **Cross-Session Reflexion Journaling**, **AST Codebase Symbol Indexing**, **Session Checkpointing & Branching**, **Unified Diff Previews & File Rollback**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
+A modular, text-based AI CLI built in Python. Designed for local and cloud-hosted LLMs, featuring **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **Sub-Agent Proxy Distillation**, **Speculative Swarm Exploration**, **Autonomous Tool Synthesis**, **Adversarial Multi-Model Consensus**, **Multi-Role Autonomous Task Squads**, **Cross-Session Reflexion Journaling**, **AST Codebase Symbol Indexing**, **Session Checkpointing & Branching**, **Unified Diff Previews & File Rollback**, **Script File Execution & Automation**, **Declarative Skills**, **Directory Permissions**, and **Semantic Context Compaction**.
 
 ---
 
@@ -11,6 +11,7 @@ A modular, text-based AI CLI built in Python. Designed for local and cloud-hoste
 - **Multi-Provider OpenAI Compatibility**: Seamlessly connect to OpenAI, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint via `models.json`.
 - **Interactive Model Switcher (`/switch`)**: Switch active models on the fly using a cross-platform arrow-key selection menu or command arguments.
 - **Model Discovery & Batch Configuration (`/models discover` / `/models add`)**: Query provider REST endpoints (`/v1/models`) to discover remote models offered by backends. Interactively pick discovered models with arrow keys or batch-add models using wildcard patterns (e.g., `/models add openrouter *free*` or `/models add groq llama`).
+- **Script File Execution & Headless Automation (`/script` & CLI `--file`)**: Execute commands and prompts line-by-line from a script file interactively via `/script <file.txt>` or on startup via `python main.py script.txt --non-interactive` for headless CI/CD and Docker pipelines.
 - **Speculative Swarm Exploration (`explore_branches` / `/explore`)**: Runs $N$ parallel sub-agent swarm branches with distinct strategies/hypotheses to solve complex tasks simultaneously. Evaluates intermediate outputs with a Judge LLM pass and synthesizes the winning solution.
 - **Autonomous Tool Synthesis (`synthesize_tool` / `custom_tools/`)**: Enables Mesh or the user to write, AST-verify, save, and dynamically register new deterministic Python tools on the fly without restarting CLI sessions.
 - **Adversarial Multi-Model Consensus (`consult_consensus` / `/consensus`)**: Cross-examines critical plans or code patches. Model A generates a proposal, Model B red-teams and audits it for security/logic bugs, and a Referee pass synthesizes a verified consensus recommendation.
@@ -102,6 +103,18 @@ export LOCAL_API_KEY="dummy"
 python main.py
 ```
 
+### 5. Execute Script Files (Headless Automation)
+
+Run Mesh with a script file on launch:
+
+```bash
+# Execute script and transition to interactive mode
+python main.py script.txt
+
+# Execute script in headless non-interactive mode and exit automatically
+python main.py --file script.txt --non-interactive
+```
+
 ---
 
 ## 🛠️ Slash Commands Reference
@@ -113,6 +126,7 @@ python main.py
 | `/version` | Show the current Mesh version. |
 | `/models [discover\|add]` | List configured models (`/models`), query endpoints (`/models discover`), or interactively/batch add models (`/models add [<provider>] [<pattern>]`). |
 | `/switch [key]` | Interactively switch models using arrow keys, or directly by model key. |
+| `/script <file.txt>` | Execute commands and prompts line-by-line from a script file. |
 | `/explore <task>` | Run parallel speculative branch exploration across $N$ strategies. |
 | `/consensus <question> \| <proposal>` | Run an adversarial multi-model audit and synthesis pass. |
 | `/squad <task>` | Execute 4-stage autonomous task squad (Architect -> Coder -> Test Engineer -> Security Auditor). |
@@ -144,6 +158,24 @@ python main.py
 | `/debug [on\|off]` | Toggle debug mode to show Chain of Thought (CoT) and sub-agent logs. |
 | `/clear` | Clear conversation history while keeping system prompt and skills intact. |
 | `/exit` | Safely close MCP process connections and exit. |
+
+---
+
+## 📜 Script File Execution & Headless Automation (`/script` & CLI `--file`)
+
+Execute preset command macros or automated prompts line-by-line:
+
+```text
+# Example script: bootstrap_session.txt
+/mode build
+/goal Implement User Authentication | Add JWT middleware | Write unit tests
+/memory search auth_token_secret
+Explain the user authentication setup in this repository.
+```
+
+- **In interactive mode:** `/script bootstrap_session.txt`
+- **On launch (interactive):** `python main.py bootstrap_session.txt`
+- **Headless CI/CD / Docker:** `python main.py -f bootstrap_session.txt -n`
 
 ---
 
@@ -578,6 +610,7 @@ Mesh/
 
 ## 🩹 Changelog / Bug Fixes (v1.0.0)
 
+- **Added Script File Execution & Headless Automation (`/script`, CLI `-f`/`-n`)**: Execute commands and prompts line-by-line from a file interactively or headlessly (`python main.py script.txt --non-interactive`).
 - **Added Pattern-Based Batch Model Addition (`/models add [<provider>] [<pattern>]`)**: Allows interactively picking discovered models or batch-adding models matching wildcard patterns (e.g. `/models add openrouter *free*` or `/models add groq llama`) directly into `models.json`.
 - **Added Model Discovery (`/models discover`)**: Queries provider REST endpoints (`/v1/models`) to discover models offered by local or cloud backends dynamically.
 - **Added Live Advisor Model Switching (`/advisor model <key>`)**: Added live command switching to update `advisor_model` in `models.json` on the fly or reset it to fall back to the active model (`/advisor model clear`).
