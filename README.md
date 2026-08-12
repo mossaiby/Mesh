@@ -47,6 +47,9 @@ python main.py --file script.txt --non-interactive
 | **`/status`** | Display active model, tools, MCPs, symbol count, branch, session token usage, USD cost, and context status. |
 | **`/models [discover\|add]`** | List configured models, query endpoints (`/models discover`), or batch-add models (`/models add openrouter *free*`). |
 | **`/switch [key]`** | Switch active model using cross-platform arrow keys or model key. |
+| **`/cd <path>`** | Change working directory & automatically sync allowed directories, project rules (`PROJECT.md`), and AST symbol index. |
+| **`/shell <cmd>` \| `! <cmd>`** | Direct shell execution (bypasses LLM & guard checks; does not modify chat history). |
+| **`/python <code>` \| `# <code>`** | Direct Python execution in a persistent session namespace (bypasses LLM; does not modify chat history). |
 | **`/agent <subcmd>`** | Sub-agent swarms: `/agent explore` (branch search), `/agent squad` (4-stage pipeline), `/agent consensus` (audit), `/agent delegate` (handoff), `/agent advisor` (opinion). |
 | **`/git [cmd]`** | Vendor-agnostic Git workflow: `/git status`, `/git diff`, `/git commit` (AI auto-commit), `/git push`, `/git branch`. |
 | **`/config <subcmd>`** | Toggle automation: `/config proxy`, `/config repair`, `/config hooks`, `/config compact`. |
@@ -83,9 +86,11 @@ python main.py --file script.txt --non-interactive
 * **Remote Model Discovery:** Query provider `/v1/models` endpoints dynamically (`/models discover`) and batch-add models using wildcard patterns (`/models add openrouter *free*`).
 * **Real-Time $ USD Cost Tracking:** Editable `pricing.json` tracks exact prompt/completion token usage and cumulative session cost in USD (`$0.003 turn | $0.015 session`) in response headers and `/status`.
 
-### ⚡ Real-Time Streaming & Thinking Indicators
-* **`[Waiting...]` & `[Thinking...]` UX:** Displays `[Waiting...]` in dim italic while waiting for the first token to arrive. Displays `[Thinking...]` in `/debug off` mode while reasoning models generate Chain-of-Thought tokens, clearing it automatically when response content streams in.
-* **Inline Prompt Shortcuts (`@filename`):** Typing `@` in prompts triggers Tab-completion for workspace files (`@src/engine.py`). Mentioning files automatically reads and attaches their formatted code blocks directly into the prompt payload.
+### ⚡ REPL Power Shortcuts (`!`, `#`, `@filename`, `/cd`)
+* **`! <command>` / `/shell <command>`:** Runs shell commands directly from the REPL without LLM overhead or safety guard prompts. Executes cleanly without modifying conversation history.
+* **`# <code>` / `/python <code>`:** Executes Python code snippets directly inside a persistent session namespace without altering chat context.
+* **`/cd <path>`:** Changes working directory and automatically syncs `PermissionManager` allow-lists, codebase symbol indexer, `PROJECT.md` rules, and Repository Map.
+* **Autocomplete & `@filename` Auto-Attach:** Typing `@` in prompts triggers Tab-completion for workspace files (`@src/engine.py`). Mentioning files automatically reads and attaches their formatted code blocks directly into the prompt payload.
 * **Graceful `Ctrl+C` Turn Cancellation:** Pressing `Ctrl+C` during streaming or tool execution cancels *only* the current turn, cleans up context, and returns safely to the prompt without exiting Mesh.
 
 ### 🕸️ Automated Repository Map (Dependency Graph & PageRank)
@@ -99,7 +104,7 @@ python main.py --file script.txt --non-interactive
 
 ### 🛠️ Developer & Codebase Intelligence
 * **Git Native Workflow (`/git`):** Pure, vendor-agnostic Git tools (`git_status`, `git_diff`, `git_commit`, `git_push`, `git_branch`). Running `/git commit` automatically generates conventional commit messages from `git diff`.
-* **Async Background Jobs (`job` / `/jobs`):** Spawns background servers/watchers (`npm run dev`, `cargo watch`, `pytest --watch`) asynchronously without timing out or blocking Mesh.
+* **Async Background Jobs (`job` / `/jobs`):** Spawns background servers/watchers (`npm run dev`, `cargo watch`, `pytest --watch`) asynchronously via `job` without blocking Mesh or timing out.
 * **Post-Edit Linter Hooks (`/config hooks`):** Runs background linters/formatters (`ruff`, `eslint`, `black`, `cargo check`, `gofmt`) after file edits and feeds warnings back to the LLM to fix syntax errors in real-time.
 * **Iterative Auto-Test Loop (`/loop <command>`):** Runs a test command (`pytest`, `npm test`). If tests fail, Mesh captures errors, spawns repair sub-agents, modifies code, and re-tests until green.
 * **Universal Tree-sitter Symbol Search (`search_symbols`):** Polyglot AST parsing indexes classes, functions, methods, interfaces, and docstrings across Python, JavaScript, TypeScript, Rust, Go, C/C++, Java, C#, PHP, and Ruby files.
@@ -206,6 +211,7 @@ Mesh/
 ├── config.py                  # Configuration manager and Pydantic schemas
 ├── pricing.py                 # Real-time USD cost & token metering manager
 ├── context_mentions.py        # @filename prompt mention parser & attachment engine
+├── python_executor.py         # Persistent session namespace Python executor (# code)
 ├── engine.py                  # Central MeshEngine orchestration & turn loop
 ├── subagent.py                # Sub-Agent Proxy distillation engine
 ├── delegation.py              # Task Delegation engine
@@ -264,7 +270,7 @@ Mesh/
 │   ├── registry.py            # Slash command registry
 │   ├── agent_commands.py      # /agent (explore, squad, consensus, delegate, advisor), /loop, /hooks, /jobs, /guard, /mode
 │   ├── model_commands.py      # /models, /switch
-│   ├── session_commands.py    # /checkpoint (save, fork, restore, list), /diff (undo), /git, /goal, /note, /memory, /dream, /script, /project (map, reload), /reflexion
+│   ├── session_commands.py    # /cd, /shell (!), /python (#), /checkpoint (save, fork, restore, list), /diff (undo), /git, /goal, /note, /memory, /dream, /script, /project (map, reload), /reflexion
 │   └── system_commands.py     # /help, /status, /config (proxy, repair, hooks, compact), /context, /system, /tools, /skills, /dirs, /mcps, /clear, /retry, /debug, /exit
 ├── mcp/
 │   ├── __init__.py
@@ -280,7 +286,10 @@ Mesh/
 
 ## 🩹 Changelog / Bug Fixes (v1.0.0)
 
-- **Added Streaming `[Waiting...]` and `[Thinking...]` Indicators (`stream_renderer.py`)**: Displays `[Waiting...]` before the first response chunk arrives, and `[Thinking...]` in `/debug off` mode while reasoning models stream Chain-of-Thought tokens, clearing automatically when response content streams in.
+- **Added REPL Shortcuts (`! <cmd>`, `# <code>`, `/cd <path>`)**:
+  - `! <cmd>` / `/shell <cmd>`: Direct shell execution (bypasses LLM/guard prompts) without modifying conversation context.
+  - `# <code>` / `/python <code>`: Direct Python execution in a persistent session namespace (`python_executor.py`) without modifying conversation context.
+  - `/cd <path>`: Changes working directory and automatically re-indexes AST codebase symbols, reloads `PROJECT.md` rules, and regenerates the Repository Map (`/project map`).
 - **Added Automated Repository Map (`repo_map.py`, `/project map`)**: Pre-computes a PageRank dependency graph across codebase symbols and injects a 500-token repository architecture map into system prompts.
 - **Fixed Stream Output Token Metering & Post-Stream Calculations**: Fixed a streaming lifecycle ordering bug where completion tokens previously showed 0. Completion tokens and real-time USD costs now calculate post-stream and display in turn footers.
 - **Simplified Native Tool Names to Single Words**: Renamed native LLM tools to clean single words (`run_shell_command` ➔ `shell`, `run_background_command` ➔ `job`, `todo_manager` ➔ `todo`, `note_manager` ➔ `note`, `goal_manager` ➔ `goal`).

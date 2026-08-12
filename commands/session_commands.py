@@ -1,5 +1,7 @@
 import asyncio
+import os
 import subprocess
+from pathlib import Path
 from typing import List, Any
 from rich.markdown import Markdown
 from tools.note_tool import _read_notes, _write_notes, _append_notes
@@ -12,7 +14,81 @@ import repo_map
 import reflexion
 import git_workflow
 from file_history import file_history_tracker
+from python_executor import python_executor
 from theme import console
+
+
+async def cmd_cd(engine: Any, args: List[str]):
+    if not args:
+        console.print(f"Current Working Directory: [accent]{os.getcwd()}[/accent]\nUsage: [warning]/cd <path>[/warning]\n")
+        return
+
+    target_path_str = " ".join(args).strip()
+    try:
+        resolved_path = Path(target_path_str).resolve()
+        if not resolved_path.exists() or not resolved_path.is_dir():
+            console.print(f"[error]Directory '{target_path_str}' does not exist or is not a directory.[/error]")
+            return
+
+        old_cwd = str(Path.cwd().resolve())
+        os.chdir(resolved_path)
+        new_cwd = str(resolved_path)
+
+        # Update allowed_dirs: remove old CWD, add new CWD
+        if old_cwd in engine.permission_manager.allowed_dirs:
+            engine.permission_manager.allowed_dirs.remove(old_cwd)
+        engine.permission_manager.add_dir(new_cwd)
+
+        console.print(f"[success]✔ Changed CWD to:[/success] [accent]{new_cwd}[/accent]")
+
+        # Reload workspace project context, AST symbols, and Repo Map
+        engine.reload_project_context()
+
+    except Exception as e:
+        console.print(f"[error]Failed to change directory: {e}[/error]")
+
+
+async def cmd_shell(engine: Any, args: List[str]):
+    if not args:
+        console.print("[error]Usage: /shell <command> | ! <command>[/error]")
+        return
+
+    command = " ".join(args).strip()
+    console.print(f"[brand]⚡ Direct Shell Execution:[/brand] {command}")
+
+    try:
+        proc = await asyncio.create_subprocess_shell(
+            command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE
+        )
+        stdout, stderr = await proc.communicate()
+        output = (stdout.decode('utf-8', errors='replace') + "\n" + stderr.decode('utf-8', errors='replace')).strip()
+
+        if output:
+            console.print(output)
+        else:
+            console.print("[dim]<no output>[/dim]")
+
+    except Exception as e:
+        console.print(f"[error]Shell command failed: {e}[/error]")
+
+
+async def cmd_python(engine: Any, args: List[str]):
+    if not args:
+        console.print("[error]Usage: /python <code> | # <code>[/error]")
+        return
+
+    code = " ".join(args).strip()
+    console.print(f"[brand]🐍 Direct Python Execution:[/brand] #{code}")
+
+    success, output = python_executor.execute_snippet(code)
+
+    if output:
+        style = "success" if success else "error"
+        console.print(f"[{style}]{output}[/{style}]")
+    else:
+        console.print("[dim]<no output>[/dim]")
 
 
 async def cmd_checkpoint(engine: Any, args: List[str]):
@@ -458,6 +534,9 @@ async def cmd_reflexion(engine: Any, args: List[str]):
 
 
 def register_session_commands(engine: Any):
+    engine.cmd_registry.register("cd", "Change working directory & reload workspace context: /cd <path>", lambda args: cmd_cd(engine, args))
+    engine.cmd_registry.register("shell", "Direct shell execution (bypasses LLM): /shell <cmd> | ! <cmd>", lambda args: cmd_shell(engine, args))
+    engine.cmd_registry.register("python", "Direct Python execution (bypasses LLM): /python <code> | # <code>", lambda args: cmd_python(engine, args))
     engine.cmd_registry.register("goal", "View, set, or manage the pinned session goal: /goal <text> [| criterion 1 | criterion 2 ...] | /goal done <criterion #> | /goal clear", lambda args: cmd_goal(engine, args))
     engine.cmd_registry.register("note", "View notes, or edit them: /note append <text> | /note clear", lambda args: cmd_note(engine, args))
     engine.cmd_registry.register("memory", "View memory, or edit it: /memory save <key> <value> | /memory get <key> | /memory search <query> | /memory delete <key> | /memory clear", lambda args: cmd_memory(engine, args))

@@ -101,6 +101,12 @@ class MeshEngine:
         self.tool_registry.mode_blocked_tools = modes.blocked_tools_for_mode(self.current_mode, self.tool_registry)
         self.update_system_message(self.config_mgr.config.system_prompt)
 
+    def reload_project_context(self):
+        """Re-indexes codebase symbols, reloads project rules, and regenerates Repo Map for CWD."""
+        symbol_search.symbol_indexer.index_directory(".")
+        tool_synthesis.load_all_custom_tools(self.tool_registry)
+        self.update_system_message()
+
     def update_system_message(self, base_prompt: str = None):
         if not base_prompt:
             base_prompt = self.config_mgr.config.system_prompt or "You are a helpful text-based AI assistant."
@@ -203,6 +209,12 @@ class MeshEngine:
                 handled = await self.cmd_registry.dispatch(line)
                 if not handled:
                     console.print("[error]Unknown command in script. Type /help for options.[/error]")
+            elif line.startswith("!"):
+                cmd_text = line[1:].strip()
+                await self.cmd_registry.dispatch(f"/shell {cmd_text}")
+            elif line.startswith("#"):
+                code_text = line[1:].strip()
+                await self.cmd_registry.dispatch(f"/python {code_text}")
             else:
                 formatted_input, _ = context_mentions.process_prompt_context_mentions(line, ".")
                 pre_prompt_count = len(self.messages)
@@ -230,6 +242,18 @@ class MeshEngine:
                 if user_input.lower() in ["exit", "quit", "/exit"]:
                     await jobs.job_manager.stop_all()
                     await self.cmd_registry.dispatch("/exit")
+
+                # Handle Direct Shell Shortcut ! <command>
+                if user_input.startswith("!"):
+                    cmd_text = user_input[1:].strip()
+                    await self.cmd_registry.dispatch(f"/shell {cmd_text}")
+                    continue
+
+                # Handle Direct Python Shortcut # <code>
+                if user_input.startswith("#"):
+                    code_text = user_input[1:].strip()
+                    await self.cmd_registry.dispatch(f"/python {code_text}")
+                    continue
 
                 if self.cmd_registry.is_command(user_input):
                     handled = await self.cmd_registry.dispatch(user_input)
@@ -304,7 +328,7 @@ class MeshEngine:
                         else:
                             yield chunk
 
-                console.print(f"\n[info]Assistant ({model_cfg.name} via {provider_cfg.name})[/info] >")
+                console.print(f"\n[info]Assistant ({model_cfg.name} via {provider_cfg.name}) >[/info]")
 
                 try:
                     response_text, reasoning_text = await self.renderer.render_stream(

@@ -119,6 +119,7 @@ class MeshPromptSession:
     """
     Wraps prompt_toolkit.PromptSession for styled prompt input and tab completion,
     falling back cleanly to console.input() if prompt_toolkit is missing.
+    Uses 'bold ansiblue' to match Rich's [info] theme color identically.
     Uses prompt_async() to integrate safely with Mesh's active asyncio event loop.
     """
     def __init__(self, mesh_instance: Any):
@@ -126,7 +127,7 @@ class MeshPromptSession:
         if PROMPT_TOOLKIT_AVAILABLE:
             self.completer = MeshCompleter(mesh_instance)
             self.style = Style.from_dict({
-                "prompt": "bold #5f87ff",  # Matches Rich bold blue / [info]
+                "prompt": "bold ansiblue",  # Matches Rich [info] ("bold blue") identically
             })
             self.session = PromptSession(
                 completer=self.completer,
@@ -147,8 +148,8 @@ class MeshPromptSession:
             except EOFError:
                 raise EOFError()
         else:
-            return console.input("[info]User[/info] > ").strip()
+            return console.input("[info]User >[/info] ").strip()
 
     def get_input(self) -> str:
         """Fallback synchronous input reader for non-async contexts."""
-        return console.input("[info]User[/info] > ").strip()
+        return console.input("[info]User >[/info] ").strip()
