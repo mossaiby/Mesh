@@ -1,13 +1,3 @@
-Here are the full updated files for **`commands/system_commands.py`** and **`README.md`**.
-
-The horizontal lines (`━━━`) have been removed and replaced with clean, modern category indicators (`▸ Category` in the CLI `/help` output and themed icon headings in `README.md`).
-
----
-
-### 1. `commands/system_commands.py`
-
-```python
-=== FILE: C:\Users\Farshid Mossaiby\source\repos\Mesh\commands\system_commands.py
 # ⚡ Mesh
 
 **v1.0.0**
