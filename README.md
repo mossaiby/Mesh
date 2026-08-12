@@ -1,3 +1,13 @@
+Here are the full updated files for **`commands/system_commands.py`** and **`README.md`**.
+
+The horizontal lines (`━━━`) have been removed and replaced with clean, modern category indicators (`▸ Category` in the CLI `/help` output and themed icon headings in `README.md`).
+
+---
+
+### 1. `commands/system_commands.py`
+
+```python
+=== FILE: C:\Users\Farshid Mossaiby\source\repos\Mesh\commands\system_commands.py
 # ⚡ Mesh
 
 **v1.0.0**
@@ -53,7 +63,7 @@ python main.py --file script.txt --non-interactive
 
 Slash commands are organized into logical categories. Type **`/help`** to view all categories, or **`/help <command>`** (e.g. `/help git`) for specific usage instructions.
 
-### ━━━ Models & Settings ━━━
+### ⚙️ Models & Settings
 | Command | Description |
 | :--- | :--- |
 | **`/status`** | Display active model, tools, MCPs, symbol count, branch, session token usage, USD cost, and context status. |
@@ -63,14 +73,14 @@ Slash commands are organized into logical categories. Type **`/help`** to view a
 | **`/mode`** | Switch operating mode (`/mode build`, `/mode plan`, `/mode review`, `/mode yolo`). |
 | **`/guard`** | Configure tool-call safety guard risk assessment (`/guard on`, `/guard mode supervised|autonomous`). |
 
-### ━━━ Agents & Workflows ━━━
+### 🤖 Agents & Workflows
 | Command | Description |
 | :--- | :--- |
 | **`/agent`** | Sub-agent swarm & reasoning workflows: `/agent explore`, `/agent squad`, `/agent consensus`, `/agent delegate`, `/agent advisor`. |
 | **`/loop`** | Iterative auto-test/fix loop (`/loop <test_cmd>`). |
 | **`/jobs`** | View or manage async background processes (`/jobs log <id>`, `/jobs stop <id>`, `/jobs clear`). |
 
-### ━━━ Workspace & Developer Tools ━━━
+### 🛠️ Workspace & Developer Tools
 | Command | Description |
 | :--- | :--- |
 | **`/cd`** | Change working directory & automatically sync allowed directories, project rules (`PROJECT.md`), and AST symbol index. |
@@ -81,7 +91,7 @@ Slash commands are organized into logical categories. Type **`/help`** to view a
 | **`/python` \| `#`** | Direct Python execution (`# <code>`) inside a persistent session namespace without modifying conversation history. |
 | **`/script`** | Execute commands and prompts line-by-line from a script file (`/script <file.txt>`). |
 
-### ━━━ Memory & Knowledge ━━━
+### 🧠 Memory & Knowledge
 | Command | Description |
 | :--- | :--- |
 | **`/goal`** | View, set, or update pinned session goals folded directly into the system prompt. |
@@ -90,7 +100,7 @@ Slash commands are organized into logical categories. Type **`/help`** to view a
 | **`/dream`** | Interactively extract durable notes, memory facts, and skills from conversation history. |
 | **`/reflexion`** | View or distill cross-session error lessons into durable system rules (`/reflexion distill`). |
 
-### ━━━ Context & Integration ━━━
+### 🔌 Context & Integration
 | Command | Description |
 | :--- | :--- |
 | **`/context`** | Display raw conversation history, active tool names, and MCP status. |
@@ -101,7 +111,7 @@ Slash commands are organized into logical categories. Type **`/help`** to view a
 | **`/mcps`** | View connected Model Context Protocol servers or toggle tools (`/mcps on|off`). |
 | **`/compact`** | Semantically compact older conversation context using the LLM. |
 
-### ━━━ Session & System ━━━
+### 💻 Session & System
 | Command | Description |
 | :--- | :--- |
 | **`/help`** | Show command categories or specific command usage (`/help <command>`). |

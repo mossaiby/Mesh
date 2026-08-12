@@ -35,7 +35,7 @@ async def cmd_help(engine: Any, args: List[str]):
     categorized = engine.cmd_registry.list_commands_by_category()
 
     for category, cmds in categorized.items():
-        console.print(f"[brand]━━━ {category} ━━━[/brand]")
+        console.print(f"[brand]▸ {category}[/brand]")
         cmd_labels = [f"[label]{cmd}[/label]" for cmd, _ in cmds]
         console.print(f"  {', '.join(cmd_labels)}\n")
 
