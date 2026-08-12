@@ -51,6 +51,9 @@ class MeshConfig(BaseModel):
     router_model: Optional[str] = None
     # Global network proxy URL
     network_proxy: Optional[str] = None
+    # Extended thinking / reasoning controls
+    thinking: bool = True
+    effort: str = "medium"
     # Metrics display toggles
     show_tokens: bool = True
     show_cost: bool = True

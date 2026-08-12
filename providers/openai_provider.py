@@ -1,13 +1,14 @@
 import asyncio
 from typing import List, Dict, Any, Optional, AsyncGenerator, Tuple
 from openai import AsyncOpenAI
-from config import ModelConfig, ProviderConfig
+from config import ModelConfig, ProviderConfig, ConfigManager
 
 
 class OpenAIProvider:
-    def __init__(self, model_config: ModelConfig, provider_config: ProviderConfig):
+    def __init__(self, model_config: ModelConfig, provider_config: ProviderConfig, config_mgr: Optional[ConfigManager] = None):
         self.model_config = model_config
         self.provider_config = provider_config
+        self.config_mgr = config_mgr
         
         client_kwargs: Dict[str, Any] = {
             "base_url": provider_config.base_url,
@@ -18,12 +19,20 @@ class OpenAIProvider:
 
         self.client = AsyncOpenAI(**client_kwargs)
 
+    def _is_reasoning_model(self) -> bool:
+        """Determines if the current model is a reasoning model that accepts reasoning_effort."""
+        tags = [t.lower() for t in getattr(self.model_config, "tags", [])]
+        if "reasoning" in tags or "thinking" in tags:
+            return True
+        
+        m_id = (getattr(self.model_config, "model_id", "") or "").lower()
+        m_name = (getattr(self.model_config, "name", "") or "").lower()
+        
+        reasoning_keywords = ("o1", "o3", "r1", "reasoning", "thinking", "nemotron")
+        return any(k in m_id or k in m_name for k in reasoning_keywords)
+
     @staticmethod
     async def fetch_available_models(provider_config: ProviderConfig) -> Tuple[bool, List[str], str]:
-        """
-        Queries the provider's /models REST endpoint to discover models offered by the provider.
-        Returns (success, list_of_model_ids, error_message).
-        """
         try:
             client_kwargs: Dict[str, Any] = {
                 "base_url": provider_config.base_url,
@@ -41,11 +50,6 @@ class OpenAIProvider:
 
     @staticmethod
     async def fetch_available_models_details(provider_config: ProviderConfig) -> Tuple[bool, List[Dict[str, Any]], str]:
-        """
-        Queries the provider's /models REST endpoint to discover available models and their metadata.
-        Returns (success, list_of_model_dicts, error_message).
-        Each dict contains: {"id": str, "name": str, "context_window": int, "description": str}.
-        """
         try:
             client_kwargs: Dict[str, Any] = {
                 "base_url": provider_config.base_url,
@@ -84,11 +88,6 @@ class OpenAIProvider:
         messages: List[Dict[str, Any]], 
         tools: Optional[List[Dict[str, Any]]] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        """
-        Streams completion responses. Yields dictionary objects containing
-        incremental content text, reasoning/CoT tokens, tool call fragments,
-        or exact API token usage metadata.
-        """
         kwargs: Dict[str, Any] = {
             "model": self.model_config.model_id,
             "messages": messages,
@@ -99,10 +98,14 @@ class OpenAIProvider:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
 
+        # Apply reasoning effort controls ONLY for reasoning models
+        cfg = self.config_mgr.config if self.config_mgr else None
+        if cfg and cfg.thinking and self._is_reasoning_model():
+            kwargs["reasoning_effort"] = cfg.effort.lower()
+
         response_stream = await self.client.chat.completions.create(**kwargs)
 
         async for chunk in response_stream:
-            # Yield usage metadata if returned in final stream chunk
             if hasattr(chunk, "usage") and chunk.usage:
                 yield {
                     "type": "usage",
@@ -117,7 +120,6 @@ class OpenAIProvider:
             
             delta = chunk.choices[0].delta
 
-            # Extract reasoning/CoT tokens (supported by DeepSeek, Groq, OpenRouter, Ollama)
             reasoning = getattr(delta, "reasoning_content", None) or getattr(delta, "reasoning", None)
             if reasoning:
                 yield {"type": "reasoning", "value": reasoning}

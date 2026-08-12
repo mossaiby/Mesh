@@ -8,7 +8,6 @@ import advisor
 import squad
 import modes
 import test_loop
-import hooks
 import jobs
 from theme import console
 
@@ -304,9 +303,13 @@ async def cmd_guard(engine: Any, args: List[str]):
 
     if sub == "on":
         engine.safety_guard.enabled = True
+        cfg.guard_enabled = True
+        engine.config_mgr.save()
         console.print("[success]Safety Guard ENABLED.[/success]")
     elif sub == "off":
         engine.safety_guard.enabled = False
+        cfg.guard_enabled = False
+        engine.config_mgr.save()
         console.print("[warning]Safety Guard DISABLED - guarded tool calls will run unchecked.[/warning]")
     elif sub == "mode" and len(args) >= 2:
         mode = args[1].lower()
@@ -316,10 +319,12 @@ async def cmd_guard(engine: Any, args: List[str]):
         cfg.guard_autonomy = mode
         if engine.current_mode == "yolo":
             engine._pre_yolo_guard_autonomy = mode
+        engine.config_mgr.save()
         console.print(f"[success]Safety Guard mode set to '{mode}'.[/success]")
     elif sub == "model":
         if len(args) == 1:
             cfg.guard_model = None
+            engine.config_mgr.save()
             console.print("[success]Safety Guard model reset to the active model.[/success]")
             return
         key = args[1]
@@ -327,6 +332,7 @@ async def cmd_guard(engine: Any, args: List[str]):
             console.print(f"[error]Unknown model key '{key}'. See /models for valid keys.[/error]")
             return
         cfg.guard_model = key
+        engine.config_mgr.save()
         console.print(f"[success]Safety Guard model set to '{key}'.[/success]")
     elif sub == "trust" and len(args) >= 2:
         tool_name = args[1]

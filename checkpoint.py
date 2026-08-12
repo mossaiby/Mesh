@@ -23,7 +23,7 @@ class CheckpointManager:
         goal_snap = mesh_instance.goal_tool.snapshot() if hasattr(mesh_instance, "goal_tool") else {}
         
         # Access internal todos list safely
-        todo_tool = mesh_instance.tool_registry._tools.get("todo_manager")
+        todo_tool = mesh_instance.tool_registry._tools.get("todo")
         todos_snap = copy.deepcopy(todo_tool._todos) if todo_tool and hasattr(todo_tool, "_todos") else []
 
         snapshot = {
@@ -64,7 +64,7 @@ class CheckpointManager:
             mesh_instance.goal_tool._notify()
 
         # Restore todo manager
-        todo_tool = mesh_instance.tool_registry._tools.get("todo_manager")
+        todo_tool = mesh_instance.tool_registry._tools.get("todo")
         if todo_tool and hasattr(todo_tool, "_todos"):
             todo_tool._todos = copy.deepcopy(snap["todos"])
 

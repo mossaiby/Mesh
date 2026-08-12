@@ -4,7 +4,7 @@ import sys
 from typing import List, Optional, Any
 from rich.live import Live
 from rich.text import Text
-from providers.openai_provider import OpenAIProvider
+from providers import fetch_models_details
 from tools.ask_tool import _read_single_key
 from theme import console
 
@@ -20,39 +20,59 @@ def _interactive_item_picker(items: List[str], title: str) -> Optional[str]:
         raw = input("Choice > ").strip()
         if raw.isdigit() and 1 <= int(raw) <= len(items):
             return items[int(raw) - 1]
-        return raw
+        return raw if raw else None
 
     current_idx = 0
-    max_visible = 40
+    max_visible = 15
 
     def render_menu(selected_idx: int) -> Text:
+        total = len(items)
+        if total <= max_visible:
+            scroll_offset = 0
+            visible_count = total
+        else:
+            scroll_offset = max(0, min(selected_idx - max_visible // 2, total - max_visible))
+            visible_count = max_visible
+
         lines = [f"\n[success]{title}:[/success]", "[dim]Use ↑/↓ Arrow Keys to navigate, Enter to select:[/dim]\n"]
-        visible_items = items[:max_visible]
-        for idx, item in enumerate(visible_items):
+
+        if scroll_offset > 0:
+            lines.append(f"  [dim]▲ ... ({scroll_offset} items above)[/dim]")
+
+        for idx in range(scroll_offset, scroll_offset + visible_count):
+            item = items[idx]
             if idx == selected_idx:
                 lines.append(f"  [accent]❯ 🔘 {item}[/accent]")
             else:
                 lines.append(f"    [dim]⚪ {item}[/dim]")
-        if len(items) > max_visible:
-            lines.append(f"  [dim]... (+{len(items) - max_visible} more items)[/dim]")
+
+        remaining = total - (scroll_offset + visible_count)
+        if remaining > 0:
+            lines.append(f"  [dim]▼ ... ({remaining} items below)[/dim]")
+
         return Text.from_markup("\n".join(lines))
 
-    with Live(render_menu(current_idx), console=console, auto_refresh=False, vertical_overflow="visible") as live:
-        while True:
-            live.update(render_menu(current_idx), refresh=True)
-            try:
-                key = _read_single_key()
-            except Exception:
-                break
+    try:
+        with Live(render_menu(current_idx), console=console, auto_refresh=False, vertical_overflow="visible") as live:
+            while True:
+                live.update(render_menu(current_idx), refresh=True)
+                try:
+                    key = _read_single_key()
+                except (Exception, KeyboardInterrupt):
+                    return None
 
-            if key == "up":
-                current_idx = (current_idx - 1) % min(len(items), max_visible)
-            elif key == "down":
-                current_idx = (current_idx + 1) % min(len(items), max_visible)
-            elif key == "enter":
-                break
+                if key == "up":
+                    current_idx = (current_idx - 1) % len(items)
+                elif key == "down":
+                    current_idx = (current_idx + 1) % len(items)
+                elif key == "enter":
+                    break
+                elif key == "escape":
+                    return None
 
-    return items[current_idx]
+        return items[current_idx]
+    except (KeyboardInterrupt, Exception):
+        return None
 
 
 def _infer_tags_for_model(model_id: str) -> List[str]:
@@ -63,9 +83,9 @@ def _infer_tags_for_model(model_id: str) -> List[str]:
         tags.append("free")
     if any(k in m_lower for k in ("coder", "coding", "code")):
         tags.append("coding")
-    if any(k in m_lower for k in ("r1", "o1", "o3", "reasoning", "thinking", "nemotron")):
+    if any(k in m_lower for k in ("r1", "o1", "o3", "reasoning", "thinking", "nemotron", "sonnet")):
         tags.append("reasoning")
-    if any(k in m_lower for k in ("fast", "mini", "flash", "instant", "1b", "3b", "8b")):
+    if any(k in m_lower for k in ("fast", "mini", "flash", "instant", "1b", "3b", "8b", "haiku")):
         tags.append("fast")
     if "vision" in m_lower:
         tags.append("vision")
@@ -89,7 +109,7 @@ async def cmd_models(engine: Any, args: List[str]):
             p_cfg = engine.config_mgr.config.providers[p_key]
 
             console.print(f"[brand]🔍 Fetching model metadata from {p_cfg.name} matching pattern '{pattern}'...[/brand]")
-            success, model_details, err = await OpenAIProvider.fetch_available_models_details(p_cfg)
+            success, model_details, err = await fetch_models_details(p_cfg)
 
             if not success or not model_details:
                 console.print(f"[error]Failed to discover models from {p_cfg.name}: {err}[/error]")
@@ -157,7 +177,7 @@ async def cmd_models(engine: Any, args: List[str]):
         p_cfg = engine.config_mgr.config.providers[selected_provider]
         console.print(f"[brand]🔍 Fetching available models from {p_cfg.name}...[/brand]")
 
-        success, model_details, err = await OpenAIProvider.fetch_available_models_details(p_cfg)
+        success, model_details, err = await fetch_models_details(p_cfg)
         if not success or not model_details:
             console.print(f"[error]Failed to discover models from {p_cfg.name}: {err}[/error]")
             return
@@ -228,7 +248,7 @@ async def cmd_models(engine: Any, args: List[str]):
         configured_model_ids = {m.model_id for m in engine.config_mgr.config.models.values()}
 
         async def query_p(key: str, p_cfg):
-            success, model_details, err = await OpenAIProvider.fetch_available_models_details(p_cfg)
+            success, model_details, err = await fetch_models_details(p_cfg)
             return key, p_cfg, success, model_details, err
 
         results = await asyncio.gather(*(query_p(k, p) for k, p in providers_to_query.items()))
@@ -261,7 +281,6 @@ async def cmd_models(engine: Any, args: List[str]):
         provider_cfg = cfg.providers.get(model_cfg.provider)
         provider_name = provider_cfg.name if provider_cfg else model_cfg.provider
         
-        is_active = (key == active or active == "auto")
         mark = "[accent]*[/accent]" if key == active else " "
         
         roles = []

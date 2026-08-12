@@ -205,7 +205,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                 subs = [
                     ("distill", "Toggle sub-agent tool output distillation"),
                     ("proxy", "View or configure global network HTTP/HTTPS/SOCKS proxy"),
-                    ("repair", "Toggle self-healing tool recovery"),
+                    ("repair", "Toggle self-repair tool recovery"),
                     ("hooks", "Toggle post-edit linter hooks"),
                     ("compact", "Toggle auto-compaction"),
                     ("tokens", "Toggle turn token count display"),

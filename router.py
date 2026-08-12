@@ -1,7 +1,7 @@
 import json
 from typing import Dict, Any, Tuple, List
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 
 
 ROUTER_SYSTEM_PROMPT = (
@@ -55,7 +55,6 @@ async def select_model_for_prompt(
     if cfg.router_model not in cfg.models:
         raise ValueError(f"Configured router model '{cfg.router_model}' is not found in models.json.")
 
-    # Candidate models exclude 'auto'
     candidates = {k: v for k, v in cfg.models.items() if k != "auto"}
     if not candidates:
         raise ValueError("No candidate models configured in models.json.")
@@ -64,7 +63,6 @@ async def select_model_for_prompt(
         key = list(candidates.keys())[0]
         return key, "Only one candidate model available."
 
-    # Build manifest of available models for the router
     candidate_summaries = []
     for key, m_cfg in candidates.items():
         p_cfg = cfg.providers.get(m_cfg.provider)
@@ -87,7 +85,7 @@ async def select_model_for_prompt(
     )
 
     router_model_cfg, router_provider_cfg = config_mgr.get_model_and_provider(cfg.router_model)
-    provider = OpenAIProvider(router_model_cfg, router_provider_cfg)
+    provider = get_provider(router_model_cfg, router_provider_cfg, config_mgr)
 
     router_messages = [
         {"role": "system", "content": ROUTER_SYSTEM_PROMPT},
@@ -110,7 +108,6 @@ async def select_model_for_prompt(
     if selected and selected in candidates:
         return selected, reason
 
-    # Fuzzy match candidate keys if exact key missing
     if selected:
         for k in candidates:
             if k.lower() in selected.lower():

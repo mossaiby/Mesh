@@ -2,7 +2,7 @@
 
 **v1.0.0**
 
-A modular, text-based AI CLI built in Python for local and cloud-hosted LLMs. Designed for developer productivity with **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **sub-agent swarm workflows**, **dynamic LLM model routing**, **hash-anchored & fuzzy file editing**, **post-edit linter hooks**, **Git native tools**, **session checkpointing**, and **semantic context compaction**.
+A modular, text-based AI CLI built in Python for local and cloud-hosted LLMs. Designed for developer productivity with **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **sub-agent swarm workflows**, **native Anthropic API support (with Prompt Caching & Extended Thinking)**, **dynamic LLM model routing**, **hash-anchored & fuzzy file editing**, **post-edit linter hooks**, **Git native tools**, **session checkpointing**, and **semantic context compaction**.
 
 ---
 
@@ -33,6 +33,7 @@ Set environment variables for cloud or local providers (or configure endpoints i
 
 ```bash
 export OPENAI_API_KEY="sk-..."
+export ANTHROPIC_API_KEY="sk-ant-..."
 export GROQ_API_KEY="gsk_..."
 export OPENROUTER_API_KEY="sk-or-..."
 
@@ -66,10 +67,10 @@ Slash commands are organized into logical categories. Type **`/help`** to view a
 ### ⚙️ Models & Settings
 | Command | Description |
 | :--- | :--- |
-| **`/status`** | Display active model, router model, network proxy, tools, MCPs, symbol count, branch, token metrics display settings, and context status. |
+| **`/status`** | Display active model, router model, network proxy, thinking mode, effort level, tools, MCPs, symbol count, branch, token metrics display settings, and context status. |
 | **`/models`** | List configured models with tags/descriptions (`/models`), discover remote endpoints (`/models discover`), or batch-add models (`/models add openrouter *free*`). |
 | **`/switch`** | Switch active model/mode: `/switch auto` (sticky dynamic router), `/switch router [<key>]`, or directly via key (`/switch <key>`). |
-| **`/config`** | Configure system options: `/config distill`, `/config proxy`, `/config repair`, `/config hooks`, `/config compact`, `/config tokens`, `/config cost`, `/config statistics`. |
+| **`/config`** | Configure system options: `/config distill`, `/config proxy`, `/config repair`, `/config hooks`, `/config compact`, `/config thinking`, `/config effort`, `/config tokens`, `/config cost`, `/config statistics`. |
 | **`/mode`** | Switch operating mode (`/mode build`, `/mode plan`, `/mode review`, `/mode yolo`). |
 | **`/guard`** | Configure tool-call safety guard risk assessment (`/guard on`, `/guard mode supervised|autonomous`). |
 
@@ -109,7 +110,7 @@ Slash commands are organized into logical categories. Type **`/help`** to view a
 | **`/skills`** | Enable, disable, or register custom system skills. |
 | **`/dirs`** | Manage authorized directory paths enforced by `PermissionManager`. |
 | **`/mcps`** | View connected Model Context Protocol servers or toggle tools (`/mcps on|off`). |
-| **`/compact`** | Semantically compact older conversation context using the LLM. |
+| **`/compact`** | Semantically summarize older conversation context using the LLM. |
 
 ### 💻 Session & System
 | Command | Description |
@@ -125,6 +126,11 @@ Slash commands are organized into logical categories. Type **`/help`** to view a
 
 ## 🌟 Key Capabilities
 
+### 🧠 Native Anthropic Support (Prompt Caching & Extended Thinking)
+* **Native Anthropic API Integration:** Built-in driver for Claude models (`claude-3.7-sonnet`, `claude-3.5-haiku`, etc.) with text, tool calls, and streaming CoT.
+* **Prompt Caching (`cache_control`):** Automatically attaches ephemeral prompt cache headers to system instructions and tools for a **90% discount** on cached tokens and faster response times.
+* **Thinking & Effort Controls (`/config thinking`, `/config effort`):** Toggle extended thinking on/off and tune reasoning budget levels (`low`, `medium`, `high`) across Anthropic and OpenAI reasoning models.
+
 ### 🌐 Network Proxy & SOCKS5 Support (`/config proxy`)
 * **HTTP, HTTPS & SOCKS5 Proxy:** Seamlessly routes Mesh LLM traffic, model discovery, and web tools through enterprise HTTP/HTTPS proxies or local SOCKS5 tunnels (`socks5://127.0.0.1:1080`).
 * **Runtime & Persistent Config:** Use `/config proxy <url>` inside Mesh to apply and persist network proxy settings immediately without restarting.
@@ -133,6 +139,14 @@ Slash commands are organized into logical categories. Type **`/help`** to view a
 * **Sticky Auto-Routing:** Enters auto mode via `/switch auto`. Every incoming non-slash prompt is analyzed by the configured `router_model` before execution.
 * **Metadata & Tag Awareness:** Inspects model tags (`free`, `reasoning`, `coding`, `fast`, `large-context`), descriptions, context windows, and providers to pick the optimal model for the prompt.
 * **Pre-Streaming Notification:** Prints a clear notification header displaying the selected target model and short routing rationale before generation begins.
+
+### 🎯 Hash-Anchored & Fuzzy Block File Editing
+* **Hash-Anchored Edits (`hash_edit`):** Passing `show_hashes: true` to `read_file` returns line-numbered content with stable 4-character hashes (e.g. `L12|a3f1| def foo():`). Using `hash_edit` verifies line hashes before applying changes, guaranteeing safe, drift-free replacements.
+* **Fuzzy Block Matching (`edit_file`):** If exact string replacement fails in `edit_file` due to minor indentation or whitespace variations, Mesh calculates sequence similarity using `difflib.SequenceMatcher`. If similarity is $\ge 85\%$, the target block is replaced automatically.
+
+### ⚡ Post-Edit Linter Hooks (`/config hooks`)
+* **Automated Post-Edit Checks:** Automatically detects installed linters (`ruff`, `flake8`, `eslint`, `cargo check`, `gofmt`) using `shutil.which()` after file edits (`write_file`, `edit_file`, `hash_edit`).
+* **Real-time Repair:** Captures non-zero linter outputs and appends `_linter_feedback` directly into the tool output, allowing the LLM to fix syntax errors or broken imports in the exact same turn.
 
 ### ⏱️ Performance Statistics & Configurable Footer Metrics
 * **Token Counts (`/config tokens`):** Displays input and output prompt/completion token counts per turn.
@@ -158,11 +172,19 @@ Defines provider REST endpoints, model configurations, router settings, network 
   "guard_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
   "guard_autonomy": "supervised",
   "router_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
-  "network_proxy": "http://proxy.corp.com:8080",
+  "network_proxy": null,
+  "thinking": true,
+  "effort": "medium",
   "show_tokens": true,
   "show_cost": true,
   "show_statistics": true,
   "providers": {
+    "anthropic": {
+      "name": "Anthropic Official",
+      "base_url": "https://api.anthropic.com/v1",
+      "api_key_env": "ANTHROPIC_API_KEY",
+      "default_headers": null
+    },
     "groq": {
       "name": "Groq Cloud",
       "base_url": "https://api.groq.com/openai/v1",
@@ -175,6 +197,14 @@ Defines provider REST endpoints, model configurations, router settings, network 
     }
   },
   "models": {
+    "anthropic:claude-3-7-sonnet-20250219": {
+      "name": "Claude 3.7 Sonnet",
+      "provider": "anthropic",
+      "model_id": "claude-3-7-sonnet-20250219",
+      "context_window": 200000,
+      "tags": ["reasoning", "coding", "agent", "thinking", "large-context"],
+      "description": "Anthropic's flagship hybrid reasoning model with native extended thinking and prompt caching."
+    },
     "lmstudio:gemma-4-e4b": {
       "name": "Gemma 4 E4B",
       "provider": "lmstudio",

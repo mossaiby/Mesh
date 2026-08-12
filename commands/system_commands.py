@@ -8,7 +8,6 @@ from compaction import compact_messages, estimate_tokens
 import symbol_search
 import project_rules
 import hooks
-from pricing import pricing_manager
 from theme import console
 from version import __version__
 
@@ -77,7 +76,7 @@ async def cmd_status(engine: Any, args: List[str]):
     console.print(f"• [label]Project Rules:[/label] {proj_rules_str}")
 
     console.print(f"• [label]Sub-Agent Tool Distillation:[/label] {distill_state}")
-    console.print(f"• [label]Self-Healing Repair Engine:[/label] {repair_state}")
+    console.print(f"• [label]Repair Engine:[/label] {repair_state}")
     console.print(f"• [label]Post-Edit Linter Hooks:[/label] {hooks_state}")
     console.print(f"• [label]Delegation Recursion Depth:[/label] {cfg.max_delegation_depth}")
     guard_state = "[success]ON[/success]" if engine.safety_guard.enabled else "[error]OFF[/error]"
@@ -93,6 +92,9 @@ async def cmd_status(engine: Any, args: List[str]):
 
     proxy_url_str = cfg.network_proxy or "[dim]disabled (direct)[/dim]"
     console.print(f"• [label]Network Proxy:[/label] {proxy_url_str}")
+
+    thinking_s = "[success]ON[/success]" if cfg.thinking else "[error]OFF[/error]"
+    console.print(f"• [label]Thinking / Reasoning:[/label] {thinking_s} (effort: [accent]{cfg.effort}[/accent])")
 
     tokens_s = "[success]ON[/success]" if cfg.show_tokens else "[error]OFF[/error]"
     cost_s = "[success]ON[/success]" if cfg.show_cost else "[error]OFF[/error]"
@@ -148,6 +150,8 @@ async def cmd_config(engine: Any, args: List[str]):
         repair_s = "[success]ON[/success]" if engine.repair_engine.enabled else "[error]OFF[/error]"
         hooks_s = "[success]ON[/success]" if hooks.hook_manager.enabled else "[error]OFF[/error]"
         compact_s = "[success]ON[/success]" if cfg.auto_compact else "[error]OFF[/error]"
+        thinking_s = "[success]ON[/success]" if cfg.thinking else "[error]OFF[/error]"
+        effort_s = f"[accent]{cfg.effort}[/accent]"
         tokens_s = "[success]ON[/success]" if cfg.show_tokens else "[error]OFF[/error]"
         cost_s = "[success]ON[/success]" if cfg.show_cost else "[error]OFF[/error]"
         stats_s = "[success]ON[/success]" if cfg.show_statistics else "[error]OFF[/error]"
@@ -158,10 +162,12 @@ async def cmd_config(engine: Any, args: List[str]):
         console.print(f"  • [label]repair[/label]: {repair_s}")
         console.print(f"  • [label]hooks[/label]: {hooks_s}")
         console.print(f"  • [label]compact[/label]: {compact_s} (threshold: {int(cfg.auto_compact_threshold * 100)}%)")
+        console.print(f"  • [label]thinking[/label]: {thinking_s}")
+        console.print(f"  • [label]effort[/label]: {effort_s}")
         console.print(f"  • [label]tokens[/label]: {tokens_s}")
         console.print(f"  • [label]cost[/label]: {cost_s}")
         console.print(f"  • [label]statistics[/label]: {stats_s}\n")
-        console.print("Usage: [warning]/config distill|proxy|repair|hooks|compact|tokens|cost|statistics [args][/warning]\n")
+        console.print("Usage: [warning]/config distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics [args][/warning]\n")
         return
 
     sub = args[0].lower()
@@ -194,17 +200,17 @@ async def cmd_config(engine: Any, args: List[str]):
             engine.config_mgr.save()
             console.print(f"[success]Network proxy set to '[accent]{target_val}[/accent]' and applied to environment variables.[/success]")
 
-    elif sub in ("repair", "selfheal"):
+    elif sub == "repair":
         if not sub_args:
             state_str = "[success]ON[/success]" if engine.repair_engine.enabled else "[error]OFF[/error]"
-            console.print(f"Self-healing repair is {state_str}.")
+            console.print(f"Repair Engine is {state_str}.")
             return
         if sub_args[0].lower() == "on":
             engine.repair_engine.enabled = True
-            console.print("[success]Self-healing tool recovery ENABLED.[/success]")
+            console.print("[success]Repair Engine ENABLED.[/success]")
         elif sub_args[0].lower() == "off":
             engine.repair_engine.enabled = False
-            console.print("[warning]Self-healing tool recovery DISABLED.[/warning]")
+            console.print("[warning]Repair Engine DISABLED.[/warning]")
 
     elif sub == "hooks":
         if not sub_args:
@@ -226,20 +232,50 @@ async def cmd_config(engine: Any, args: List[str]):
         act = sub_args[0].lower()
         if act == "on":
             cfg.auto_compact = True
+            engine.config_mgr.save()
             console.print("[success]Auto-compaction ENABLED.[/success]")
         elif act == "off":
             cfg.auto_compact = False
+            engine.config_mgr.save()
             console.print("[warning]Auto-compaction DISABLED.[/warning]")
         elif act == "threshold" and len(sub_args) > 1:
             try:
                 pct = float(sub_args[1])
                 if 0 < pct <= 100:
                     cfg.auto_compact_threshold = pct / 100.0
+                    engine.config_mgr.save()
                     console.print(f"[success]Auto-compaction threshold set to {pct:.0f}%.[/success]")
                 else:
                     console.print("[error]Threshold must be between 0 and 100.[/error]")
             except ValueError:
                 console.print("[error]Threshold must be a number between 0 and 100.[/error]")
+
+    elif sub == "thinking":
+        if not sub_args:
+            state_str = "[success]ON[/success]" if cfg.thinking else "[error]OFF[/error]"
+            console.print(f"Thinking / Reasoning mode is {state_str}.")
+            return
+        act = sub_args[0].lower()
+        if act == "on":
+            cfg.thinking = True
+            engine.config_mgr.save()
+            console.print("[success]Thinking / Reasoning mode ENABLED.[/success]")
+        elif act == "off":
+            cfg.thinking = False
+            engine.config_mgr.save()
+            console.print("[warning]Thinking / Reasoning mode DISABLED.[/warning]")
+
+    elif sub == "effort":
+        if not sub_args:
+            console.print(f"Reasoning effort level is currently: [accent]{cfg.effort}[/accent]\nUsage: [warning]/config effort low|medium|high[/warning]")
+            return
+        act = sub_args[0].lower()
+        if act in ("low", "medium", "high"):
+            cfg.effort = act
+            engine.config_mgr.save()
+            console.print(f"[success]Reasoning effort level set to '[accent]{act}[/accent]'.[/success]")
+        else:
+            console.print("[error]Invalid effort level. Options: low, medium, high.[/error]")
 
     elif sub == "tokens":
         if not sub_args:
@@ -287,7 +323,7 @@ async def cmd_config(engine: Any, args: List[str]):
             console.print("[warning]Token statistics display DISABLED.[/warning]")
 
     else:
-        console.print("[error]Usage: /config [distill|proxy|repair|hooks|compact|tokens|cost|statistics] <args>[/error]")
+        console.print("[error]Usage: /config [distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics] <args>[/error]")
 
 
 async def cmd_context(engine: Any, args: List[str]):
@@ -581,7 +617,7 @@ async def cmd_exit(engine: Any, args: List[str]):
 def register_system_commands(engine: Any):
     engine.cmd_registry.register("help", "Show available slash commands", lambda args: cmd_help(engine, args), category="Session & System")
     engine.cmd_registry.register("status", "Show current Mesh status overview", lambda args: cmd_status(engine, args), category="Models & Settings")
-    engine.cmd_registry.register("config", "View or set automation & proxy toggles: /config distill|proxy|repair|hooks|compact|tokens|cost|statistics [args]", lambda args: cmd_config(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("config", "View or set automation & proxy toggles: /config distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics [args]", lambda args: cmd_config(engine, args), category="Models & Settings")
     engine.cmd_registry.register("context", "Display context window and active tool names", lambda args: cmd_context(engine, args), category="Context & Integration")
     engine.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", lambda args: cmd_system(engine, args), category="Context & Integration")
     engine.cmd_registry.register("tools", "List registered tools with full detailed descriptions and schemas, or toggle inclusion: /tools [on|off]", lambda args: cmd_tools(engine, args), category="Context & Integration")

@@ -46,7 +46,7 @@ class ExploreTool(BaseTool):
         strategies: Optional[List[str]] = None,
         max_turns: int = 6
     ) -> Dict[str, Any]:
-        debug_mode = getattr(self._tool_registry.subagent_proxy, "debug_mode", False)
+        debug_mode = getattr(self._tool_registry.subagent_distiller, "debug_mode", False)
         return await explore.explore_branches(
             task=task,
             strategies=strategies,

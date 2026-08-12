@@ -1,6 +1,6 @@
 from typing import Dict, Any, Optional
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 from render.stream_renderer import StreamRenderer
 
 
@@ -33,7 +33,7 @@ async def get_advice(
     except Exception as e:
         return {"status": "error", "error": f"Configuration error for advisor model '{model_key}': {e}"}
 
-    provider = OpenAIProvider(model_cfg, provider_cfg)
+    provider = get_provider(model_cfg, provider_cfg, config_mgr)
 
     user_content = f"Question: {question.strip()}"
     if context and context.strip():

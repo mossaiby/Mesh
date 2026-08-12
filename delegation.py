@@ -2,7 +2,7 @@ import asyncio
 import contextvars
 from typing import Dict, Any, List, Optional, Tuple
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 from render.stream_renderer import StreamRenderer
 from theme import console
 
@@ -98,7 +98,7 @@ async def run_delegated_task(
         except Exception as e:
             return {"status": "error", "error": f"Configuration error: {e}", "tool_calls": [], "turns_used": 0, "depth": depth}
 
-        provider = OpenAIProvider(model_cfg, provider_cfg)
+        provider = get_provider(model_cfg, provider_cfg, config_mgr)
         renderer = StreamRenderer()
 
         tool_call_log: List[Dict[str, Any]] = []
@@ -119,20 +119,27 @@ async def run_delegated_task(
 
                     if ctype == "tool_calls":
                         for delta in cval:
-                            idx = delta.index
+                            idx = delta["index"] if isinstance(delta, dict) else getattr(delta, "index", 0)
                             while len(tool_calls_to_run) <= idx:
                                 tool_calls_to_run.append({"id": "", "name": "", "args": ""})
-                            if delta.id:
-                                tool_calls_to_run[idx]["id"] = delta.id
-                            if delta.function and delta.function.name:
-                                tool_calls_to_run[idx]["name"] = delta.function.name
-                            if delta.function and delta.function.arguments:
-                                tool_calls_to_run[idx]["args"] += delta.function.arguments
+                            
+                            tc_id = delta.get("id") if isinstance(delta, dict) else getattr(delta, "id", None)
+                            if tc_id:
+                                tool_calls_to_run[idx]["id"] = tc_id
+                            
+                            fn = delta.get("function") if isinstance(delta, dict) else getattr(delta, "function", None)
+                            if fn:
+                                fn_name = fn.get("name") if isinstance(fn, dict) else getattr(fn, "name", None)
+                                fn_args = fn.get("arguments") if isinstance(fn, dict) else getattr(fn, "arguments", None)
+                                if fn_name:
+                                    tool_calls_to_run[idx]["name"] = fn_name
+                                if fn_args:
+                                    tool_calls_to_run[idx]["args"] += fn_args
                     else:
                         yield chunk
 
             try:
-                debug_flag = getattr(tool_registry.subagent_proxy, "debug_mode", False) if hasattr(tool_registry, "subagent_proxy") else False
+                debug_flag = getattr(tool_registry.subagent_distiller, "debug_mode", False) if hasattr(tool_registry, "subagent_distiller") else False
                 content_text, _ = await renderer.render_stream(sub_chunk_gen(), debug_mode=debug_flag)
             except Exception as e:
                 return {
@@ -186,7 +193,7 @@ async def run_delegated_task(
                 })
 
         if verbose:
-            console.print(f"[warning]⚠️  Sub-agent hit the {max_turns}-turn limit without finishing.[/warning] {depth_tag}")
+            console.print(f"[warning]⚠️   Sub-agent hit the {max_turns}-turn limit without finishing.[/warning] {depth_tag}")
         return {
             "status": "max_turns_reached",
             "report": (

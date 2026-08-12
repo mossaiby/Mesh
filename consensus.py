@@ -1,6 +1,6 @@
 from typing import Dict, Any, Optional
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 from render.stream_renderer import StreamRenderer
 from theme import console
 
@@ -28,14 +28,14 @@ async def get_consensus(
     p_model = proposer_model or config_mgr.config.active_model
     a_model = auditor_model or config_mgr.config.advisor_model or config_mgr.config.active_model
 
-    console.print(f"\n[brand]⚖️ Multi-Model Consensus Loop:[/brand] Auditing proposal using [accent]{a_model}[/accent]...")
+    console.print(f"\n[brand]⚖️  Multi-Model Consensus Loop:[/brand] Auditing proposal using [accent]{a_model}[/accent]...")
 
     renderer = StreamRenderer()
 
     # Stage 1: Auditor Pass
     try:
         a_model_cfg, a_provider_cfg = config_mgr.get_model_and_provider(a_model)
-        auditor_provider = OpenAIProvider(a_model_cfg, a_provider_cfg)
+        auditor_provider = get_provider(a_model_cfg, a_provider_cfg, config_mgr)
 
         audit_prompt = [
             {"role": "system", "content": AUDITOR_SYSTEM_PROMPT},
@@ -58,7 +58,7 @@ async def get_consensus(
         ]
 
         p_model_cfg, p_provider_cfg = config_mgr.get_model_and_provider(p_model)
-        referee_provider = OpenAIProvider(p_model_cfg, p_provider_cfg)
+        referee_provider = get_provider(p_model_cfg, p_provider_cfg, config_mgr)
 
         consensus_text, _ = await renderer.render_stream(referee_provider.stream_chat(referee_prompt))
 

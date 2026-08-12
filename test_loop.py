@@ -17,9 +17,9 @@ async def run_iterative_test_loop(
     """
     console.print(f"\n[brand]🔄 Iterative Test Loop Started:[/brand] Executing '[accent]{test_command}[/accent]' (Max Iterations: {max_iterations})\n")
 
-    shell_tool = tool_registry._tools.get("run_shell_command")
+    shell_tool = tool_registry._tools.get("shell")
     if not shell_tool:
-        return {"status": "error", "error": "Shell execution tool 'run_shell_command' is not registered."}
+        return {"status": "error", "error": "Shell execution tool 'shell' is not registered."}
 
     for iteration in range(1, max_iterations + 1):
         console.print(f"[label]Iteration {iteration}/{max_iterations}:[/label] Running test command...")

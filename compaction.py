@@ -1,20 +1,12 @@
 from typing import List, Dict, Any, Tuple
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 
 
-# Rough, provider-agnostic token estimate (~4 characters per token). This is
-# intentionally simple rather than tied to a specific tokenizer (e.g.
-# tiktoken), since Mesh talks to many different backends/model families
-# whose actual tokenizers differ - the goal here is just a reasonably
-# conservative trigger for auto-compaction, not exact accounting.
 CHARS_PER_TOKEN = 4
 
 
 def estimate_tokens(messages: List[Dict[str, Any]]) -> int:
-    """Estimates the total token count of a message list from its raw
-    character length (content + tool calls + tool results), including a
-    small fixed overhead per message for role/formatting metadata."""
     total_chars = 0
     for msg in messages:
         content = msg.get("content") or ""
@@ -25,18 +17,12 @@ def estimate_tokens(messages: List[Dict[str, Any]]) -> int:
         if tool_calls:
             total_chars += len(str(tool_calls))
 
-        # ~4 chars of overhead per message for role markers/formatting
         total_chars += 4
 
     return max(1, total_chars // CHARS_PER_TOKEN)
 
 
 def find_safe_split_index(chat_msgs: List[Dict[str, Any]], min_keep: int = 2) -> int:
-    """
-    Finds a safe index to split chat_msgs so that to_keep always starts
-    with a 'user' message, ensuring valid alternating turn structure and
-    never breaking tool call/result pairs across the boundary.
-    """
     if len(chat_msgs) <= min_keep:
         return 0
 
@@ -55,10 +41,6 @@ async def compact_messages(
     config_mgr: ConfigManager, 
     min_keep: int = 2
 ) -> Tuple[List[Dict[str, Any]], bool, str]:
-    """
-    Semantically compacts older conversation history into a structured summary.
-    Returns (new_messages, success, message_details).
-    """
     system_msgs = [m for m in messages if m.get("role") == "system"]
     chat_msgs = [m for m in messages if m.get("role") != "system"]
 
@@ -70,7 +52,6 @@ async def compact_messages(
     to_summarize = chat_msgs[:split_idx]
     to_keep = chat_msgs[split_idx:]
 
-    # Format history to summarize
     history_text_lines = []
     for msg in to_summarize:
         role = msg.get("role", "unknown").capitalize()
@@ -103,7 +84,7 @@ async def compact_messages(
     ]
 
     model_cfg, provider_cfg = config_mgr.get_active_model_and_provider()
-    provider = OpenAIProvider(model_cfg, provider_cfg)
+    provider = get_provider(model_cfg, provider_cfg, config_mgr)
 
     summary_text = ""
     async for chunk in provider.stream_chat(summarization_prompt):
@@ -113,7 +94,6 @@ async def compact_messages(
     if not summary_text.strip():
         return messages, False, "Failed to generate summary from model."
 
-    # Reconstruct compacted messages list
     new_messages = []
     new_messages.extend(system_msgs)
     new_messages.append({
@@ -142,16 +122,6 @@ async def maybe_auto_compact(
     config_mgr: ConfigManager,
     min_keep: int = 2
 ) -> Tuple[List[Dict[str, Any]], bool, str]:
-    """
-    Checks the current conversation's estimated token usage against the
-    active model's context window and, if auto-compaction is enabled and
-    usage exceeds the configured threshold, runs compact_messages().
-
-    Returns (messages, compacted, details). `messages` is the (possibly
-    unchanged) message list to use going forward; `compacted` is True only
-    if compaction actually ran and succeeded; `details` is empty unless
-    compaction ran.
-    """
     cfg = config_mgr.config
     if not cfg.auto_compact:
         return messages, False, ""
@@ -171,8 +141,6 @@ async def maybe_auto_compact(
 
     new_messages, success, details = await compact_messages(messages, config_mgr, min_keep=min_keep)
     if not success:
-        # Not enough history to safely compact yet (e.g. still early in the
-        # conversation) - just proceed uncompacted rather than erroring out.
         return messages, False, ""
 
     usage_pct = int((estimated / context_window) * 100)

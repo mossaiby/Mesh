@@ -1,7 +1,7 @@
 import json
 from typing import List, Dict, Any, Tuple
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 
 
 DREAM_SYSTEM_PROMPT = (
@@ -33,9 +33,6 @@ DREAM_SYSTEM_PROMPT = (
 
 
 def _format_transcript(messages: List[Dict[str, Any]], max_chars: int = 12000) -> str:
-    """Renders the conversation (excluding the system prompt) into a plain-text
-    transcript for the dream analysis pass, trimmed to the most recent content
-    if it exceeds max_chars."""
     lines = []
     for msg in messages:
         role = msg.get("role", "unknown")
@@ -60,8 +57,6 @@ def _format_transcript(messages: List[Dict[str, Any]], max_chars: int = 12000) -
 
 
 def _safe_parse_json(raw: str) -> Dict[str, Any]:
-    """Best-effort JSON parsing that tolerates stray markdown fences or
-    leading/trailing prose some models add despite instructions not to."""
     raw = raw.strip()
 
     if raw.startswith("```"):
@@ -90,13 +85,6 @@ async def dream_extract(
     messages: List[Dict[str, Any]],
     config_mgr: ConfigManager
 ) -> Tuple[Dict[str, List[Any]], str]:
-    """
-    Runs a dedicated out-of-band analysis pass over the conversation to extract
-    candidate notes, memory key-value facts, and reusable skills.
-
-    Returns (extraction, error_message). `extraction` always has 'notes', 'memory',
-    and 'skills' keys (each a list, possibly empty). `error_message` is empty on success.
-    """
     empty = {"notes": [], "memory": [], "skills": []}
 
     chat_only = [m for m in messages if m.get("role") != "system"]
@@ -114,7 +102,7 @@ async def dream_extract(
     except Exception as e:
         return empty, f"Configuration error: {e}"
 
-    provider = OpenAIProvider(model_cfg, provider_cfg)
+    provider = get_provider(model_cfg, provider_cfg, config_mgr)
 
     raw_text = ""
     try:

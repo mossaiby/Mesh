@@ -4,6 +4,8 @@
     "openai:gpt-4o-mini": { "input": 0.15, "output": 0.60 },
     "openai:o1": { "input": 15.00, "output": 60.00 },
     "openai:o3-mini": { "input": 1.10, "output": 4.40 },
+    "anthropic:claude-3-7-sonnet-20250219": { "input": 3.00, "output": 15.00 },
+    "anthropic:claude-3-5-haiku-20241022": { "input": 0.80, "output": 4.00 },
     "groq:llama-3.3-70b-versatile": { "input": 0.59, "output": 0.79 },
     "groq:llama-3.1-8b-instant": { "input": 0.05, "output": 0.08 },
     "groq:deepseek-r1-distill-llama-70b": { "input": 0.75, "output": 0.99 },

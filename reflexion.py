@@ -2,7 +2,7 @@ import json
 import os
 from typing import Dict, Any, List, Optional, Tuple
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 from theme import console
 
 REFLEXION_FILE = "reflexion.json"
@@ -35,7 +35,6 @@ def _save_reflexion_data(data: Dict[str, Any]) -> None:
 
 
 def record_reflexion_event(event_type: str, details: str) -> None:
-    """Records a failure or correction event for future reflexion analysis."""
     data = _load_reflexion_data()
     data.setdefault("events", []).append({
         "type": event_type,
@@ -45,7 +44,6 @@ def record_reflexion_event(event_type: str, details: str) -> None:
 
 
 def get_reflexion_instructions() -> str:
-    """Returns Markdown section containing distilled lessons for system prompt injection."""
     data = _load_reflexion_data()
     lessons = data.get("lessons", [])
     if not lessons:
@@ -62,7 +60,6 @@ def clear_reflexion() -> None:
 
 
 async def distill_reflexion_lessons(config_mgr: ConfigManager) -> Tuple[bool, str]:
-    """Runs an LLM pass over recorded error events to synthesize durable lessons."""
     data = _load_reflexion_data()
     events = data.get("events", [])
     if not events:
@@ -76,7 +73,7 @@ async def distill_reflexion_lessons(config_mgr: ConfigManager) -> Tuple[bool, st
 
     try:
         model_cfg, provider_cfg = config_mgr.get_active_model_and_provider()
-        provider = OpenAIProvider(model_cfg, provider_cfg)
+        provider = get_provider(model_cfg, provider_cfg, config_mgr)
 
         raw_text = ""
         async for chunk in provider.stream_chat(messages):
@@ -95,7 +92,7 @@ async def distill_reflexion_lessons(config_mgr: ConfigManager) -> Tuple[bool, st
 
         if isinstance(new_lessons, list) and new_lessons:
             data["lessons"] = list(set(data.get("lessons", []) + [str(l).strip() for l in new_lessons if str(l).strip()]))
-            data["events"] = []  # Clear events after successful distillation
+            data["events"] = []
             _save_reflexion_data(data)
             return True, f"Distilled {len(new_lessons)} new lesson(s) into reflexion journal."
         

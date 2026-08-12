@@ -2,7 +2,7 @@ import subprocess
 import os
 from typing import Dict, Any, List, Optional, Tuple
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 from theme import console
 
 
@@ -10,13 +10,12 @@ COMMIT_MSG_SYSTEM_PROMPT = (
     "You are an expert Git Commit Message Generator. You will be given a `git diff` "
     "of changes in a repository. Generate a concise, professional Conventional Commit "
     "message (e.g., 'feat(cli): add git native workflow and /commit command' or "
-    "'fix(guard): prevent infinite self-healing loop on guard blocks').\n\n"
+    "'fix(guard): prevent infinite repair loop on guard blocks').\n\n"
     "Respond with ONLY the commit message text. No quotes, no markdown fences, no extra commentary."
 )
 
 
 def is_git_repository(root_dir: str = ".") -> bool:
-    """Checks if root_dir is inside a valid Git repository."""
     try:
         res = subprocess.run(
             ["git", "rev-parse", "--is-inside-work-tree"],
@@ -32,7 +31,6 @@ def is_git_repository(root_dir: str = ".") -> bool:
 
 
 def get_git_branch(root_dir: str = ".") -> str:
-    """Returns the current active Git branch name."""
     try:
         res = subprocess.run(
             ["git", "branch", "--show-current"],
@@ -48,7 +46,6 @@ def get_git_branch(root_dir: str = ".") -> str:
 
 
 def get_git_status(root_dir: str = ".") -> Dict[str, Any]:
-    """Returns structured status information for the workspace repository."""
     if not is_git_repository(root_dir):
         return {"error": "Current directory is not a Git repository."}
 
@@ -73,7 +70,6 @@ def get_git_status(root_dir: str = ".") -> Dict[str, Any]:
 
 
 def get_git_diff(staged: bool = False, root_dir: str = ".") -> str:
-    """Returns unstaged or staged git diff text."""
     if not is_git_repository(root_dir):
         return "Error: Not a Git repository."
 
@@ -93,7 +89,6 @@ def get_git_diff(staged: bool = False, root_dir: str = ".") -> str:
 
 
 async def generate_commit_message(config_mgr: ConfigManager, root_dir: str = ".") -> str:
-    """Uses LLM to generate a conventional commit message from git diff."""
     diff_text = get_git_diff(staged=False, root_dir=root_dir)
     if not diff_text or diff_text == "<no git diff output>":
         diff_text = get_git_diff(staged=True, root_dir=root_dir)
@@ -110,7 +105,7 @@ async def generate_commit_message(config_mgr: ConfigManager, root_dir: str = "."
 
     try:
         model_cfg, provider_cfg = config_mgr.get_active_model_and_provider()
-        provider = OpenAIProvider(model_cfg, provider_cfg)
+        provider = get_provider(model_cfg, provider_cfg, config_mgr)
 
         msg_text = ""
         async for chunk in provider.stream_chat(messages):
@@ -124,7 +119,6 @@ async def generate_commit_message(config_mgr: ConfigManager, root_dir: str = "."
 
 
 def run_git_commit(message: str, add_all: bool = True, root_dir: str = ".") -> Tuple[bool, str]:
-    """Stages files and creates a Git commit."""
     if not is_git_repository(root_dir):
         return False, "Directory is not a Git repository."
 
@@ -161,7 +155,6 @@ def run_git_push(
     force: bool = False,
     root_dir: str = "."
 ) -> Tuple[bool, str]:
-    """Pushes the active branch to a remote Git repository."""
     if not is_git_repository(root_dir):
         return False, "Directory is not a Git repository."
 
@@ -188,7 +181,6 @@ def run_git_push(
 
 
 def create_or_switch_branch(branch_name: str, root_dir: str = ".") -> Tuple[bool, str]:
-    """Creates or switches to a Git branch."""
     if not is_git_repository(root_dir):
         return False, "Directory is not a Git repository."
 

@@ -4,7 +4,7 @@ import sys
 import time
 from typing import Optional, List, Dict, Any
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 from render.stream_renderer import StreamRenderer
 from tools import (
     ToolRegistry,
@@ -103,14 +103,6 @@ class MeshEngine:
         self.setup_defaults()
         self.tool_registry.mode_blocked_tools = modes.blocked_tools_for_mode(self.current_mode, self.tool_registry)
         self.update_system_message(self.config_mgr.config.system_prompt)
-
-    @property
-    def subagent_proxy(self):
-        return self.subagent_distiller
-
-    @property
-    def self_healer(self):
-        return self.repair_engine
 
     def reload_project_context(self):
         """Re-indexes codebase symbols, reloads project rules, and regenerates Repo Map for CWD."""
@@ -328,7 +320,7 @@ class MeshEngine:
                 if auto_compacted:
                     console.print(f"[warning]📑   {compact_details}[/warning]")
 
-                provider = OpenAIProvider(model_cfg, provider_cfg)
+                provider = get_provider(model_cfg, provider_cfg, self.config_mgr)
                 schemas = self.tool_registry.get_schemas() if self.tools_enabled else None
                 if schemas and self.tool_registry.mode_blocked_tools:
                     schemas = [s for s in schemas if s["function"]["name"] not in self.tool_registry.mode_blocked_tools]
@@ -355,15 +347,22 @@ class MeshEngine:
                             turn_completion_tokens = cval.get("completion_tokens", 0)
                         elif ctype == "tool_calls" and self.tools_enabled:
                             for tc in cval:
-                                idx = tc.index
+                                idx = tc.get("index", 0) if isinstance(tc, dict) else getattr(tc, "index", 0)
                                 while len(tool_calls_to_run) <= idx:
                                     tool_calls_to_run.append({"id": "", "name": "", "args": ""})
-                                if tc.id:
-                                    tool_calls_to_run[idx]["id"] = tc.id
-                                if tc.function and tc.function.name:
-                                    tool_calls_to_run[idx]["name"] = tc.function.name
-                                if tc.function and tc.function.arguments:
-                                    tool_calls_to_run[idx]["args"] += tc.function.arguments
+                                
+                                tc_id = tc.get("id") if isinstance(tc, dict) else getattr(tc, "id", None)
+                                if tc_id:
+                                    tool_calls_to_run[idx]["id"] = tc_id
+                                
+                                fn = tc.get("function") if isinstance(tc, dict) else getattr(tc, "function", None)
+                                if fn:
+                                    fn_name = fn.get("name") if isinstance(fn, dict) else getattr(fn, "name", None)
+                                    fn_args = fn.get("arguments") if isinstance(fn, dict) else getattr(fn, "arguments", None)
+                                    if fn_name:
+                                        tool_calls_to_run[idx]["name"] = fn_name
+                                    if fn_args:
+                                        tool_calls_to_run[idx]["args"] += fn_args
                         else:
                             yield chunk
 

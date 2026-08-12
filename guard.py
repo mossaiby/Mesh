@@ -2,7 +2,7 @@ import asyncio
 import json
 from typing import Dict, Any, Optional, Tuple
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 from tools.ask_tool import AskUserTool
 from theme import console
 
@@ -34,8 +34,6 @@ GUARD_SYSTEM_PROMPT = (
 
 
 def _safe_parse_json(raw: str) -> Dict[str, Any]:
-    """Best-effort JSON parsing that tolerates stray markdown fences some
-    models add despite instructions not to."""
     raw = (raw or "").strip()
 
     if raw.startswith("```"):
@@ -62,32 +60,14 @@ def _safe_parse_json(raw: str) -> Dict[str, Any]:
 
 class SafetyGuard:
     """
-    Risk-assesses tool calls flagged with requires_guard=True (shell commands,
-    file writes/edits, MCP tools) before they execute, using a dedicated
-    (ideally cheap/local) model rather than the same model that's driving the
-    conversation. Wired into ToolRegistry.execute() as the single choke point
-    shared by the main loop, delegated sub-agents, and /proxy alike.
-
-    This is deliberately separate from PermissionManager: PermissionManager
-    asks "is this PATH inside an allowed directory" (a boundary check).
-    SafetyGuard asks "is this CALL's actual content dangerous regardless of
-    where it happens" (a semantic risk check) - a write_file call to an
-    allowed path can still carry destructive content, and a shell command
-    can be dangerous no matter what directory it runs in. Both checks can
-    fire independently on the same call.
+    Risk-assesses tool calls flagged with requires_guard=True before execution.
     """
 
     def __init__(self, config_mgr: ConfigManager, enabled: bool = True):
         self.config_mgr = config_mgr
         self.enabled = enabled
         self._ask_tool = AskUserTool()
-        # Tool names the user has approved for the rest of this session via
-        # "Always Allow" at an interactive prompt - bypasses future guard
-        # checks for that specific tool only, not a blanket bypass.
         self._session_trusted_tools: set = set()
-        # Serializes interactive prompts so concurrent tool calls (e.g. a
-        # fan-out of delegated sub-agents) can't produce overlapping/garbled
-        # terminal prompts - callers queue rather than collide.
         self._prompt_lock = asyncio.Lock()
 
     def trust_tool_for_session(self, tool_name: str) -> None:
@@ -97,21 +77,16 @@ class SafetyGuard:
         self._session_trusted_tools.clear()
 
     def get_session_trusted_tools(self) -> set:
-        """Public accessor for callers like /status or /guard that want to
-        display the current trust list without reaching into internals."""
         return set(self._session_trusted_tools)
 
     async def assess(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
-        """Runs the risk-assessment model call. Never raises - falls back to
-        an 'ask' verdict on any failure, since silently allowing on error
-        would defeat the point of a safety check."""
         model_key = self.config_mgr.config.guard_model or self.config_mgr.config.active_model
         try:
             model_cfg, provider_cfg = self.config_mgr.get_model_and_provider(model_key)
         except Exception as e:
             return {"risk": "unknown", "verdict": "ask", "reason": f"Guard model unavailable ({e}); asking to be safe."}
 
-        provider = OpenAIProvider(model_cfg, provider_cfg)
+        provider = get_provider(model_cfg, provider_cfg, self.config_mgr)
 
         user_content = f"Tool: {tool_name}\nArguments:\n{json.dumps(arguments, indent=2)}"
         messages = [
@@ -139,11 +114,6 @@ class SafetyGuard:
         }
 
     async def check(self, tool_name: str, arguments: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
-        """
-        Full guard check for one tool call, including any interactive
-        escalation. Returns (allowed, info) where info always contains at
-        least {risk, verdict, reason}, plus how it was resolved.
-        """
         if tool_name in self._session_trusted_tools:
             return True, {"risk": "low", "verdict": "allow", "reason": "Trusted for this session by the user."}
 
@@ -156,15 +126,13 @@ class SafetyGuard:
             return True, assessment
 
         if verdict == "deny":
-            console.print(f"[error]🛡️  Safety Guard BLOCKED '{tool_name}':[/error] {reason}")
+            console.print(f"[error]🛡️   Safety Guard BLOCKED '{tool_name}':[/error] {reason}")
             return False, assessment
 
-        # verdict == "ask"
         if self.config_mgr.config.guard_autonomy == "autonomous":
-            console.print(f"[warning]🛡️  Safety Guard auto-approved '{tool_name}' (autonomous mode):[/warning] {reason}")
+            console.print(f"[warning]🛡️   Safety Guard auto-approved '{tool_name}' (autonomous mode):[/warning] {reason}")
             return True, {**assessment, "resolution": "auto_approved"}
 
-        # Supervised mode: ask the human, one prompt at a time.
         async with self._prompt_lock:
             args_preview = json.dumps(arguments, indent=2)
             if len(args_preview) > 800:

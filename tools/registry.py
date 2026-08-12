@@ -36,22 +36,6 @@ class ToolRegistry:
         self.safety_guard: Optional[Any] = None
         self.mode_blocked_tools: set = set()
 
-    @property
-    def subagent_proxy(self) -> Optional[Any]:
-        return self.subagent_distiller
-
-    @subagent_proxy.setter
-    def subagent_proxy(self, value: Optional[Any]) -> None:
-        self.subagent_distiller = value
-
-    @property
-    def self_healer(self) -> Optional[Any]:
-        return self.repair_engine
-
-    @self_healer.setter
-    def self_healer(self, value: Optional[Any]) -> None:
-        self.repair_engine = value
-
     def register(self, tool: BaseTool) -> None:
         self._tools[tool.name] = tool
 
@@ -76,7 +60,7 @@ class ToolRegistry:
         except Exception as e:
             return None, f"Error executing tool '{tool_name}': {str(e)}"
 
-    async def _execute_with_healing(self, tool: BaseTool, tool_name: str, kwargs: Dict[str, Any]):
+    async def _execute_with_repair(self, tool: BaseTool, tool_name: str, kwargs: Dict[str, Any]):
         """Runs the tool, applying RepairEngine recovery layers on failure."""
         engine = self.repair_engine
         notes: List[str] = []
@@ -86,7 +70,7 @@ class ToolRegistry:
         if err is None:
             return result, notes
 
-        if engine is None or not engine.enabled or repair.is_non_healable(err):
+        if engine is None or not engine.enabled or repair.is_non_repairable(err):
             return (result if result is not None else {"error": err}), notes
 
         # Layer 1: mechanical retry for transient-looking errors
@@ -126,14 +110,14 @@ class ToolRegistry:
 
     async def _execute_inner(self, tool_name: str, arguments_json: str) -> str:
         engine = self.repair_engine
-        healing_notes: List[str] = []
+        repair_notes: List[str] = []
 
         resolved_name = tool_name
         if resolved_name not in self._tools:
             close = difflib.get_close_matches(tool_name, list(self._tools.keys()), n=1, cutoff=0.72)
             if close:
                 resolved_name = close[0]
-                healing_notes.append(f"Tool '{tool_name}' not found - auto-corrected to '{resolved_name}'.")
+                repair_notes.append(f"Tool '{tool_name}' not found - auto-corrected to '{resolved_name}'.")
                 console.print(f"[warning]🔄 Repair:[/warning] unknown tool '{tool_name}', using closest match '{resolved_name}'.")
             else:
                 return json.dumps({"error": f"Tool '{tool_name}' not registered."})
@@ -158,7 +142,7 @@ class ToolRegistry:
                 )
                 if corrected is not None:
                     kwargs = corrected
-                    healing_notes.append("Malformed tool arguments were auto-repaired before execution.")
+                    repair_notes.append("Malformed tool arguments were auto-repaired before execution.")
                     console.print(f"[warning]🩹 Repair:[/warning] repaired malformed arguments for '{resolved_name}'.")
                 else:
                     return json.dumps({"error": f"Error executing tool '{resolved_name}': {parse_error}"})
@@ -178,17 +162,17 @@ class ToolRegistry:
                     "_guard": guard_info
                 })
 
-        raw_result, run_notes = await self._execute_with_healing(tool, resolved_name, kwargs)
-        healing_notes.extend(run_notes)
+        raw_result, run_notes = await self._execute_with_repair(tool, resolved_name, kwargs)
+        repair_notes.extend(run_notes)
 
         result_str = json.dumps(raw_result) if not isinstance(raw_result, str) else raw_result
 
-        if (healing_notes or guard_info) and result_str.startswith("{"):
+        if (repair_notes or guard_info) and result_str.startswith("{"):
             try:
                 parsed = json.loads(result_str)
                 if isinstance(parsed, dict):
-                    if healing_notes:
-                        parsed["_self_healed"] = healing_notes
+                    if repair_notes:
+                        parsed["_repaired"] = repair_notes
                     if guard_info:
                         parsed["_guard"] = guard_info
                     result_str = json.dumps(parsed)

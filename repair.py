@@ -1,7 +1,7 @@
 import json
 from typing import Dict, Any, Optional
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 
 
 REPAIR_SYSTEM_PROMPT = (
@@ -27,7 +27,7 @@ TRANSIENT_PATTERNS = [
     "econnreset", "service unavailable", "502", "503", "504",
 ]
 
-NON_HEALABLE_PATTERNS = [
+NON_REPAIRABLE_PATTERNS = [
     "permission denied",
     "blocked by safety guard",
     "denied by user",
@@ -42,9 +42,9 @@ def is_transient(error_message: str) -> bool:
     return any(p in msg for p in TRANSIENT_PATTERNS)
 
 
-def is_non_healable(error_message: str) -> bool:
+def is_non_repairable(error_message: str) -> bool:
     msg = (error_message or "").lower()
-    return any(p in msg for p in NON_HEALABLE_PATTERNS)
+    return any(p in msg for p in NON_REPAIRABLE_PATTERNS)
 
 
 def _safe_parse_json(raw: str) -> Dict[str, Any]:
@@ -107,7 +107,7 @@ class RepairEngine:
         except Exception:
             return None
 
-        provider = OpenAIProvider(model_cfg, provider_cfg)
+        provider = get_provider(model_cfg, provider_cfg, self.config_mgr)
 
         user_content = (
             f"Tool schema:\n{json.dumps(tool_schema, indent=2)}\n\n"
@@ -136,7 +136,3 @@ class RepairEngine:
             return None
 
         return corrected
-
-
-# Backward compatibility alias
-SelfHealer = RepairEngine

@@ -1,7 +1,7 @@
 import json
 from typing import Dict, Any
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 from render.stream_renderer import StreamRenderer
 from theme import console
 
@@ -73,7 +73,7 @@ async def semantic_memory_search(
     except Exception as e:
         return {"status": "error", "matches": [], "answer": None, "error": f"Configuration error: {e}"}
 
-    provider = OpenAIProvider(model_cfg, provider_cfg)
+    provider = get_provider(model_cfg, provider_cfg, config_mgr)
     renderer = StreamRenderer()
 
     if verbose:

@@ -9,7 +9,7 @@ class ModeDef:
     description: str
     system_note: str
     # If True, every tool with requires_guard=True (write_file, edit_file,
-    # run_shell_command, every MCP tool) is blocked, plus delegate_task -
+    # shell, every MCP tool) is blocked, plus delegate_task -
     # this is what makes a mode "read-only": it reuses the exact same
     # "does this tool mutate state" signal the Safety Guard already relies
     # on, rather than introducing a second classification scheme.
@@ -37,7 +37,7 @@ MODES: Dict[str, ModeDef] = {
         label="Plan",
         description="Read-only. Investigate and propose a plan; no writes, shell, delegation, or MCP tools.",
         system_note=(
-            "You are in Plan Mode: read-only. write_file, edit_file, run_shell_command, "
+            "You are in Plan Mode: read-only. write_file, edit_file, shell, "
             "delegate_task, and MCP tools are not available to you right now - use "
             "read_file, glob_files, web_search, web_fetch, and consult_advisor to "
             "investigate, then produce a clear, concrete plan for the user to review "
@@ -52,7 +52,7 @@ MODES: Dict[str, ModeDef] = {
         label="Review",
         description="Read-only. Critically examine existing work; no writes, shell, delegation, or MCP tools.",
         system_note=(
-            "You are in Review Mode: read-only. write_file, edit_file, run_shell_command, "
+            "You are in Review Mode: read-only. write_file, edit_file, shell, "
             "delegate_task, and MCP tools are not available to you right now - use "
             "read_file, glob_files, web_search, web_fetch, and consult_advisor to examine "
             "what's already there. Report concrete findings (bugs, risks, security issues, "
@@ -94,10 +94,3 @@ def blocked_tools_for_mode(mode_key: str, tool_registry) -> Set[str]:
         blocked.add("delegate_task")
 
     return blocked
-
-
-def describe_modes() -> str:
-    lines = []
-    for key, mode in MODES.items():
-        lines.append(f"{mode.label} (/mode {key}): {mode.description}")
-    return "\n".join(lines)

@@ -192,7 +192,7 @@ class MCPClientSession:
                         req_id = msg["id"]
                         fut = self._pending_requests.pop(req_id)
                         if not fut.done():
-                            if "error" in msg:
+                            if "error" in msg and msg["error"] is not None:
                                 fut.set_exception(RuntimeError(msg["error"].get("message", "MCP Error")))
                             else:
                                 fut.set_result(msg.get("result", {}))
