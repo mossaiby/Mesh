@@ -1,8 +1,10 @@
 import os
+import sys
 import glob
 import asyncio
 import difflib
 import zlib
+import subprocess
 from typing import Dict, Any, Optional, Tuple, List
 from tools.base import BaseTool
 from tools.permissions import PermissionManager, default_permission_manager
@@ -399,6 +401,7 @@ class ShellTool(BaseTool):
 
         full_command = f"{shell_prefix} {command}" if shell_prefix else command
 
+        proc = None
         try:
             proc = await asyncio.create_subprocess_shell(
                 full_command,
@@ -417,7 +420,26 @@ class ShellTool(BaseTool):
                 "stdout": stdout.decode('utf-8', errors='replace').strip(),
                 "stderr": stderr.decode('utf-8', errors='replace').strip()
             }
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            if proc:
+                try:
+                    if sys.platform == "win32":
+                        subprocess.run(
+                            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL
+                        )
+                    else:
+                        proc.terminate()
+                except Exception:
+                    pass
+            raise
         except asyncio.TimeoutError:
+            if proc:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
             return {"error": f"Command execution timed out after {timeout} seconds."}
         except Exception as e:
             return {"error": f"Command execution failed: {str(e)}"}

@@ -1,5 +1,6 @@
 import asyncio
 import os
+import sys
 import subprocess
 from pathlib import Path
 from typing import List, Any
@@ -56,6 +57,7 @@ async def cmd_shell(engine: Any, args: List[str]):
     command = " ".join(args).strip()
     console.print(f"[brand]⚡ Direct Shell Execution:[/brand] {command}")
 
+    proc = None
     try:
         proc = await asyncio.create_subprocess_shell(
             command,
@@ -70,6 +72,23 @@ async def cmd_shell(engine: Any, args: List[str]):
         else:
             console.print("[dim]<no output>[/dim]")
 
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        console.print("\n[warning]⛔ Shell command cancelled by user.[/warning]")
+        if proc:
+            try:
+                if sys.platform == "win32":
+                    subprocess.run(
+                        ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL
+                    )
+                else:
+                    proc.terminate()
+                    await asyncio.sleep(0.1)
+                    if proc.returncode is None:
+                        proc.kill()
+            except Exception:
+                pass
     except Exception as e:
         console.print(f"[error]Shell command failed: {e}[/error]")
 
@@ -82,13 +101,16 @@ async def cmd_python(engine: Any, args: List[str]):
     code = " ".join(args).strip()
     console.print(f"[brand]🐍 Direct Python Execution:[/brand] #{code}")
 
-    success, output = python_executor.execute_snippet(code)
+    try:
+        success, output = python_executor.execute_snippet(code)
 
-    if output:
-        style = "success" if success else "error"
-        console.print(f"[{style}]{output}[/{style}]")
-    else:
-        console.print("[dim]<no output>[/dim]")
+        if output:
+            style = "success" if success else "error"
+            console.print(f"[{style}]{output}[/{style}]")
+        else:
+            console.print("[dim]<no output>[/dim]")
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        console.print("\n[warning]⛔ Python execution cancelled by user.[/warning]")
 
 
 async def cmd_checkpoint(engine: Any, args: List[str]):
