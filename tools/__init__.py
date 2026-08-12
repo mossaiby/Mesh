@@ -10,8 +10,10 @@ from tools.native_tools import (
     ReadFileTool,
     WriteFileTool,
     EditFileTool,
+    HashEditTool,
     GlobTool,
-    ShellTool
+    ShellTool,
+    compute_line_hash,
 )
 from tools.delegate_tool import DelegateTaskTool
 from tools.goal_tool import GoalTool
@@ -44,6 +46,7 @@ __all__ = [
     "ReadFileTool",
     "WriteFileTool",
     "EditFileTool",
+    "HashEditTool",
     "GlobTool",
     "ShellTool",
     "DelegateTaskTool",
@@ -59,4 +62,5 @@ __all__ = [
     "GitCommitTool",
     "GitPushTool",
     "GitBranchTool",
+    "compute_line_hash",
 ]

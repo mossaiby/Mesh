@@ -18,6 +18,7 @@ from tools import (
     ReadFileTool,
     WriteFileTool,
     EditFileTool,
+    HashEditTool,
     GlobTool,
     ShellTool,
     DelegateTaskTool,
@@ -155,6 +156,7 @@ class MeshEngine:
         self.tool_registry.register(ReadFileTool(self.permission_manager))
         self.tool_registry.register(WriteFileTool(self.permission_manager))
         self.tool_registry.register(EditFileTool(self.permission_manager))
+        self.tool_registry.register(HashEditTool(self.permission_manager))
         self.tool_registry.register(GlobTool(self.permission_manager))
         self.tool_registry.register(ShellTool(self.permission_manager))
         self.tool_registry.register(BackgroundShellTool())

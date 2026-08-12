@@ -1,6 +1,7 @@
 from typing import Dict, Any, Optional
 from config import ConfigManager
 from providers.openai_provider import OpenAIProvider
+from render.stream_renderer import StreamRenderer
 from theme import console
 
 
@@ -24,15 +25,12 @@ async def get_consensus(
     proposer_model: Optional[str] = None,
     auditor_model: Optional[str] = None
 ) -> Dict[str, Any]:
-    """
-    Runs a 2-stage adversarial consensus loop:
-    1. Auditor Model red-teams the Proposal.
-    2. Referee synthesizes a verified consensus recommendation.
-    """
     p_model = proposer_model or config_mgr.config.active_model
     a_model = auditor_model or config_mgr.config.advisor_model or config_mgr.config.active_model
 
     console.print(f"\n[brand]⚖️ Multi-Model Consensus Loop:[/brand] Auditing proposal using [accent]{a_model}[/accent]...")
+
+    renderer = StreamRenderer()
 
     # Stage 1: Auditor Pass
     try:
@@ -44,10 +42,7 @@ async def get_consensus(
             {"role": "user", "content": f"Task/Question: {question}\n\nProposed Solution:\n{proposal}"}
         ]
 
-        critique_text = ""
-        async for chunk in auditor_provider.stream_chat(audit_prompt):
-            if chunk["type"] == "content":
-                critique_text += chunk["value"]
+        critique_text, _ = await renderer.render_stream(auditor_provider.stream_chat(audit_prompt))
 
     except Exception as e:
         return {"status": "error", "error": f"Auditor model failed: {e}"}
@@ -65,10 +60,7 @@ async def get_consensus(
         p_model_cfg, p_provider_cfg = config_mgr.get_model_and_provider(p_model)
         referee_provider = OpenAIProvider(p_model_cfg, p_provider_cfg)
 
-        consensus_text = ""
-        async for chunk in referee_provider.stream_chat(referee_prompt):
-            if chunk["type"] == "content":
-                consensus_text += chunk["value"]
+        consensus_text, _ = await renderer.render_stream(referee_provider.stream_chat(referee_prompt))
 
         return {
             "status": "success",

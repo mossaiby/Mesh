@@ -3,6 +3,7 @@ import json
 from typing import Dict, Any, List, Optional
 from config import ConfigManager
 from providers.openai_provider import OpenAIProvider
+from render.stream_renderer import StreamRenderer
 import delegation
 from theme import console
 
@@ -55,10 +56,6 @@ async def generate_dynamic_strategies(
     config_mgr: ConfigManager,
     num_branches: int = 3
 ) -> List[str]:
-    """
-    Uses the active LLM to dynamically generate `num_branches` task-specific
-    mission statements for sub-agent swarm exploration.
-    """
     prompt = [
         {"role": "system", "content": STRATEGY_GENERATOR_SYSTEM_PROMPT},
         {"role": "user", "content": f"Task: {task}\nNumber of distinct strategies requested: {num_branches}"}
@@ -67,12 +64,9 @@ async def generate_dynamic_strategies(
     try:
         model_cfg, provider_cfg = config_mgr.get_active_model_and_provider()
         provider = OpenAIProvider(model_cfg, provider_cfg)
+        renderer = StreamRenderer()
 
-        raw_text = ""
-        async for chunk in provider.stream_chat(prompt):
-            if chunk["type"] == "content":
-                raw_text += chunk["value"]
-
+        raw_text, _ = await renderer.render_stream(provider.stream_chat(prompt))
         data = _safe_parse_json(raw_text)
         strategies = data.get("strategies") or []
         if isinstance(strategies, list) and len(strategies) > 0:
@@ -80,7 +74,6 @@ async def generate_dynamic_strategies(
     except Exception:
         pass
 
-    # Fallback if strategy generation fails or is unparseable
     return [
         f"Approach 1 (Direct): Investigate and solve '{task}' directly using standard conventions.",
         f"Approach 2 (Defensive / Validation): Investigate '{task}' focusing on edge-case validation and error bounds.",
@@ -97,10 +90,6 @@ async def explore_branches(
     max_turns: int = 6,
     debug_mode: bool = False
 ) -> Dict[str, Any]:
-    """
-    Spawns multiple parallel sub-agents with distinct strategies to attempt `task`.
-    Evaluates branch reports using a Judge pass and synthesizes the winning solution.
-    """
     num_branches = min(max(2, num_branches), 5)
 
     if not strategies:
@@ -116,7 +105,6 @@ async def explore_branches(
     async def run_branch(idx: int, strategy: str) -> Dict[str, Any]:
         branch_task = f"Overall Objective: {task}\n\nYour Assigned Branch Strategy/Mission: {strategy}"
         
-        # Pass verbose=True if debug_mode is enabled so sub-agent tool calls stream live
         res = await delegation.run_delegated_task(
             task=branch_task,
             tool_registry=tool_registry,
@@ -137,7 +125,6 @@ async def explore_branches(
 
     branch_results = await asyncio.gather(*(run_branch(i, strat) for i, strat in enumerate(strategies)))
 
-    # Format branch reports for Judge evaluation
     judge_input_lines = [f"Original Task: {task}\n"]
     for res in branch_results:
         b_id = res.get("branch_id", 0)
@@ -156,11 +143,9 @@ async def explore_branches(
     try:
         model_cfg, provider_cfg = config_mgr.get_active_model_and_provider()
         provider = OpenAIProvider(model_cfg, provider_cfg)
+        renderer = StreamRenderer()
 
-        synthesis_text = ""
-        async for chunk in provider.stream_chat(messages):
-            if chunk["type"] == "content":
-                synthesis_text += chunk["value"]
+        synthesis_text, _ = await renderer.render_stream(provider.stream_chat(messages))
 
         return {
             "status": "success",

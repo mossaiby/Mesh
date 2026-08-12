@@ -3,6 +3,7 @@ import contextvars
 from typing import Dict, Any, List, Optional, Tuple
 from config import ConfigManager
 from providers.openai_provider import OpenAIProvider
+from render.stream_renderer import StreamRenderer
 from theme import console
 
 
@@ -24,41 +25,20 @@ DELEGATE_SYSTEM_PROMPT = (
     "report self-contained and specific rather than saying things like 'as shown above'."
 )
 
-# Tools a delegated sub-agent should never call, at any depth:
-#  - ask_user: a sub-agent has no live user to interact with mid-task
-# delegate_task is NOT unconditionally excluded - whether a sub-agent may
-# delegate further depends on the current depth vs. the configured max
-# (see run_delegated_task below). This is what makes delegation recursive
-# rather than strictly one level deep.
 ALWAYS_EXCLUDED_TOOLS = {"ask_user"}
 
 DEFAULT_MAX_TURNS = 6
 HARD_MAX_TURNS_CAP = 10
 
-# How many delegate_task calls within a single turn are allowed to run
-# concurrently. Bounds worst-case fan-out from one turn (a sub-agent could
-# otherwise request many delegations at once) while still letting genuinely
-# independent sub-tasks actually run in parallel rather than one at a time.
 MAX_CONCURRENT_DELEGATIONS = 4
 _delegation_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DELEGATIONS)
 
-# Tracks how many levels deep the currently-running delegation chain is.
-# Depth 0 = the main agent (not itself a delegation). Depth 1 = the first
-# level of sub-agent spawned by delegate_task. A ContextVar (rather than
-# passing depth explicitly through every call) is what lets a single shared
-# DelegateTaskTool instance know "how deep am I being called from right now"
-# even though the same tool object is reused at every level - each nested
-# asyncio Task gets its own copy of the context, so sibling/parallel
-# sub-agents never see each other's depth.
 CURRENT_DELEGATION_DEPTH: "contextvars.ContextVar[int]" = contextvars.ContextVar(
     "current_delegation_depth", default=0
 )
 
 
 def max_turns_for_depth(requested_max_turns: int, depth: int) -> int:
-    """Tapers the per-call turn budget down as delegation depth increases,
-    so a deep recursive chain can't multiply total work unboundedly even
-    within the hard depth cap. Depth 1 (the first level) is unaffected."""
     tapered_cap = max(2, HARD_MAX_TURNS_CAP - 2 * (depth - 1))
     return max(1, min(requested_max_turns, tapered_cap))
 
@@ -67,18 +47,6 @@ async def _execute_turn_tool_calls(
     tool_registry: Any,
     active_calls: List[Dict[str, str]]
 ) -> List[str]:
-    """
-    Executes one turn's tool calls. Multiple delegate_task calls in the same
-    turn run concurrently (bounded by _delegation_semaphore) so genuinely
-    independent sub-tasks are actually worked on in parallel, rather than
-    one at a time. Every other tool runs sequentially in call order, since
-    most tools touch shared, unlocked, file-backed state (memory.json,
-    notes.md, the in-memory todo list) where concurrent execution could
-    race - delegate_task's own sub-agent loop doesn't share that risk
-    because it operates in its own isolated message history.
-
-    Returns results in the same order as active_calls.
-    """
     results: List[Optional[str]] = [None] * len(active_calls)
 
     async def run_bounded(i: int, tc: Dict[str, str]):
@@ -107,35 +75,6 @@ async def run_delegated_task(
     depth: int = 1,
     max_depth: Optional[int] = None,
 ) -> Dict[str, Any]:
-    """
-    Runs an autonomous sub-agent loop to complete `task` using tools from
-    `tool_registry`, entirely separate from the main conversation.
-
-    This is intentionally independent of SubAgentProxy (`/proxy`), which only
-    distills the *output* of a single tool call for the main agent - it does
-    not run its own tool loop. Here, a fresh sub-agent conversation plans and
-    executes a whole task end-to-end, then hands back one final report.
-
-    Delegation is recursive up to `max_depth` (config_mgr.config.
-    max_delegation_depth if not given explicitly): a sub-agent running at
-    `depth` may itself call delegate_task - spawning a child at `depth + 1`
-    - as long as `depth < max_depth`. At the deepest allowed level,
-    delegate_task is excluded from that sub-agent's own tools, so recursion
-    always terminates.
-
-    Because the sub-agent's own tool schemas are built with
-    inject_intent=False, none of its tool calls carry an `_intent` argument,
-    so ToolRegistry.execute() never routes them through SubAgentProxy
-    regardless of whether /proxy is currently on or off.
-
-    Returns a dict with:
-        status: "success" | "max_turns_reached" | "error"
-        report: the sub-agent's final text report (present unless status == "error")
-        tool_calls: list of {name, args, result} for every tool call made
-        turns_used: how many model turns were used
-        depth: the depth this sub-agent ran at
-        error: present only when status == "error"
-    """
     effective_max_depth = max_depth if max_depth is not None else getattr(
         config_mgr.config, "max_delegation_depth", 2
     )
@@ -160,27 +99,25 @@ async def run_delegated_task(
             return {"status": "error", "error": f"Configuration error: {e}", "tool_calls": [], "turns_used": 0, "depth": depth}
 
         provider = OpenAIProvider(model_cfg, provider_cfg)
+        renderer = StreamRenderer()
 
         tool_call_log: List[Dict[str, Any]] = []
         turns_used = 0
         depth_tag = f"[dim](depth {depth})[/dim] " if depth > 1 else ""
 
         if verbose:
-            console.print(f"[brand]\U0001F4E4 Delegating task to sub-agent:[/brand] {depth_tag}{task}")
+            console.print(f"[brand]📤 Delegating task to sub-agent:[/brand] {depth_tag}{task}")
 
         for turn in range(max_turns):
             turns_used = turn + 1
             tool_calls_to_run: List[Dict[str, str]] = []
-            content_text = ""
 
-            try:
+            async def sub_chunk_gen():
                 async for chunk in provider.stream_chat(messages, tools=schemas):
                     ctype = chunk["type"]
                     cval = chunk["value"]
 
-                    if ctype == "content":
-                        content_text += cval
-                    elif ctype == "tool_calls":
+                    if ctype == "tool_calls":
                         for delta in cval:
                             idx = delta.index
                             while len(tool_calls_to_run) <= idx:
@@ -191,6 +128,12 @@ async def run_delegated_task(
                                 tool_calls_to_run[idx]["name"] = delta.function.name
                             if delta.function and delta.function.arguments:
                                 tool_calls_to_run[idx]["args"] += delta.function.arguments
+                    else:
+                        yield chunk
+
+            try:
+                debug_flag = getattr(tool_registry.subagent_proxy, "debug_mode", False) if hasattr(tool_registry, "subagent_proxy") else False
+                content_text, _ = await renderer.render_stream(sub_chunk_gen(), debug_mode=debug_flag)
             except Exception as e:
                 return {
                     "status": "error",
@@ -203,9 +146,8 @@ async def run_delegated_task(
             active_calls = [tc for tc in tool_calls_to_run if tc["name"]]
 
             if not active_calls:
-                # No tool calls this turn -> the sub-agent is done; this is its final report.
                 if verbose:
-                    console.print(f"[brand]\u2705 Sub-agent finished after {turns_used} turn(s).[/brand] {depth_tag}")
+                    console.print(f"[brand]✅ Sub-agent finished after {turns_used} turn(s).[/brand] {depth_tag}")
                 return {
                     "status": "success",
                     "report": content_text.strip() or "(Sub-agent returned no final report.)",
@@ -229,7 +171,7 @@ async def run_delegated_task(
 
             if verbose:
                 for tc in active_calls:
-                    console.print(f"  [dim]\u21B3 {depth_tag}sub-agent tool call: {tc['name']}({tc['args']})[/dim]")
+                    console.print(f"  [dim]↳ {depth_tag}sub-agent tool call: {tc['name']}({tc['args']})[/dim]")
 
             result_strs = await _execute_turn_tool_calls(tool_registry, active_calls)
 
@@ -243,9 +185,8 @@ async def run_delegated_task(
                     "content": result_str
                 })
 
-        # Ran out of turns without the sub-agent producing a final text-only response
         if verbose:
-            console.print(f"[warning]\u26A0\uFE0F  Sub-agent hit the {max_turns}-turn limit without finishing.[/warning] {depth_tag}")
+            console.print(f"[warning]⚠️  Sub-agent hit the {max_turns}-turn limit without finishing.[/warning] {depth_tag}")
         return {
             "status": "max_turns_reached",
             "report": (

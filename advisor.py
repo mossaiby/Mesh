@@ -1,6 +1,7 @@
 from typing import Dict, Any, Optional
 from config import ConfigManager
 from providers.openai_provider import OpenAIProvider
+from render.stream_renderer import StreamRenderer
 
 
 ADVISOR_SYSTEM_PROMPT = (
@@ -22,24 +23,6 @@ async def get_advice(
     context: str = "",
     advisor_model: Optional[str] = None
 ) -> Dict[str, Any]:
-    """
-    Consults a dedicated advisor sub-agent for a candid opinion on `question`,
-    optionally with background `context`. This is a single-shot reasoning
-    call with no tools - it never takes action, only gives an opinion, which
-    is what distinguishes it from delegate_task (which does the work) and
-    self_heal's repair pass (which fixes one specific failure).
-
-    Uses `advisor_model` if given, else config_mgr.config.advisor_model if
-    set, else the currently active model - so the advisor can be a genuinely
-    different model from whichever one is driving the conversation, for a
-    real second opinion rather than the same model re-asked.
-
-    Returns a dict with:
-        status: "ok" | "error"
-        advice: the advisor's response (present unless status == "error")
-        advisor_model: the model key actually consulted
-        error: present only when status == "error"
-    """
     if not question or not question.strip():
         return {"status": "error", "error": "A question is required."}
 
@@ -61,15 +44,13 @@ async def get_advice(
         {"role": "user", "content": user_content}
     ]
 
-    raw_text = ""
     try:
-        async for chunk in provider.stream_chat(messages):
-            if chunk["type"] == "content":
-                raw_text += chunk["value"]
+        renderer = StreamRenderer()
+        advice, _ = await renderer.render_stream(provider.stream_chat(messages))
     except Exception as e:
         return {"status": "error", "error": f"Advisor consultation failed: {e}"}
 
-    advice = raw_text.strip()
+    advice = advice.strip()
     if not advice:
         return {"status": "error", "error": "Advisor returned an empty response."}
 
