@@ -529,6 +529,7 @@ async def cmd_compact(engine: Any, args: List[str]):
 
 
 async def cmd_clear(engine: Any, args: List[str]):
+    engine.messages.clear()
     engine.update_system_message()
     console.print("[warning]Conversation context cleared (system prompt and skills preserved).[/warning]")
 
@@ -543,52 +544,3 @@ async def cmd_retry(engine: Any, args: List[str]):
     if last_user_idx is None:
         console.print("[warning]No user message found in context to retry.[/warning]")
         return
-
-    engine.messages = engine.messages[:last_user_idx + 1]
-    console.print("[warning]Retrying last completion turn...[/warning]")
-    await engine.process_inference()
-
-
-async def cmd_debug(engine: Any, args: List[str]):
-    if not args:
-        state_str = "[success]ON[/success]" if engine.debug_mode else "[error]OFF[/error]"
-        console.print(f"Debug mode is currently {state_str}. Usage: [warning]/debug on[/warning] or [warning]/debug off[/warning]")
-        return
-
-    arg = args[0].lower()
-    if arg == "on":
-        engine.debug_mode = True
-        engine.subagent_distiller.debug_mode = True
-        console.print("[success]Debug mode enabled.[/success] CoT and Tool execution details will be shown.")
-    elif arg == "off":
-        engine.debug_mode = False
-        engine.subagent_distiller.debug_mode = False
-        console.print("[warning]Debug mode disabled.[/warning] CoT will be hidden.")
-    else:
-        console.print("[error]Invalid debug option. Use '/debug on' or '/debug off'.[/error]")
-
-
-async def cmd_exit(engine: Any, args: List[str]):
-    console.print("[warning]Closing MCP connections and exiting. Goodbye![/warning]")
-    try:
-        await asyncio.wait_for(engine.mcp_manager.close_all(), timeout=3.0)
-    except Exception:
-        pass
-    sys.exit(0)
-
-
-def register_system_commands(engine: Any):
-    engine.cmd_registry.register("help", "Show available slash commands", lambda args: cmd_help(engine, args), category="Session & System")
-    engine.cmd_registry.register("status", "Show current Mesh status overview", lambda args: cmd_status(engine, args), category="Models & Settings")
-    engine.cmd_registry.register("config", "View or set automation & proxy toggles: /config distill|proxy|repair|hooks|compact|tokens|cost|statistics [args]", lambda args: cmd_config(engine, args), category="Models & Settings")
-    engine.cmd_registry.register("context", "Display context window and active tool names", lambda args: cmd_context(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", lambda args: cmd_system(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("tools", "List registered tools with full detailed descriptions and schemas, or toggle inclusion: /tools [on|off]", lambda args: cmd_tools(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("skills", "List skills, or toggle one: /skills enable <name> | /skills disable <name>", lambda args: cmd_skills(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("dirs", "List allowed directories, or edit them: /dirs add <path> | /dirs remove <path> | /dirs clear", lambda args: cmd_dirs(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("mcps", "List MCP servers, or toggle them: /mcps on | /mcps off | /mcps enable <server_name> | /mcps disable <server_name>", lambda args: cmd_mcps(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("compact", "Semantically summarize older conversation context", lambda args: cmd_compact(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("clear", "Clear the conversation context window", lambda args: cmd_clear(engine, args), category="Session & System")
-    engine.cmd_registry.register("retry", "Retry the last LLM response turn", lambda args: cmd_retry(engine, args), category="Session & System")
-    engine.cmd_registry.register("debug", "Toggle debug mode (CoT & tool traces): /debug on | /debug off", lambda args: cmd_debug(engine, args), category="Session & System")
-    engine.cmd_registry.register("exit", "Exit Mesh", lambda args: cmd_exit(engine, args), category="Session & System")
