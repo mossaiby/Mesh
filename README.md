@@ -1,26 +1,59 @@
-# ⚡ Mesh
+# ⚡ Mesh AI Harness
 
-**v1.0.0**
+A modular, text-based AI CLI harness written in Python. Mesh connects to any OpenAI- or Anthropic-compatible model provider and wraps it with a full agentic toolset: file editing, shell access, web search, MCP servers, sub-agent delegation, persistent memory, and a safety layer that gates risky tool calls — all driven from a single terminal chat loop.
 
-A modular, text-based AI CLI built in Python for local and cloud-hosted LLMs. Designed for developer productivity with **real-time Markdown streaming**, **Model Context Protocol (MCP)** integration, **sub-agent swarm workflows**, **native Anthropic API support (with Prompt Caching & Extended Thinking)**, **dynamic LLM model routing**, **hash-anchored & fuzzy file editing**, **post-edit linter hooks**, **Git native tools**, **session checkpointing**, and **semantic context compaction**.
+---
+
+## 🌟 Key Features
+
+- **Multi-Provider Support** — Talk to OpenAI, Anthropic, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint, all configured in `models.json`. Switch models live with `/switch`, or let a router model auto-select per turn with `/switch auto`.
+- **Operating Modes (`/mode`)** — `build` (full access, default), `plan` and `review` (read-only investigation, no writes/shell/delegation/MCP), and `yolo` (full access, fewer confirmation prompts — high-risk actions are still always blocked).
+- **Safety Guard (`/guard`)** — An LLM-backed risk assessor that reviews tool calls before execution, can run in `supervised` or `autonomous` mode, supports per-session tool trust, and always blocks genuinely high-risk actions regardless of mode.
+- **Directory Permissions (`/dirs`)** — A `PermissionManager` enforces a working-directory allow-list for every file/shell tool. Out-of-bounds access triggers an interactive Allow Once / Always Allow / Deny prompt.
+- **Model Context Protocol (`/mcps`)** — A native stdio/URL MCP client (`mcps.json`) that discovers and calls tools from external MCP servers (filesystem, SQLite, GitHub, etc.), with global and per-server toggles.
+- **Sub-Agent & Multi-Agent Workflows (`/agent`)** — Spin up focused sub-agents for task delegation (`delegate`), branching exploration (`explore`), parallel task squads (`squad`), multi-model consensus (`consensus`), and second-opinion advisory review (`advisor`).
+- **Autonomous Test/Fix Loop (`/loop`)** — Runs a test or build command, and on failure automatically delegates a repair sub-agent to fix the code and retries, up to a configurable number of iterations.
+- **Declarative Skills (`/skills`)** — Package specialized system prompts and tools into reusable skills, loaded from `skills.json` or custom Python classes (see `skills/code_skill.py`).
+- **Persistent Memory & Notes** — A key-value `memory` store with semantic search (`/memory`), a running Markdown `notes.md` (`/note`), pinned session goals with completion criteria (`/goal`), and multi-step task tracking (`todo`).
+- **Context Engineering** — Semantic context compaction (`/compact`) that summarizes older turns without breaking active tool-call pairs, a Sub-Agent Proxy that distills large tool outputs before they hit the main model's context, and repository maps (`/project map`) built from a tree-sitter symbol index.
+- **Session Continuity** — Checkpoints (`/checkpoint save|fork|restore|list`) for saving and branching conversation state, file-edit history with undo (`/diff undo`), and reflexion (`/reflexion`) that distills cross-session error lessons.
+- **Native Tool Suite** — File ops (`read_file`, `write_file`, `edit_file`, `hash_edit`, `glob_files`), shell execution, key-less web search/fetch, Git tools, a calculator, and an `ask_user` tool for human-in-the-loop decisions.
+- **Rich Terminal UI** — Real-time Markdown streaming with syntax highlighting, toggleable Chain-of-Thought display (`/debug`), and an interactive arrow-key model/menu switcher.
+
+---
+
+## 🏗️ Architecture Overview
+
+```
+                         ┌───────────────────────────────────────────┐
+                         │                User (CLI)                 │
+                         └───────────────────────┬───────────────────┘
+                                                  │
+                                        ┌─────────▼─────────┐
+                                        │    MeshEngine      │
+                                        │   (engine.py)       │
+                                        └─────────┬───────────┘
+                                                  │
+      ┌───────────────┬───────────────┬──────────┼──────────┬───────────────┬────────────────┐
+      │               │               │          │          │               │                │
+┌─────▼─────┐  ┌───────▼──────┐ ┌──────▼─────┐ ┌──▼───┐ ┌────▼─────┐ ┌───────▼──────┐ ┌────────▼────────┐
+│ Providers │  │ Tool Registry│ │  Safety    │ │Skills│ │   MCP    │ │ Sub-Agents   │ │ Memory / Notes  │
+│ (OpenAI/  │  │ & Permissions│ │  Guard     │ │      │ │  Client  │ │ (delegate /  │ │ / Checkpoints /  │
+│ Anthropic)│  │              │ │            │ │      │ │(mcps.json)│ │ squad / etc.)│ │ Reflexion       │
+└───────────┘  └──────────────┘ └────────────┘ └──────┘ └──────────┘ └──────────────┘ └─────────────────┘
+```
 
 ---
 
 ## 🚀 Quick Start
 
-### 1. Prerequisites & Installation
+### 1. Prerequisites
 
-#### Required
-* **Python 3.10 or higher**
+- Python **3.10** or higher
+- Node.js / `npx` (optional, for Node-based MCP servers)
+- `uv` / `uvx` (optional, for Python-based MCP servers)
 
-#### Optional Linters & Formatters (for Post-Edit Hooks)
-Mesh automatically detects installed linters on your system `PATH` to validate code immediately after file edits. If a linter is not installed, Mesh gracefully skips the check:
-* **Python:** `ruff` or `flake8`
-* **JavaScript / TypeScript:** `eslint`
-* **Rust:** `cargo` (`cargo check`)
-* **Go:** `gofmt`
-
-> **Note on MCP Servers:** Runtimes like `npx` (Node.js) or `uvx` (`uv`) are **not** required by Mesh itself. They are only needed if you choose to configure external third-party stdio MCP servers in `mcps.json` that depend on them.
+### 2. Installation
 
 ```bash
 git clone https://github.com/mossaiby/Mesh.git
@@ -28,167 +61,119 @@ cd Mesh
 pip install -r requirements.txt
 ```
 
-### 2. Configure API Keys & Network Proxies
-Set environment variables for cloud or local providers (or configure endpoints in `models.json`):
+### 3. Configure API Keys
+
+Set environment variables for whichever providers you use (referenced by `api_key_env` in `models.json`):
 
 ```bash
+# Cloud providers
 export OPENAI_API_KEY="sk-..."
 export ANTHROPIC_API_KEY="sk-ant-..."
 export GROQ_API_KEY="gsk_..."
 export OPENROUTER_API_KEY="sk-or-..."
 
-# Optional: Configure Network Proxy via CLI or env vars
-# Mesh supports HTTP, HTTPS, and SOCKS5 proxies (via httpx[socks])
-export HTTP_PROXY="http://proxy.corp.com:8080"
-export HTTPS_PROXY="http://proxy.corp.com:8080"
-export ALL_PROXY="socks5://127.0.0.1:1080"
+# Local providers (optional)
+export OLLAMA_API_KEY="dummy"
+export LOCAL_API_KEY="dummy"
 ```
 
-You can also set or clear network proxies directly inside Mesh using `/config proxy <url>` or `/config proxy clear`.
+### 4. Run Mesh
 
-> **OS GUI Proxy Settings Note:** If your proxy is configured solely in OS system settings (Windows Internet Options or macOS Network Settings) without exporting terminal environment variables, Python CLI tools will not see it. Always export standard `HTTP_PROXY`/`HTTPS_PROXY` variables in your terminal or configure `/config proxy <url>` inside Mesh.
-
-### 3. Launch Mesh
 ```bash
-# Interactive REPL
 python main.py
+```
 
-# Run a script file on startup (interactive or headless)
-python main.py script.txt
-python main.py --file script.txt --non-interactive
+Or run a script file non-interactively:
+
+```bash
+python main.py path/to/script.txt --non-interactive
+# equivalent: python main.py -f path/to/script.txt -n
 ```
 
 ---
 
 ## 🛠️ Slash Commands Reference
 
-Slash commands are organized into logical categories. Type **`/help`** to view all categories, or **`/help <command>`** (e.g. `/help git`) for specific usage instructions.
-
-### ⚙️ Models & Settings
+### Session & System
 | Command | Description |
-| :--- | :--- |
-| **`/status`** | Display active model, router model, network proxy, thinking mode, effort level, tools, MCPs, symbol count, branch, token metrics display settings, and context status. |
-| **`/models`** | List configured models with tags/descriptions (`/models`), discover remote endpoints (`/models discover`), or batch-add models (`/models add openrouter *free*`). |
-| **`/switch`** | Switch active model/mode: `/switch auto` (sticky dynamic router), `/switch router [<key>]`, or directly via key (`/switch <key>`). |
-| **`/config`** | Configure system options: `/config distill`, `/config proxy`, `/config repair`, `/config hooks`, `/config compact`, `/config thinking`, `/config effort`, `/config tokens`, `/config cost`, `/config statistics`. |
-| **`/mode`** | Switch operating mode (`/mode build`, `/mode plan`, `/mode review`, `/mode yolo`). |
-| **`/guard`** | Configure tool-call safety guard risk assessment (`/guard on`, `/guard mode supervised|autonomous`). |
+| --- | --- |
+| `/help` | List all available slash commands. |
+| `/status` | Show a status overview of active models, tools, MCPs, skills, and memory. |
+| `/clear` | Clear the conversation context window. |
+| `/retry` | Retry the last LLM response turn. |
+| `/debug [on\|off]` | Toggle Chain-of-Thought and tool-execution trace display. |
+| `/checkpoint [save\|fork\|restore\|list] <args>` | Save, fork, restore, or list session checkpoints. |
+| `/exit` | Close MCP connections and exit. |
 
-### 🤖 Agents & Workflows
+### Models & Settings
 | Command | Description |
-| :--- | :--- |
-| **`/agent`** | Sub-agent swarm & reasoning workflows: `/agent explore`, `/agent squad`, `/agent consensus`, `/agent delegate`, `/agent advisor`. |
-| **`/loop`** | Iterative auto-test/fix loop (`/loop <test_cmd>`). |
-| **`/jobs`** | View or manage async background processes (`/jobs log <id>`, `/jobs stop <id>`, `/jobs clear`). |
+| --- | --- |
+| `/models` | List, discover, or add models: `/models discover [<provider>]`, `/models add [<provider>] [<pattern>]`. |
+| `/switch auto\|router [<key>]\|<model_key>` | Switch the active model, or enable auto-routing via a router model. |
+| `/config distill\|proxy\|repair\|hooks\|compact\|thinking\|effort\|tokens\|cost\|statistics [args]` | View or set automation and proxy toggles. |
+| `/guard [on\|off]`, `/guard mode [supervised\|autonomous]`, `/guard model [<key>]`, `/guard trust <tool>` | View or configure the tool-call safety guard. |
+| `/mode [plan\|build\|review\|yolo]` | View or switch the operating mode. |
 
-### 🛠️ Workspace & Developer Tools
+### Context & Integration
 | Command | Description |
-| :--- | :--- |
-| **`/cd`** | Change working directory & automatically sync allowed directories, project rules (`PROJECT.md`), and AST symbol index. |
-| **`/project`** | View or reload workspace project rules (`PROJECT.md`) or repository architecture map (`/project map`). |
-| **`/git`** | Vendor-agnostic Git workflow: `/git status`, `/git diff`, `/git commit` (AI auto-commit), `/git push`, `/git branch`. |
-| **`/diff`** | View colorized unified diffs of file edits (`/diff`), or revert recent edits (`/diff undo`). |
-| **`/shell` \| `!`** | Direct shell execution (`! <cmd>`) — runs directly without modifying conversation history or triggering LLM turns. |
-| **`/python` \| `#`** | Direct Python execution (`# <code>`) inside a persistent session namespace without modifying conversation history. |
-| **`/script`** | Execute commands and prompts line-by-line from a script file (`/script <file.txt>`). |
+| --- | --- |
+| `/context` | Display conversation history, active tool schemas, and MCP statuses. |
+| `/system [text]` | Show, set, or clear (`/system clear`) the current system prompt. |
+| `/tools [on\|off]` | List registered tools with full schemas, or toggle their inclusion. |
+| `/skills enable\|disable <name>` | List skills, or enable/disable one. |
+| `/dirs add\|remove\|clear <path>` | List allowed directories, or edit the permission allow-list. |
+| `/mcps on\|off\|enable\|disable <server>` | List MCP servers, or toggle them globally or per-server. |
+| `/compact` | Semantically compact older conversation history using the LLM. |
 
-### 🧠 Memory & Knowledge
+### Agents & Workflows
 | Command | Description |
-| :--- | :--- |
-| **`/goal`** | View, set, or update pinned session goals folded directly into the system prompt. |
-| **`/note`** | View or edit persistent Markdown project notes (`notes.md`). |
-| **`/memory`** | Manage persistent key-value facts (`memory.json`) and semantic meaning search. |
-| **`/dream`** | Interactively extract durable notes, memory facts, and skills from conversation history. |
-| **`/reflexion`** | View or distill cross-session error lessons into durable system rules (`/reflexion distill`). |
+| --- | --- |
+| `/agent explore\|squad\|consensus\|delegate\|advisor <args>` | Sub-agent swarm and reasoning workflows. |
+| `/loop <test_or_build_command>` | Iterative auto-test/fix loop with an automatic repair sub-agent. |
+| `/jobs`, `/jobs log <id>`, `/jobs stop <id>`, `/jobs clear` | View or manage background jobs. |
 
-### 🔌 Context & Integration
+### Memory & Knowledge
 | Command | Description |
-| :--- | :--- |
-| **`/context`** | Display raw conversation history, active tool names, and MCP status. |
-| **`/system`** | Show current system prompt (rendered in Markdown) or set it (`/system <text>`). |
-| **`/tools`** | List registered tools with full detailed descriptions and schemas, or toggle inclusion (`/tools on|off`). |
-| **`/skills`** | Enable, disable, or register custom system skills. |
-| **`/dirs`** | Manage authorized directory paths enforced by `PermissionManager`. |
-| **`/mcps`** | View connected Model Context Protocol servers or toggle tools (`/mcps on|off`). |
-| **`/compact`** | Semantically summarize older conversation context using the LLM. |
+| --- | --- |
+| `/goal <text> [\| criterion...]`, `/goal done <#>`, `/goal clear` | View, set, or manage the pinned session goal. |
+| `/note append <text>`, `/note clear` | View notes, or edit `notes.md`. |
+| `/memory save\|get\|search\|delete\|clear <args>` | View memory, or edit the persistent key-value store. |
+| `/dream` | Analyze the conversation and extract candidate notes, memory facts, and skills. |
+| `/reflexion [distill\|clear]` | View or distill cross-session error lessons. |
 
-### 💻 Session & System
+### Workspace & Developer Tools
 | Command | Description |
-| :--- | :--- |
-| **`/help`** | Show command categories or specific command usage (`/help <command>`). |
-| **`/checkpoint`** | Session state management: `/checkpoint save <tag>`, `/checkpoint fork <branch>`, `/checkpoint restore <tag>`. |
-| **`/clear`** | Clear conversation history while preserving system prompt, goal, and skills. |
-| **`/retry`** | Retry the last LLM response turn. |
-| **`/debug`** | Toggle debug mode to show Chain of Thought (CoT) and sub-agent execution traces. |
-| **`/exit`** | Gracefully terminate background processes and exit Mesh. |
-
----
-
-## 🌟 Key Capabilities
-
-### 🧠 Native Anthropic Support (Prompt Caching & Extended Thinking)
-* **Native Anthropic API Integration:** Built-in driver for Claude models (`claude-3.7-sonnet`, `claude-3.5-haiku`, etc.) with text, tool calls, and streaming CoT.
-* **Prompt Caching (`cache_control`):** Automatically attaches ephemeral prompt cache headers to system instructions and tools for a **90% discount** on cached tokens and faster response times.
-* **Thinking & Effort Controls (`/config thinking`, `/config effort`):** Toggle extended thinking on/off and tune reasoning budget levels (`low`, `medium`, `high`) across Anthropic and OpenAI reasoning models.
-
-### 🌐 Network Proxy & SOCKS5 Support (`/config proxy`)
-* **HTTP, HTTPS & SOCKS5 Proxy:** Seamlessly routes Mesh LLM traffic, model discovery, and web tools through enterprise HTTP/HTTPS proxies or local SOCKS5 tunnels (`socks5://127.0.0.1:1080`).
-* **Runtime & Persistent Config:** Use `/config proxy <url>` inside Mesh to apply and persist network proxy settings immediately without restarting.
-
-### 🔀 Dynamic LLM Model Router (`/switch auto`)
-* **Sticky Auto-Routing:** Enters auto mode via `/switch auto`. Every incoming non-slash prompt is analyzed by the configured `router_model` before execution.
-* **Metadata & Tag Awareness:** Inspects model tags (`free`, `reasoning`, `coding`, `fast`, `large-context`), descriptions, context windows, and providers to pick the optimal model for the prompt.
-* **Pre-Streaming Notification:** Prints a clear notification header displaying the selected target model and short routing rationale before generation begins.
-
-### 🎯 Hash-Anchored & Fuzzy Block File Editing
-* **Hash-Anchored Edits (`hash_edit`):** Passing `show_hashes: true` to `read_file` returns line-numbered content with stable 4-character hashes (e.g. `L12|a3f1| def foo():`). Using `hash_edit` verifies line hashes before applying changes, guaranteeing safe, drift-free replacements.
-* **Fuzzy Block Matching (`edit_file`):** If exact string replacement fails in `edit_file` due to minor indentation or whitespace variations, Mesh calculates sequence similarity using `difflib.SequenceMatcher`. If similarity is $\ge 85\%$, the target block is replaced automatically.
-
-### ⚡ Post-Edit Linter Hooks (`/config hooks`)
-* **Automated Post-Edit Checks:** Automatically detects installed linters (`ruff`, `flake8`, `eslint`, `cargo check`, `gofmt`) using `shutil.which()` after file edits (`write_file`, `edit_file`, `hash_edit`).
-* **Real-time Repair:** Captures non-zero linter outputs and appends `_linter_feedback` directly into the tool output, allowing the LLM to fix syntax errors or broken imports in the exact same turn.
-
-### ⏱️ Performance Statistics & Configurable Footer Metrics
-* **Token Counts (`/config tokens`):** Displays input and output prompt/completion token counts per turn.
-* **Cost Metering (`/config cost`):** Tracks real-time USD costs per turn and cumulative session totals.
-* **Token Performance Statistics (`/config statistics`):** Measures Time to First Token (**TTFT** in `ms` or `s`) and generation throughput (**tok/s**).
+| --- | --- |
+| `/cd <path>` | Change working directory and reload workspace context. |
+| `/shell <cmd>` or `! <cmd>` | Direct shell execution (bypasses the LLM). |
+| `/python <code>` or `# <code>` | Direct Python execution (bypasses the LLM). |
+| `/script <file.txt>` | Execute commands and prompts line-by-line from a script file. |
+| `/project [map\|reload]` | View or reload workspace project rules and the repository map. |
+| `/diff` / `/diff undo` | Display the unified diff of the last edit, or revert it. |
+| `/git status\|diff\|commit\|push\|branch` | Run native Git commands. |
 
 ---
 
 ## ⚙️ Configuration Files
 
 ### `models.json`
-Defines provider REST endpoints, model configurations, router settings, network proxy settings, model tags/descriptions, metrics toggles, auto-compaction rules, and global system prompts.
+
+Defines provider REST endpoints and model configurations, including per-model system prompts and an optional router model for `/switch auto`.
 
 ```json
 {
-  "active_model": "lmstudio:gemma-4-e4b",
-  "system_prompt": "You are Mesh, a helpful, precise, and efficient AI assistant running inside an interactive terminal CLI.",
-  "auto_compact": true,
-  "auto_compact_threshold": 0.75,
-  "max_delegation_depth": 2,
-  "advisor_model": "lmstudio:gemma-4-e4b",
-  "guard_enabled": true,
-  "guard_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
-  "guard_autonomy": "supervised",
-  "router_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
-  "network_proxy": null,
-  "thinking": true,
-  "effort": "medium",
-  "show_tokens": true,
-  "show_cost": true,
-  "show_statistics": true,
+  "active_model": "llama3-groq",
+  "router_model": "llama3-groq",
   "providers": {
-    "anthropic": {
-      "name": "Anthropic Official",
-      "base_url": "https://api.anthropic.com/v1",
-      "api_key_env": "ANTHROPIC_API_KEY",
-      "default_headers": null
-    },
     "groq": {
       "name": "Groq Cloud",
       "base_url": "https://api.groq.com/openai/v1",
       "api_key_env": "GROQ_API_KEY"
+    },
+    "anthropic": {
+      "name": "Anthropic",
+      "base_url": "https://api.anthropic.com",
+      "api_key_env": "ANTHROPIC_API_KEY"
     },
     "lmstudio": {
       "name": "Local LM Studio",
@@ -197,21 +182,57 @@ Defines provider REST endpoints, model configurations, router settings, network 
     }
   },
   "models": {
-    "anthropic:claude-3-7-sonnet-20250219": {
-      "name": "Claude 3.7 Sonnet",
-      "provider": "anthropic",
-      "model_id": "claude-3-7-sonnet-20250219",
-      "context_window": 200000,
-      "tags": ["reasoning", "coding", "agent", "thinking", "large-context"],
-      "description": "Anthropic's flagship hybrid reasoning model with native extended thinking and prompt caching."
+    "llama3-groq": {
+      "name": "Llama 3 70B (Groq)",
+      "provider": "groq",
+      "model_id": "llama-3.3-70b-versatile",
+      "system_prompt": "You are Llama 3 70B running on Groq acceleration, a fast AI assistant."
     },
-    "lmstudio:gemma-4-e4b": {
-      "name": "Gemma 4 E4B",
-      "provider": "lmstudio",
-      "model_id": "google/gemma-4-e4b",
-      "context_window": 8192,
-      "tags": ["local", "fast", "general"],
-      "description": "Lightweight local Gemma model for quick answers"
+    "claude-sonnet": {
+      "name": "Claude Sonnet",
+      "provider": "anthropic",
+      "model_id": "claude-sonnet-4-6",
+      "system_prompt": "You are Claude, a careful and precise coding assistant."
+    }
+  }
+}
+```
+
+### `mcps.json`
+
+Configures Model Context Protocol servers, over stdio (`command`/`args`) or a remote `url`.
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "."]
+    },
+    "sqlite": {
+      "command": "uvx",
+      "args": ["--with", "mcp<1.0.0", "mcp-server-sqlite", "--db-path", "./data.db"]
+    }
+  }
+}
+```
+
+### `skills.json`
+
+Configures declarative skills that inject specialized system instructions (and optionally extra tools) into the session.
+
+```json
+{
+  "skills": {
+    "python_coding": {
+      "enabled": true,
+      "description": "Python code execution and developer-focused reasoning guidelines.",
+      "system_instruction": "You possess the Python Coding Skill. Prefer concise, idiomatic Python."
+    },
+    "technical_writer": {
+      "enabled": true,
+      "description": "Formats technical responses into clean Markdown documentation.",
+      "system_instruction": "Structure your answers with clean Markdown headings, concise code blocks, and bulleted summaries."
     }
   }
 }
@@ -219,6 +240,138 @@ Defines provider REST endpoints, model configurations, router settings, network 
 
 ---
 
-## 📄 License
+## 🤖 Sub-Agent Workflows
+
+Mesh ships several multi-agent primitives, reachable via `/agent` or the underlying tools (`delegate_task`, `explore_branches`, `consult_consensus`, `consult_advisor`):
+
+- **`delegate`** — Hands a self-contained task off to a fresh sub-agent with its own tool loop and turn budget, returning a distilled final report to the parent conversation.
+- **`explore`** — Spins up parallel sub-agents to investigate different branches or approaches to a problem for comparison.
+- **`squad`** — Runs an autonomous multi-step task pipeline across several sub-agents and produces a final combined report.
+- **`consensus`** — Puts a question and a proposed solution to multiple models/perspectives and synthesizes their agreement or disagreement.
+- **`advisor`** — Requests a second opinion / critique on a question or piece of work from a separate model.
+- **`/loop`** — A specialized delegation loop: runs a test/build command, and on failure spawns a repair sub-agent to fix the code, then re-runs the command, up to a max number of iterations.
+
+### Sub-Agent Proxy (Context Distillation)
+
+When enabled (`/config proxy on`), heavy tools (`read_file`, `shell`, `web_search`, MCP tools) accept an `_intent` parameter describing why they're being called. The `SubAgentProxy` intercepts the raw output, runs it through a focused distillation pass, and returns only the information relevant to that stated intent — keeping the main model's context window clean. Short outputs and lightweight tools (`calculator`, `memory`) bypass distillation automatically.
+
+---
+
+## 🛡️ Security Model
+
+Mesh layers three independent safety mechanisms:
+
+1. **Directory Permissions** (`tools/permissions.py`) — Every file and shell tool validates target paths against an allow-list (`/dirs`). Requests outside it trigger an interactive **Always Allow / Allow Once / Deny** prompt.
+2. **Operating Modes** (`modes.py`) — `plan` and `review` block every mutating tool (writes, shell, delegation, MCP) at the registry level, regardless of what the model asks for.
+3. **Safety Guard** (`guard.py`) — An LLM-backed risk assessor evaluates tool calls before execution in `supervised` mode (asks for confirmation) or `autonomous` mode (blocks only high-risk calls). `yolo` mode reduces friction for ambiguous-risk actions but never disables the guard's high-risk blocks.
+
+Example permission prompt:
+
+```
+❓ AI Decision Prompt: Tool 'read_file' requested access to a path outside allowed directories:
+  Target: 'C:\Windows\System32\drivers\etc\hosts'
+
+Select an option:
+  ❯ 🔘 Always Allow (Add directory 'C:\Windows\System32\drivers\etc' to allowed list)
+    ⚪ Allow Once
+    ⚪ Deny
+```
+
+Use **`↑` / `↓` Arrow Keys** and **Enter** to make a selection.
+
+---
+
+## 📁 Project Structure
+
+```
+Mesh/
+├── main.py                    # CLI entry point (argparse + asyncio.run)
+├── engine.py                  # MeshEngine: core orchestration loop
+├── config.py                  # ConfigManager and Pydantic config schemas
+├── version.py                 # Central version identifier
+├── theme.py                   # Rich console theme/styling
+├── models.json                # Provider endpoints and model configurations
+├── mcps.json                  # MCP server definitions
+├── skills.json                # Declarative skills configuration
+├── requirements.txt           # Python dependencies
+│
+├── compaction.py              # Semantic context window compaction
+├── distill.py                 # Sub-agent proxy output distillation
+├── delegation.py               # Sub-agent task delegation primitives
+├── squad.py                   # Multi-agent task squad pipeline
+├── explore.py                  # Parallel branch-exploration sub-agents
+├── consensus.py                # Multi-perspective consensus workflow
+├── advisor.py                  # Second-opinion advisory workflow
+├── test_loop.py                # Autonomous /loop test-and-repair driver
+├── guard.py                    # LLM-backed tool-call safety guard
+├── modes.py                    # Plan / Build / Review / YOLO mode definitions
+├── hooks.py                    # Lifecycle hook manager
+├── checkpoint.py                # Session checkpoint save/fork/restore
+├── file_history.py              # File-edit history & undo tracking
+├── reflexion.py                 # Cross-session error-lesson distillation
+├── dream.py                     # Conversation → notes/memory/skills extraction
+├── memory_search.py             # Semantic search over persistent memory
+├── project_rules.py             # Workspace project-rules loader
+├── repo_map.py                  # Tree-sitter-based repository map generator
+├── symbol_search.py              # Symbol indexer used by repo_map
+├── context_mentions.py           # @-mention context resolution
+├── git_workflow.py               # Higher-level Git workflow helpers
+├── jobs.py                       # Background job manager
+├── router.py                     # Auto-routing model selection
+├── pricing.py                    # Token/cost accounting
+├── python_executor.py            # Sandboxed Python execution helper
+├── repair.py                     # Auto-repair helper utilities
+├── tool_synthesis.py             # Dynamic tool synthesis
+├── terminal_ui.py                 # Interactive arrow-key menus
+│
+├── providers/
+│   ├── openai_provider.py       # Async OpenAI-compatible client wrapper
+│   └── anthropic_provider.py    # Async Anthropic client wrapper
+│
+├── render/
+│   └── stream_renderer.py       # Rich Markdown & CoT streaming renderer
+│
+├── mcp/
+│   └── client.py                 # Native stdio/URL MCP client
+│
+├── tools/
+│   ├── base.py                   # BaseTool class with dynamic schema injection
+│   ├── registry.py               # Central tool execution & proxy dispatcher
+│   ├── permissions.py            # PermissionManager & directory authorization
+│   ├── native_tools.py           # read_file, write_file, edit_file, hash_edit, glob_files, shell
+│   ├── web_tools.py              # Key-less web_search (DDG) & web_fetch
+│   ├── memory_tool.py            # Key-value memory tool
+│   ├── note_tool.py              # notes.md manager tool
+│   ├── todo_tool.py              # Multi-step task tracking tool
+│   ├── goal_tool.py              # Session goal tool
+│   ├── job_tool.py               # Background job tool
+│   ├── git_tool.py               # git_status/diff/commit/push/branch tools
+│   ├── ask_tool.py               # Interactive human-in-the-loop tool
+│   ├── delegate_tool.py          # Sub-agent delegation tool
+│   ├── explore_tool.py           # Branch-exploration tool
+│   ├── consensus_tool.py         # Consensus workflow tool
+│   ├── advisor_tool.py           # Advisor workflow tool
+│   └── symbol_tool.py            # Symbol search tool
+│
+├── skills/
+│   ├── base.py                   # Skill base class definition
+│   ├── registry.py               # Skill manager & instruction composer
+│   └── code_skill.py             # Python coding skill implementation
+│
+└── commands/
+    ├── registry.py                # Slash command registry & dispatcher
+    ├── agent_commands.py          # /agent, /loop, /jobs, /guard, /mode
+    ├── model_commands.py          # /models, /switch
+    ├── session_commands.py        # /cd, /shell, /python, /goal, /note, /memory,
+    │                               #   /dream, /script, /project, /reflexion,
+    │                               #   /checkpoint, /diff, /git
+    └── system_commands.py         # /help, /status, /config, /context, /system,
+                                    #   /tools, /skills, /dirs, /mcps, /compact,
+                                    #   /clear, /retry, /debug, /exit
+```
+
+---
+
+## 📜 License
 
 This project is open-source and available under the [MIT License](LICENSE).

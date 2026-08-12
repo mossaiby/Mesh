@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from typing import List, Any
 from rich.table import Table

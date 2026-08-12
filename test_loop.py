@@ -57,6 +57,14 @@ async def run_iterative_test_loop(
             verbose=False
         )
 
+        if repair_res.get("status") == "error":
+            console.print(f"[error]Repair sub-agent failed on iteration {iteration}: {repair_res.get('error', 'unknown error')}[/error]\n")
+            return {
+                "status": "failed",
+                "message": f"Repair sub-agent errored on iteration {iteration}: {repair_res.get('error', 'unknown error')}",
+                "last_output": error_output[:1000]
+            }
+
         console.print(f"[dim]Sub-agent repair attempt {iteration} complete. Re-testing...[/dim]\n")
 
     return {
