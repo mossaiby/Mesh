@@ -15,6 +15,35 @@
   "show_tokens": true,
   "show_cost": true,
   "show_statistics": true,
+  "timeouts": {
+    "web": 15.0,
+    "shell": 30.0,
+    "mcp": 60.0,
+    "linter": 10.0,
+    "python": 10.0,
+    "api": 12.0
+  },
+  "budgets": {
+    "web": 8000,
+    "repo-map": 500,
+    "dream": 12000,
+    "git-diff": 4000,
+    "symbol": 30
+  },
+  "turns": {
+    "agent": 6,
+    "engine": 10,
+    "loop": 5,
+    "depth": 2,
+    "branches": 3
+  },
+  "repair_settings": {
+    "retries": 2,
+    "delay": 0.75
+  },
+  "compaction_settings": {
+    "minkeep": 2
+  },
   "providers": {
     "openai": {
       "name": "OpenAI Official",

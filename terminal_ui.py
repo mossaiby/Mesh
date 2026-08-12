@@ -35,7 +35,6 @@ def get_path_completions(partial_path: str, prefix: str = "") -> List[Tuple[str,
     try:
         entries = sorted(os.listdir(search_dir))
         for entry in entries:
-            # Skip hidden files unless user explicitly typed a leading dot
             if entry.startswith(".") and not basename.startswith("."):
                 continue
             if entry.lower().startswith(basename.lower()):

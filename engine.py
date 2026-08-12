@@ -137,7 +137,7 @@ class MeshEngine:
         if proj_rules_section:
             full_sys += f"\n\n{proj_rules_section}"
 
-        repo_map_section = repo_map.get_repo_map_instructions(".", token_budget=self.config_mgr.config.budgets.repomap)
+        repo_map_section = repo_map.get_repo_map_instructions(".", token_budget=self.config_mgr.config.budgets.repo_map)
         if repo_map_section:
             full_sys += f"\n\n{repo_map_section}"
 

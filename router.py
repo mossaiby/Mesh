@@ -50,14 +50,14 @@ async def select_model_for_prompt(
     """
     cfg = config_mgr.config
     if not cfg.router_model:
-        raise ValueError("Router model is not configured in models.json. Set 'router_model' or run '/switch router <key>'.")
+        raise ValueError("Router model is not configured in config.json. Set 'router_model' or run '/switch router <key>'.")
 
     if cfg.router_model not in cfg.models:
-        raise ValueError(f"Configured router model '{cfg.router_model}' is not found in models.json.")
+        raise ValueError(f"Configured router model '{cfg.router_model}' is not found in config.json.")
 
     candidates = {k: v for k, v in cfg.models.items() if k != "auto"}
     if not candidates:
-        raise ValueError("No candidate models configured in models.json.")
+        raise ValueError("No candidate models configured in config.json.")
 
     if len(candidates) == 1:
         key = list(candidates.keys())[0]

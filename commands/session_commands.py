@@ -514,7 +514,7 @@ async def cmd_script(engine: Any, args: List[str]):
 
 async def cmd_project(engine: Any, args: List[str]):
     if args and args[0].lower() in ("map", "graph"):
-        map_text = repo_map.get_repo_map_instructions(".", token_budget=engine.config_mgr.config.budgets.repomap)
+        map_text = repo_map.get_repo_map_instructions(".", token_budget=engine.config_mgr.config.budgets.repo_map)
         if map_text:
             console.print(f"\n[success]=== Repository Architecture Map ===[/success]\n")
             console.print(Markdown(map_text))

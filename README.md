@@ -8,7 +8,7 @@ A modern, modular and hackable AI CLI harness written in Python. Mesh connects t
 
 ## 🌟 Key Features
 
-- **Multi-Provider Support** — Talk to OpenAI, Anthropic, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint, all configured in `models.json`. Switch models live with `/switch`, or let a router model auto-select per turn with `/switch auto`.
+- **Multi-Provider Support** — Talk to OpenAI, Anthropic, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint, all configured in `config.json`. Switch models live with `/switch`, or let a router model auto-select per turn with `/switch auto`.
 - **Operating Modes (`/mode`)** — `build` (full access, default), `plan` and `review` (read-only investigation, no writes/shell/delegation/MCP), and `yolo` (full access, fewer confirmation prompts — high-risk actions are still always blocked).
 - **Safety Guard (`/guard`)** — An LLM-backed risk assessor that reviews tool calls before execution, can run in `supervised` or `autonomous` mode, supports per-session tool trust, and always blocks genuinely high-risk actions regardless of mode.
 - **Directory Permissions (`/dirs`)** — A `PermissionManager` enforces a working-directory allow-list for every file/shell tool. Out-of-bounds access triggers an interactive Allow Once / Always Allow / Deny prompt.
@@ -27,17 +27,17 @@ A modern, modular and hackable AI CLI harness written in Python. Mesh connects t
 ## 🏗️ Architecture Overview
 
 ```
-                                    ┌─────────────────────────┐
-                                    │       User (CLI)        │
-                                    └─────────────┬───────────┘
-                                                  │
-                                    ┌─────────────▼───────────┐
-                                    │ MeshEngine (engine.py)  │
-                                    └─────────────┬───────────┘
-                                                  │
-      ┌──────────────────┬─────────────┬──────────┼────────────┬──────────────────┬──────────────────┐
-      │                  │             │          │            │                  │                  │
-┌─────▼──────┐  ┌────────▼──────┐ ┌────▼───┐ ┌────▼───┐ ┌──────▼──────┐ ┌─────────▼────────┐ ┌────────▼────────┐
+                                        ┌─────────────────────────┐
+                                        │       User (CLI)        │
+                                        └─────────────┬───────────┘
+                                                      │
+                                        ┌─────────────▼───────────┐
+                                        │ MeshEngine (engine.py)  │
+                                        └─────────────┬───────────┘
+                                                      │
+      ┌──────────────────┬─────────────┬──────────┬───┴────────┬──────────────────┬────────────────────┐
+      │                  │             │          │            │                  │                    │
+┌─────┴──────┐  ┌────────┴──────┐ ┌────┴───┐ ┌────┴───┐ ┌──────┴──────┐ ┌─────────┴────────┐ ┌─────────┴───────┐
 │ Providers  │  │ Tool Registry │ │ Safety │ │ Skills │ │    MCP      │ │ Sub-Agents       │ │ Memory / Notes  │
 │ (OpenAI/   │  │ & Permissions │ │ Guard  │ │        │ │   Client    │ │ (delegate /      │ │ / Checkpoints / │
 │ Anthropic) │  │               │ │        │ │        │ │ (mcps.json) │ │ squad / etc.)    │ │ Reflexion       │
@@ -64,7 +64,7 @@ pip install -r requirements.txt
 
 ### 3. Configure API Keys
 
-Set environment variables for whichever providers you use (referenced by `api_key_env` in `models.json`):
+Set environment variables for whichever providers you use (referenced by `api_key_env` in `config.json`):
 
 ```bash
 # Cloud providers
@@ -155,7 +155,7 @@ python main.py path/to/script.txt --non-interactive
 
 ---
 
-## ⚙️ Configuration File (`models.json`)
+## ⚙️ Configuration File (`config.json`)
 
 System parameters, provider REST endpoints, and model configurations can be tuned directly or set via `/config set <category> <param> <value>`:
 
@@ -187,9 +187,9 @@ System parameters, provider REST endpoints, and model configurations can be tune
   },
   "budgets": {
     "web": 8000,
-    "repomap": 500,
+    "repo-map": 500,
     "dream": 12000,
-    "gitdiff": 4000,
+    "git-diff": 4000,
     "symbol": 30
   },
   "turns": {

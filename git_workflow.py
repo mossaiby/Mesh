@@ -96,7 +96,7 @@ async def generate_commit_message(config_mgr: ConfigManager, root_dir: str = "."
     if not diff_text or diff_text == "<no git diff output>":
         return "chore: update workspace files"
 
-    budget_chars = config_mgr.config.budgets.gitdiff
+    budget_chars = config_mgr.config.budgets.git_diff
     truncated_diff = diff_text[:budget_chars]
 
     messages = [

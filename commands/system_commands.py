@@ -22,9 +22,9 @@ CONFIG_SET_MAP = {
     },
     "budget": {
         "web": ("budgets", "web", int, "Web fetch maximum text character limit"),
-        "repomap": ("budgets", "repomap", int, "Repository architecture map token budget"),
+        "repo-map": ("budgets", "repo_map", int, "Repository architecture map token budget"),
         "dream": ("budgets", "dream", int, "Dream analysis transcript max character budget"),
-        "gitdiff": ("budgets", "gitdiff", int, "Git commit message generator diff character budget"),
+        "git-diff": ("budgets", "git_diff", int, "Git commit message generator diff character budget"),
         "symbol": ("budgets", "symbol", int, "Maximum symbol search matches returned"),
     },
     "turns": {

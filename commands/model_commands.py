@@ -152,11 +152,11 @@ async def cmd_models(engine: Any, args: List[str]):
                 added_count += 1
 
             if added_count > 0:
-                console.print(f"\n[success]Successfully added {added_count} model(s) matching '{pattern}' to models.json![/success]")
+                console.print(f"\n[success]Successfully added {added_count} model(s) matching '{pattern}' to config.json![/success]")
                 if skipped_count > 0:
                     console.print(f"[dim]({skipped_count} model(s) were already configured)[/dim]\n")
             elif skipped_count > 0:
-                console.print(f"[warning]All {skipped_count} model(s) matching '{pattern}' are already configured in models.json.[/warning]\n")
+                console.print(f"[warning]All {skipped_count} model(s) matching '{pattern}' are already configured in config.json.[/warning]\n")
             else:
                 console.print(f"[warning]No models found matching pattern '{pattern}' from {p_cfg.name}.[/warning]\n")
 
@@ -164,7 +164,7 @@ async def cmd_models(engine: Any, args: List[str]):
 
         providers = list(engine.config_mgr.config.providers.keys())
         if not providers:
-            console.print("[error]No providers configured in models.json.[/error]")
+            console.print("[error]No providers configured in config.json.[/error]")
             return
 
         selected_provider = await loop.run_in_executor(
@@ -213,7 +213,7 @@ async def cmd_models(engine: Any, args: List[str]):
                 tags=tags,
                 description=desc
             )
-            console.print(f"\n[success]Successfully added model '[label]{model_key}[/label]' ({selected_model_id}) to models.json![/success]")
+            console.print(f"\n[success]Successfully added model '[label]{model_key}[/label]' ({selected_model_id}) to config.json![/success]")
             
             switch_choice = await loop.run_in_executor(
                 None,
@@ -240,7 +240,7 @@ async def cmd_models(engine: Any, args: List[str]):
             providers_to_query = engine.config_mgr.config.providers
 
         if not providers_to_query:
-            console.print("[error]No providers configured in models.json.[/error]")
+            console.print("[error]No providers configured in config.json.[/error]")
             return
 
         console.print("[brand]🔍 Discovering models offered by provider endpoints...[/brand]\n")
@@ -315,7 +315,7 @@ async def cmd_switch(engine: Any, args: List[str]):
     cfg = engine.config_mgr.config
     models_dict = cfg.models
     if not models_dict:
-        console.print("[error]No models configured in models.json.[/error]")
+        console.print("[error]No models configured in config.json.[/error]")
         return
 
     sub = args[0].lower() if args else ""
@@ -323,12 +323,12 @@ async def cmd_switch(engine: Any, args: List[str]):
     if sub == "auto":
         if not cfg.router_model:
             console.print(
-                "[error]Cannot enable auto-routing mode: 'router_model' is not configured in models.json.\n"
+                "[error]Cannot enable auto-routing mode: 'router_model' is not configured in config.json.\n"
                 "Use '/switch router <model_key>' to configure a router model first.[/error]"
             )
             return
         if cfg.router_model not in cfg.models:
-            console.print(f"[error]Configured router model key '{cfg.router_model}' was not found in models.json.[/error]")
+            console.print(f"[error]Configured router model key '{cfg.router_model}' was not found in config.json.[/error]")
             return
 
         engine.config_mgr.set_active_model("auto")
@@ -354,7 +354,7 @@ async def cmd_switch(engine: Any, args: List[str]):
             console.print("[success]Router model cleared.[/success]")
             return
         if target_key not in models_dict:
-            console.print(f"[error]Model key '{target_key}' not found in models.json. See /models for valid keys.[/error]")
+            console.print(f"[error]Model key '{target_key}' not found in config.json. See /models for valid keys.[/error]")
             return
         cfg.router_model = target_key
         engine.config_mgr.save()
@@ -364,7 +364,7 @@ async def cmd_switch(engine: Any, args: List[str]):
     if args:
         target_key = args[0]
         if target_key not in models_dict:
-            console.print(f"[error]Model key '{target_key}' not found in models.json.[/error]")
+            console.print(f"[error]Model key '{target_key}' not found in config.json.[/error]")
             return
         selected_key = target_key
     else:
@@ -428,7 +428,7 @@ async def cmd_switch(engine: Any, args: List[str]):
     try:
         if selected_key.startswith("auto"):
             if not cfg.router_model or cfg.router_model not in cfg.models:
-                console.print("[error]Cannot enable auto-routing: 'router_model' is not set or invalid in models.json.[/error]")
+                console.print("[error]Cannot enable auto-routing: 'router_model' is not set or invalid in config.json.[/error]")
                 return
             engine.config_mgr.set_active_model("auto")
             console.print(f"[success]Switched active mode to: [label]auto[/label] (Router: {cfg.router_model})[/success]")

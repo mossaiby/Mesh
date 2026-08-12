@@ -1,7 +1,7 @@
 import json
 import os
 from typing import Dict, Optional, Tuple, List
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 def apply_network_proxy(proxy_url: Optional[str]) -> None:
@@ -17,6 +17,8 @@ def apply_network_proxy(proxy_url: Optional[str]) -> None:
 
 
 class TimeoutsConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     web: float = 15.0
     shell: float = 30.0
     mcp: float = 60.0
@@ -26,14 +28,18 @@ class TimeoutsConfig(BaseModel):
 
 
 class BudgetsConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     web: int = 8000
-    repomap: int = 500
+    repo_map: int = Field(default=500, alias="repo-map")
     dream: int = 12000
-    gitdiff: int = 4000
+    git_diff: int = Field(default=4000, alias="git-diff")
     symbol: int = 30
 
 
 class TurnsConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     agent: int = 6
     engine: int = 10
     loop: int = 5
@@ -42,15 +48,21 @@ class TurnsConfig(BaseModel):
 
 
 class RepairConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     retries: int = 2
     delay: float = 0.75
 
 
 class CompactionSettings(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     minkeep: int = 2
 
 
 class ProviderConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str
     base_url: str
     api_key_env: str = "OPENAI_API_KEY"
@@ -62,6 +74,8 @@ class ProviderConfig(BaseModel):
 
 
 class ModelConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str
     provider: str
     model_id: str
@@ -71,6 +85,8 @@ class ModelConfig(BaseModel):
 
 
 class MeshConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
     active_model: str
     system_prompt: str = "You are a helpful text-based AI assistant running inside Mesh, an interactive terminal CLI."
     auto_compact: bool = True
@@ -105,15 +121,17 @@ class MeshConfig(BaseModel):
 
 
 class ConfigManager:
-    def __init__(self, filepath: str = "models.json"):
+    def __init__(self, filepath: str = "config.json"):
         self.filepath = filepath
         self.config: MeshConfig = self.load()
 
     def load(self) -> MeshConfig:
         if not os.path.exists(self.filepath):
-            raise FileNotFoundError(f"Configuration file {self.filepath} not found.")
+            raise FileNotFoundError(f"Configuration file '{self.filepath}' not found.")
+
         with open(self.filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
+
         cfg = MeshConfig(**data)
         # Sync max_delegation_depth with turns.depth
         if cfg.turns.depth != cfg.max_delegation_depth:
@@ -126,7 +144,7 @@ class ConfigManager:
         self.config.max_delegation_depth = self.config.turns.depth
         apply_network_proxy(self.config.network_proxy)
         with open(self.filepath, "w", encoding="utf-8") as f:
-            f.write(self.config.model_dump_json(indent=2))
+            f.write(self.config.model_dump_json(indent=2, by_alias=True))
 
     def get_model_and_provider(self, key: str) -> Tuple[ModelConfig, ProviderConfig]:
         if key == "auto":
@@ -146,16 +164,16 @@ class ConfigManager:
     def get_active_model_and_provider(self) -> Tuple[ModelConfig, ProviderConfig]:
         if self.config.active_model == "auto":
             if not self.config.router_model:
-                raise ValueError("Auto-routing mode is active, but 'router_model' is not configured in models.json.")
+                raise ValueError("Auto-routing mode is active, but 'router_model' is not configured in config.json.")
             return self.get_model_and_provider(self.config.router_model)
         return self.get_model_and_provider(self.config.active_model)
 
     def set_active_model(self, key: str) -> None:
         if key == "auto":
             if not self.config.router_model:
-                raise ValueError("Cannot set active_model to 'auto': 'router_model' is not configured in models.json.")
+                raise ValueError("Cannot set active_model to 'auto': 'router_model' is not configured in config.json.")
             if self.config.router_model not in self.config.models:
-                raise ValueError(f"Configured router model '{self.config.router_model}' does not exist in models.json.")
+                raise ValueError(f"Configured router model '{self.config.router_model}' does not exist in config.json.")
             self.config.active_model = "auto"
             self.save()
             return
@@ -175,7 +193,7 @@ class ConfigManager:
         tags: Optional[List[str]] = None,
         description: Optional[str] = None
     ) -> None:
-        """Adds or updates a model entry in models.json."""
+        """Adds or updates a model entry in config.json."""
         if provider not in self.config.providers:
             raise KeyError(f"Provider '{provider}' not found in providers configuration.")
 
