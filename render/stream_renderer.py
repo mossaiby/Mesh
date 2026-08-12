@@ -3,6 +3,7 @@ from typing import AsyncGenerator, Dict, Any, Tuple
 from rich.console import Group
 from rich.live import Live
 from rich.markdown import Markdown
+from rich.styled import Styled
 from rich.text import Text
 from theme import console
 
@@ -49,13 +50,17 @@ class StreamRenderer:
                     
                     renderables = []
                     
-                    # 1. Reasoning / Thinking indicator logic
+                    # 1. Reasoning / Thinking indicator logic (dimmed Markdown)
                     if accumulated_reasoning:
                         if debug_mode:
-                            renderables.append(Text(accumulated_reasoning, style="dim italic"))
+                            renderables.append(Styled(Markdown(accumulated_reasoning), "dim"))
                         elif not accumulated_content:
                             renderables.append(Text("Thinking...", style="dim italic"))
                             
+                    # Blank line separator between CoT and final response content
+                    if accumulated_reasoning and debug_mode and accumulated_content:
+                        renderables.append(Text(""))
+
                     # 2. Response Markdown content
                     if accumulated_content:
                         renderables.append(Markdown(accumulated_content))

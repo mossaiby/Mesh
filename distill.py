@@ -1,5 +1,7 @@
 import json
 from typing import Dict, Any
+from rich.markdown import Markdown
+from rich.styled import Styled
 from config import ConfigManager
 from providers.openai_provider import OpenAIProvider
 from theme import console
@@ -75,17 +77,14 @@ class SubAgentDistiller:
                 # 1. Sub-agent Reasoning / Chain of Thought tokens
                 if ctype == "reasoning":
                     sub_reasoning += cval
-                    if self.debug_mode:
-                        if not printed_reasoning_header:
-                            console.print("\n[brand]🧠 [SUB-AGENT REASONING]:[/brand]")
-                            printed_reasoning_header = True
-                        console.print(f"[brand italic]{cval}[/brand italic]", end="")
 
                 # 2. Sub-agent Content tokens
                 elif ctype == "content":
-                    if printed_reasoning_header and self.debug_mode:
-                        console.print("\n[brand]📜 [SUB-AGENT OUTPUT]:[/brand]")
-                        printed_reasoning_header = False
+                    if sub_reasoning and self.debug_mode and not printed_reasoning_header:
+                        console.print("\n[brand]🧠 [SUB-AGENT REASONING]:[/brand]")
+                        console.print(Styled(Markdown(sub_reasoning), "dim"))
+                        console.print()  # Blank line separator
+                        printed_reasoning_header = True
 
                     distilled += cval
                     if self.debug_mode:

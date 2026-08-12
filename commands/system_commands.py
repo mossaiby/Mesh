@@ -56,7 +56,8 @@ async def cmd_status(engine: Any, args: List[str]):
     sys_idx = next((i for i, m in enumerate(engine.messages) if m.get("role") == "system"), None)
     sys_prompt = engine.messages[sys_idx]["content"] if sys_idx is not None else "None"
     
-    console.print(f"\n[success]=== MESH STATUS (v{__version__}) ===[/success]\n")
+    console.print(f"\n[success]=== MESH STATUS (v{__version__}) ===[/success]")
+    console.print("[dim]Developed by Farshid Mossaiby | https://github.com/mossaiby/Mesh[/dim]\n")
     console.print(f"• [label]Active Model:[/label] {model_str}")
     console.print(f"  [dim]Provider: {p_str}[/dim]")
     

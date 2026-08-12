@@ -226,7 +226,11 @@ class MeshEngine:
                 await self.process_inference(pre_prompt_count)
 
     async def run(self, script_file: Optional[str] = None, non_interactive: bool = False):
-        console.print(f"[brand]Mesh v{__import__('version').__version__} Started.[/brand] Initializing MCP servers...")
+        console.print(
+            f"[brand]Mesh v{__import__('version').__version__}[/brand] — "
+            f"Developed by [accent]Farshid Mossaiby[/accent] ([accent]https://github.com/mossaiby/Mesh[/accent])"
+        )
+        console.print("[dim]Initializing MCP servers...[/dim]")
         
         await self.mcp_manager.initialize_all(self.tool_registry)
 

@@ -9,7 +9,7 @@
   "guard_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
   "guard_autonomy": "supervised",
   "router_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
-  "network_proxy": "socks5h://localhost:1080",
+  "network_proxy": null,
   "thinking": true,
   "effort": "medium",
   "show_tokens": true,
