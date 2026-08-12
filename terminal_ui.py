@@ -177,11 +177,26 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
         # --- /switch ---
         if cmd0 == "/switch":
             if current_arg_index == 1:
+                subs = [
+                    ("auto", "Enable sticky model auto-routing mode"),
+                    ("router", "View or configure the model router model")
+                ]
+                for sub, meta in subs:
+                    if sub.startswith(current_word.lower()):
+                        yield Completion(sub, start_position=-len(current_word), display_meta=meta)
+
                 models = list(self.mesh.config_mgr.config.models.keys())
                 for m in models:
                     if m.lower().startswith(current_word.lower()):
                         cfg = self.mesh.config_mgr.config.models[m]
                         yield Completion(m, start_position=-len(current_word), display_meta=cfg.name)
+            elif current_arg_index == 2:
+                word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
+                if word1 == "router":
+                    models = list(self.mesh.config_mgr.config.models.keys()) + ["clear", "reset"]
+                    for m in models:
+                        if m.lower().startswith(current_word.lower()):
+                            yield Completion(m, start_position=-len(current_word))
             return
 
         # --- /config ---
@@ -191,14 +206,17 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                     ("proxy", "Toggle sub-agent proxy distillation"),
                     ("repair", "Toggle self-healing tool recovery"),
                     ("hooks", "Toggle post-edit linter hooks"),
-                    ("compact", "Toggle auto-compaction")
+                    ("compact", "Toggle auto-compaction"),
+                    ("tokens", "Toggle turn token count display"),
+                    ("cost", "Toggle turn and session USD cost display"),
+                    ("statistics", "Toggle TTFT and tok/s performance statistics display")
                 ]
                 for sub, meta in subs:
                     if sub.startswith(current_word.lower()):
                         yield Completion(sub, start_position=-len(current_word), display_meta=meta)
             elif current_arg_index == 2:
                 word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
-                if word1 in ("proxy", "repair", "hooks"):
+                if word1 in ("proxy", "repair", "hooks", "tokens", "cost", "statistics"):
                     for opt in ("on", "off"):
                         if opt.startswith(current_word.lower()):
                             yield Completion(opt, start_position=-len(current_word))
@@ -458,7 +476,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                 )
             return
 
-        # Fallback: if typing a token with path separators or matching local files
+        # Fallback: path completions if typing a token with path separators
         if "/" in current_word or "\\" in current_word:
             for full_text, display, meta in get_path_completions(current_word):
                 yield Completion(

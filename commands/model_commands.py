@@ -55,6 +55,23 @@ def _interactive_item_picker(items: List[str], title: str) -> Optional[str]:
     return items[current_idx]
 
 
+def _infer_tags_for_model(model_id: str) -> List[str]:
+    """Auto-infers metadata tags for a model ID."""
+    tags = []
+    m_lower = model_id.lower()
+    if "free" in m_lower:
+        tags.append("free")
+    if any(k in m_lower for k in ("coder", "coding", "code")):
+        tags.append("coding")
+    if any(k in m_lower for k in ("r1", "o1", "o3", "reasoning", "thinking", "nemotron")):
+        tags.append("reasoning")
+    if any(k in m_lower for k in ("fast", "mini", "flash", "instant", "1b", "3b", "8b")):
+        tags.append("fast")
+    if "vision" in m_lower:
+        tags.append("vision")
+    return tags
+
+
 async def cmd_models(engine: Any, args: List[str]):
     sub = args[0].lower() if args else ""
 
@@ -64,9 +81,6 @@ async def cmd_models(engine: Any, args: List[str]):
         if len(args) >= 3:
             p_key = args[1].lower()
             pattern = args[2]
-            ctx = int(args[3]) if len(args) > 3 and args[3].isdigit() else (
-                128000 if ("groq" in p_key or "openrouter" in p_key) else 8192
-            )
 
             if p_key not in engine.config_mgr.config.providers:
                 console.print(f"[error]Unknown provider '{p_key}'. Configured providers: {', '.join(engine.config_mgr.config.providers.keys())}[/error]")
@@ -74,34 +88,47 @@ async def cmd_models(engine: Any, args: List[str]):
 
             p_cfg = engine.config_mgr.config.providers[p_key]
 
-            console.print(f"[brand]🔍 Fetching models from {p_cfg.name} to match pattern '{pattern}'...[/brand]")
-            success, model_ids, err = await OpenAIProvider.fetch_available_models(p_cfg)
+            console.print(f"[brand]🔍 Fetching model metadata from {p_cfg.name} matching pattern '{pattern}'...[/brand]")
+            success, model_details, err = await OpenAIProvider.fetch_available_models_details(p_cfg)
 
-            if not success:
+            if not success or not model_details:
                 console.print(f"[error]Failed to discover models from {p_cfg.name}: {err}[/error]")
                 return
 
             pat_lower = pattern.lower()
             if any(c in pattern for c in "*?[]"):
-                matching_ids = [m for m in model_ids if fnmatch.fnmatch(m.lower(), pat_lower)]
+                matching_models = [m for m in model_details if fnmatch.fnmatch(m["id"].lower(), pat_lower)]
             else:
-                matching_ids = [m for m in model_ids if pat_lower in m.lower()]
+                matching_models = [m for m in model_details if pat_lower in m["id"].lower()]
 
-            if not matching_ids:
-                matching_ids = [pattern]
+            if not matching_models:
+                matching_models = [{"id": pattern, "name": pattern.split("/")[-1].title(), "context_window": None, "description": ""}]
 
             configured_keys = set(engine.config_mgr.config.models.keys())
             added_count = 0
             skipped_count = 0
 
-            for m_id in matching_ids:
+            for m_info in matching_models:
+                m_id = m_info["id"]
                 model_key = f"{p_key}:{m_id}"
                 if model_key in configured_keys:
                     skipped_count += 1
                     continue
 
-                engine.config_mgr.add_model(model_key, p_key, m_id, context_window=ctx)
-                console.print(f"  [success]✔ Added:[/success] [label]{model_key}[/label] ([dim]{m_id}[/dim])")
+                default_ctx = m_info.get("context_window") or (128000 if ("groq" in p_key or "openrouter" in p_key) else 8192)
+                tags = _infer_tags_for_model(m_id)
+                desc = m_info.get("description") or f"{m_info.get('name', m_id)} via {p_cfg.name}"
+
+                engine.config_mgr.add_model(
+                    key=model_key,
+                    provider=p_key,
+                    model_id=m_id,
+                    name=m_info.get("name"),
+                    context_window=default_ctx,
+                    tags=tags,
+                    description=desc
+                )
+                console.print(f"  [success]✔ Added:[/success] [label]{model_key}[/label] ([dim]{m_id}[/dim] - {default_ctx} tokens)")
                 added_count += 1
 
             if added_count > 0:
@@ -130,18 +157,19 @@ async def cmd_models(engine: Any, args: List[str]):
         p_cfg = engine.config_mgr.config.providers[selected_provider]
         console.print(f"[brand]🔍 Fetching available models from {p_cfg.name}...[/brand]")
 
-        success, model_ids, err = await OpenAIProvider.fetch_available_models(p_cfg)
-        if not success or not model_ids:
+        success, model_details, err = await OpenAIProvider.fetch_available_models_details(p_cfg)
+        if not success or not model_details:
             console.print(f"[error]Failed to discover models from {p_cfg.name}: {err}[/error]")
             return
 
         configured_model_ids = {m.model_id for m in engine.config_mgr.config.models.values()}
-        unconfigured_ids = [m for m in model_ids if m not in configured_model_ids]
+        unconfigured_details = [m for m in model_details if m["id"] not in configured_model_ids]
 
-        if not unconfigured_ids:
-            console.print(f"[warning]All {len(model_ids)} models discovered from {p_cfg.name} are already configured![/warning]")
+        if not unconfigured_details:
+            console.print(f"[warning]All {len(model_details)} models discovered from {p_cfg.name} are already configured![/warning]")
             return
 
+        unconfigured_ids = [m["id"] for m in unconfigured_details]
         selected_model_id = await loop.run_in_executor(
             None, 
             lambda: _interactive_item_picker(unconfigured_ids, f"Select a Discovered Model to Add from {p_cfg.name}")
@@ -149,11 +177,22 @@ async def cmd_models(engine: Any, args: List[str]):
         if not selected_model_id:
             return
 
-        default_ctx = 128000 if ("groq" in selected_provider or "openrouter" in selected_provider) else 8192
+        m_info = next((m for m in unconfigured_details if m["id"] == selected_model_id), {})
+        default_ctx = m_info.get("context_window") or (128000 if ("groq" in selected_provider or "openrouter" in selected_provider) else 8192)
         model_key = f"{selected_provider}:{selected_model_id}"
+        tags = _infer_tags_for_model(selected_model_id)
+        desc = m_info.get("description") or f"{m_info.get('name', selected_model_id)} via {p_cfg.name}"
 
         try:
-            engine.config_mgr.add_model(model_key, selected_provider, selected_model_id, context_window=default_ctx)
+            engine.config_mgr.add_model(
+                key=model_key,
+                provider=selected_provider,
+                model_id=selected_model_id,
+                name=m_info.get("name"),
+                context_window=default_ctx,
+                tags=tags,
+                description=desc
+            )
             console.print(f"\n[success]Successfully added model '[label]{model_key}[/label]' ({selected_model_id}) to models.json![/success]")
             
             switch_choice = await loop.run_in_executor(
@@ -189,23 +228,25 @@ async def cmd_models(engine: Any, args: List[str]):
         configured_model_ids = {m.model_id for m in engine.config_mgr.config.models.values()}
 
         async def query_p(key: str, p_cfg):
-            success, model_ids, err = await OpenAIProvider.fetch_available_models(p_cfg)
-            return key, p_cfg, success, model_ids, err
+            success, model_details, err = await OpenAIProvider.fetch_available_models_details(p_cfg)
+            return key, p_cfg, success, model_details, err
 
         results = await asyncio.gather(*(query_p(k, p) for k, p in providers_to_query.items()))
 
-        for p_key, p_cfg, success, model_ids, err in results:
+        for p_key, p_cfg, success, model_details, err in results:
             console.print(f"• [label]{p_cfg.name}[/label] ([brand]{p_key}[/brand]) — [dim]{p_cfg.base_url}[/dim]")
             if success:
-                if not model_ids:
+                if not model_details:
                     console.print("  [dim]No models returned by endpoint.[/dim]\n")
                 else:
-                    console.print(f"  [success]Discovered {len(model_ids)} available model(s):[/success]")
-                    for m_id in model_ids[:30]:
+                    console.print(f"  [success]Discovered {len(model_details)} available model(s):[/success]")
+                    for m_info in model_details[:30]:
+                        m_id = m_info["id"]
                         configured_tag = " [accent](configured)[/accent]" if m_id in configured_model_ids else ""
-                        console.print(f"    - [text]{m_id}[/text]{configured_tag}")
-                    if len(model_ids) > 30:
-                        console.print(f"    [dim]... (+{len(model_ids) - 30} more models)[/dim]")
+                        ctx_str = f" ({m_info['context_window']} tokens)" if m_info.get("context_window") else ""
+                        console.print(f"    - [text]{m_id}[/text]{ctx_str}{configured_tag}")
+                    if len(model_details) > 30:
+                        console.print(f"    [dim]... (+{len(model_details) - 30} more models)[/dim]")
                     console.print()
             else:
                 console.print(f"  [error]Discovery failed:[/error] {err}\n")
@@ -213,28 +254,93 @@ async def cmd_models(engine: Any, args: List[str]):
         console.print("Tip: Run [warning]/models add[/warning] to interactively pick or batch-add models (e.g. /models add openrouter *free*).\n")
         return
 
-    active = engine.config_mgr.config.active_model
+    cfg = engine.config_mgr.config
+    active = cfg.active_model
     console.print("[success]Configured Models:[/success]")
-    for key, model_cfg in engine.config_mgr.config.models.items():
-        provider_cfg = engine.config_mgr.config.providers.get(model_cfg.provider)
+    for key, model_cfg in cfg.models.items():
+        provider_cfg = cfg.providers.get(model_cfg.provider)
         provider_name = provider_cfg.name if provider_cfg else model_cfg.provider
         
+        is_active = (key == active or active == "auto")
         mark = "[accent]*[/accent]" if key == active else " "
+        
+        roles = []
+        if key == active:
+            roles.append("active")
+        if active == "auto":
+            roles.append("candidate")
+        if key == cfg.router_model:
+            roles.append("router")
+        if key == cfg.guard_model:
+            roles.append("guard")
+        if key == cfg.advisor_model:
+            roles.append("advisor")
+        
+        roles_str = f" [accent]({', '.join(roles)})[/accent]" if roles else ""
+        tags_str = f" [dim][tags: {', '.join(model_cfg.tags)}][/dim]" if model_cfg.tags else ""
+        desc_str = f"\n    [dim]{model_cfg.description}[/dim]" if model_cfg.description else ""
+
         console.print(
             f"{mark} [label]{key}[/label] -> {model_cfg.name} via "
             f"[brand]{provider_name}[/brand] ([dim]{model_cfg.model_id}[/dim]) "
-            f"[dim]— {model_cfg.context_window} token context window[/dim]"
+            f"[dim]— {model_cfg.context_window} token context[/dim]{roles_str}{tags_str}{desc_str}"
         )
+    
+    if active == "auto":
+        console.print(f"\n[brand]🔀 Active Mode: AUTO-ROUTING[/brand] (using router model: [accent]{cfg.router_model or 'none'}[/accent])")
+
     console.print("\nUsage: [warning]/models[/warning] | [warning]/models discover [<provider>][/warning] | [warning]/models add [<provider>] [<pattern>][/warning]\n")
 
 
 async def cmd_switch(engine: Any, args: List[str]):
-    models_dict = engine.config_mgr.config.models
+    cfg = engine.config_mgr.config
+    models_dict = cfg.models
     if not models_dict:
         console.print("[error]No models configured in models.json.[/error]")
         return
 
-    model_keys = list(models_dict.keys())
+    sub = args[0].lower() if args else ""
+
+    if sub == "auto":
+        if not cfg.router_model:
+            console.print(
+                "[error]Cannot enable auto-routing mode: 'router_model' is not configured in models.json.\n"
+                "Use '/switch router <model_key>' to configure a router model first.[/error]"
+            )
+            return
+        if cfg.router_model not in cfg.models:
+            console.print(f"[error]Configured router model key '{cfg.router_model}' was not found in models.json.[/error]")
+            return
+
+        engine.config_mgr.set_active_model("auto")
+        router_m = cfg.models[cfg.router_model]
+        console.print(
+            f"[success]Switched to Auto-Routing Mode ([label]auto[/label]).[/success]\n"
+            f"Prompts will be dynamically routed turn-by-turn using router model '[accent]{cfg.router_model}[/accent]' ({router_m.name})."
+        )
+        return
+
+    elif sub == "router":
+        if len(args) == 1:
+            r_str = cfg.router_model or "[dim]none set[/dim]"
+            console.print(
+                f"Router model is currently: [accent]{r_str}[/accent]\n"
+                f"Usage: [warning]/switch router <model_key>[/warning] | [warning]/switch router clear[/warning]"
+            )
+            return
+        target_key = args[1]
+        if target_key.lower() in ("clear", "reset", "none"):
+            cfg.router_model = None
+            engine.config_mgr.save()
+            console.print("[success]Router model cleared.[/success]")
+            return
+        if target_key not in models_dict:
+            console.print(f"[error]Model key '{target_key}' not found in models.json. See /models for valid keys.[/error]")
+            return
+        cfg.router_model = target_key
+        engine.config_mgr.save()
+        console.print(f"[success]Router model set to '[label]{target_key}[/label]' ({models_dict[target_key].name}).[/success]")
+        return
 
     if args:
         target_key = args[0]
@@ -243,20 +349,25 @@ async def cmd_switch(engine: Any, args: List[str]):
             return
         selected_key = target_key
     else:
-        active_key = engine.config_mgr.config.active_model
-        current_idx = model_keys.index(active_key) if active_key in model_keys else 0
+        model_keys = list(models_dict.keys()) + ["auto (Dynamic LLM Router)"]
+        active_key = cfg.active_model
+        current_idx = 0
 
         def render_switch_menu(selected_idx: int):
-            lines = ["\n[success]Select a Model to Switch to:[/success]", "[dim]Use ↑/↓ Arrow Keys to navigate, Enter to select:[/dim]\n"]
+            lines = ["\n[success]Select a Model or Mode to Switch to:[/success]", "[dim]Use ↑/↓ Arrow Keys to navigate, Enter to select:[/dim]\n"]
             for idx, key in enumerate(model_keys):
-                cfg = models_dict[key]
-                provider_cfg = engine.config_mgr.config.providers.get(cfg.provider)
-                p_name = provider_cfg.name if provider_cfg else cfg.provider
-                
-                is_active = (key == active_key)
-                active_tag = " [accent](active)[/accent]" if is_active else ""
-                
-                item_text = f"{cfg.name} ({key}) via {p_name}{active_tag}"
+                if key.startswith("auto"):
+                    is_active = (active_key == "auto")
+                    active_tag = " [accent](active)[/accent]" if is_active else ""
+                    router_tag = f" [dim](using router: {cfg.router_model or 'none'})[/dim]"
+                    item_text = f"🔀 Auto-Routing Mode{active_tag}{router_tag}"
+                else:
+                    m_cfg = models_dict[key]
+                    provider_cfg = cfg.providers.get(m_cfg.provider)
+                    p_name = provider_cfg.name if provider_cfg else m_cfg.provider
+                    is_active = (key == active_key)
+                    active_tag = " [accent](active)[/accent]" if is_active else ""
+                    item_text = f"{m_cfg.name} ({key}) via {p_name}{active_tag}"
                 
                 if idx == selected_idx:
                     lines.append(f"  [accent]❯ 🔘 {item_text}[/accent]")
@@ -266,7 +377,7 @@ async def cmd_switch(engine: Any, args: List[str]):
 
         def interactive_switch():
             if not sys.stdin.isatty():
-                console.print("[accent]Available Models:[/accent]")
+                console.print("[accent]Available Options:[/accent]")
                 for idx, k in enumerate(model_keys, 1):
                     console.print(f"  {idx}. {k}")
                 raw = input("Choice > ").strip()
@@ -296,9 +407,16 @@ async def cmd_switch(engine: Any, args: List[str]):
         selected_key = await loop.run_in_executor(None, interactive_switch)
 
     try:
-        engine.config_mgr.set_active_model(selected_key)
-        model_cfg, provider_cfg = engine.config_mgr.get_active_model_and_provider()
-        console.print(f"[success]Switched active model to: [label]{selected_key}[/label] ({model_cfg.name} via {provider_cfg.name})[/success]")
+        if selected_key.startswith("auto"):
+            if not cfg.router_model or cfg.router_model not in cfg.models:
+                console.print("[error]Cannot enable auto-routing: 'router_model' is not set or invalid in models.json.[/error]")
+                return
+            engine.config_mgr.set_active_model("auto")
+            console.print(f"[success]Switched active mode to: [label]auto[/label] (Router: {cfg.router_model})[/success]")
+        else:
+            engine.config_mgr.set_active_model(selected_key)
+            model_cfg, provider_cfg = engine.config_mgr.get_active_model_and_provider()
+            console.print(f"[success]Switched active model to: [label]{selected_key}[/label] ({model_cfg.name} via {provider_cfg.name})[/success]")
     except Exception as e:
         console.print(f"[error]Error switching model: {e}[/error]")
 
@@ -312,7 +430,7 @@ def register_model_commands(engine: Any):
     )
     engine.cmd_registry.register(
         "switch",
-        "Switch active model interactively, or directly: /switch <model_key>",
+        "Switch active model or mode: /switch auto | /switch router [<key>] | /switch <model_key>",
         lambda args: cmd_switch(engine, args),
         category="Models & Settings"
     )

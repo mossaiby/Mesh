@@ -10,6 +10,7 @@
     "openrouter:anthropic/claude-3.5-sonnet": { "input": 3.00, "output": 15.00 },
     "openrouter:deepseek/deepseek-r1": { "input": 0.55, "output": 2.19 },
     "openrouter:nvidia/nemotron-3-ultra-550b-a55b:free": { "input": 0.00, "output": 0.00 },
+    "openrouter:nvidia/nemotron-3-super-120b-a12b:free": { "input": 0.00, "output": 0.00 },
     "lmstudio:*": { "input": 0.00, "output": 0.00 },
     "ollama:*": { "input": 0.00, "output": 0.00 },
     "default": { "input": 0.00, "output": 0.00 }

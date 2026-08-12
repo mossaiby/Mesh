@@ -1,6 +1,7 @@
 import asyncio
 import os
 import sys
+import time
 from typing import Optional, List, Dict, Any
 from config import ConfigManager
 from providers.openai_provider import OpenAIProvider
@@ -43,6 +44,7 @@ import reflexion
 import modes
 import jobs
 import context_mentions
+import router
 from pricing import pricing_manager
 from checkpoint import CheckpointManager
 from guard import SafetyGuard
@@ -288,15 +290,35 @@ class MeshEngine:
             while current_turn < max_turns:
                 current_turn += 1
 
-                try:
-                    model_cfg, provider_cfg = self.config_mgr.get_active_model_and_provider()
-                except Exception as e:
-                    console.print(f"[error]Configuration Error:[/error] {e}")
-                    return
+                # Select active model or consult dynamic model router
+                if self.config_mgr.config.active_model == "auto":
+                    latest_user_prompt = ""
+                    for msg in reversed(self.messages):
+                        if msg.get("role") == "user":
+                            latest_user_prompt = msg.get("content", "")
+                            break
+
+                    try:
+                        chosen_key, route_reason = await router.select_model_for_prompt(
+                            prompt=latest_user_prompt,
+                            messages=self.messages,
+                            config_mgr=self.config_mgr
+                        )
+                        model_cfg, provider_cfg = self.config_mgr.get_model_and_provider(chosen_key)
+                        console.print(f"[brand]🔀 Auto-routed prompt to [label]{chosen_key}[/label] ({model_cfg.name}):[/brand] [dim]{route_reason}[/dim]")
+                    except Exception as e:
+                        console.print(f"[error]Model Routing Error:[/error] {e}")
+                        return
+                else:
+                    try:
+                        model_cfg, provider_cfg = self.config_mgr.get_active_model_and_provider()
+                    except Exception as e:
+                        console.print(f"[error]Configuration Error:[/error] {e}")
+                        return
 
                 self.messages, auto_compacted, compact_details = await maybe_auto_compact(self.messages, self.config_mgr)
                 if auto_compacted:
-                    console.print(f"[warning]🗜️  {compact_details}[/warning]")
+                    console.print(f"[warning]📑   {compact_details}[/warning]")
 
                 provider = OpenAIProvider(model_cfg, provider_cfg)
                 schemas = self.tool_registry.get_schemas() if self.tools_enabled else None
@@ -307,11 +329,18 @@ class MeshEngine:
                 turn_prompt_tokens = 0
                 turn_completion_tokens = 0
 
+                # Measure streaming timing performance
+                t_start = time.perf_counter()
+                t_first_token = None
+
                 async def chunk_generator():
-                    nonlocal turn_prompt_tokens, turn_completion_tokens
+                    nonlocal turn_prompt_tokens, turn_completion_tokens, t_first_token
                     async for chunk in provider.stream_chat(self.messages, tools=schemas):
                         ctype = chunk["type"]
                         cval = chunk["value"]
+
+                        if t_first_token is None and ctype in ("content", "reasoning", "tool_calls"):
+                            t_first_token = time.perf_counter()
 
                         if ctype == "usage":
                             turn_prompt_tokens = cval.get("prompt_tokens", 0)
@@ -346,6 +375,8 @@ class MeshEngine:
                     )
                     return
 
+                t_end = time.perf_counter()
+
                 # Calculate tokens post-stream if not returned in API usage chunk
                 if turn_prompt_tokens == 0:
                     turn_prompt_tokens = estimate_tokens(self.messages)
@@ -353,18 +384,34 @@ class MeshEngine:
                     turn_completion_tokens = max(1, len(response_text) // 4)
 
                 # Real-time USD cost calculation
-                active_key = self.config_mgr.config.active_model
-                _, _, turn_cost = pricing_manager.get_token_cost(active_key, turn_prompt_tokens, turn_completion_tokens)
+                turn_model_key = chosen_key if self.config_mgr.config.active_model == "auto" else self.config_mgr.config.active_model
+                _, _, turn_cost = pricing_manager.get_token_cost(turn_model_key, turn_prompt_tokens, turn_completion_tokens)
 
                 self.session_prompt_tokens += turn_prompt_tokens
                 self.session_completion_tokens += turn_completion_tokens
                 self.session_cost_usd += turn_cost
 
-                cost_str = f"${turn_cost:.4f} turn, ${self.session_cost_usd:.4f} session"
-                token_str = f"{turn_prompt_tokens} in, {turn_completion_tokens} out"
+                # Performance Statistics Calculation
+                ttft_sec = (t_first_token - t_start) if t_first_token is not None else (t_end - t_start)
+                gen_sec = (t_end - t_first_token) if t_first_token is not None else 0.0
+                tps = (turn_completion_tokens / gen_sec) if gen_sec > 0.001 else 0.0
 
-                # Render post-stream turn metrics footer
-                console.print(f"[dim][{token_str} | {cost_str}][/dim]\n")
+                # Assemble configurable results metrics footer
+                cfg = self.config_mgr.config
+                metrics_parts = []
+
+                if cfg.show_tokens:
+                    metrics_parts.append(f"{turn_prompt_tokens} in, {turn_completion_tokens} out")
+
+                if cfg.show_cost:
+                    metrics_parts.append(f"${turn_cost:.4f} turn, ${self.session_cost_usd:.4f} session")
+
+                if cfg.show_statistics:
+                    ttft_fmt = f"{ttft_sec*1000:.0f}ms" if ttft_sec < 1.0 else f"{ttft_sec:.2f}s"
+                    metrics_parts.append(f"TTFT: {ttft_fmt}, {tps:.1f} tok/s")
+
+                if metrics_parts:
+                    console.print(f"[dim][{' | '.join(metrics_parts)}][/dim]\n")
 
                 assistant_msg = {"role": "assistant"}
                 if response_text:
@@ -417,5 +464,4 @@ class MeshEngine:
 
         except (KeyboardInterrupt, asyncio.CancelledError):
             console.print("\n[warning]⛔ Turn cancelled by user.[/warning]\n")
-            # Clean up incomplete user prompt and partial assistant/tool messages from cancelled turn
             self.messages = self.messages[:rollback_count]

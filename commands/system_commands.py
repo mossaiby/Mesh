@@ -43,13 +43,23 @@ async def cmd_help(engine: Any, args: List[str]):
 
 
 async def cmd_status(engine: Any, args: List[str]):
-    model_cfg, provider_cfg = engine.config_mgr.get_active_model_and_provider()
+    cfg = engine.config_mgr.config
+    active_key = cfg.active_model
+
+    if active_key == "auto":
+        model_str = f"auto (dynamic router using [accent]{cfg.router_model or 'none'}[/accent])"
+        p_str = "Dynamic Auto-Router"
+    else:
+        model_cfg, provider_cfg = engine.config_mgr.get_active_model_and_provider()
+        model_str = f"{model_cfg.name} ({active_key})"
+        p_str = f"{provider_cfg.name} | Base URL: {provider_cfg.base_url} | Model ID: {model_cfg.model_id}"
+
     sys_idx = next((i for i, m in enumerate(engine.messages) if m.get("role") == "system"), None)
     sys_prompt = engine.messages[sys_idx]["content"] if sys_idx is not None else "None"
     
     console.print(f"\n[success]=== MESH STATUS (v{__version__}) ===[/success]\n")
-    console.print(f"• [label]Active Model:[/label] {model_cfg.name} ({engine.config_mgr.config.active_model})")
-    console.print(f"  [dim]Provider: {provider_cfg.name} | Base URL: {provider_cfg.base_url} | Model ID: {model_cfg.model_id}[/dim]")
+    console.print(f"• [label]Active Model:[/label] {model_str}")
+    console.print(f"  [dim]Provider: {p_str}[/dim]")
     
     tools_state = "[success]ENABLED[/success]" if engine.tools_enabled else "[error]DISABLED[/error]"
     proxy_state = "[success]ON[/success]" if engine.subagent_proxy.enabled else "[error]OFF[/error]"
@@ -69,15 +79,23 @@ async def cmd_status(engine: Any, args: List[str]):
     console.print(f"• [label]Sub-Agent Proxy Distillation:[/label] {proxy_state}")
     console.print(f"• [label]Self-Healing Tool-Error Recovery:[/label] {selfheal_state}")
     console.print(f"• [label]Post-Edit Linter Hooks:[/label] {hooks_state}")
-    console.print(f"• [label]Delegation Recursion Depth:[/label] {engine.config_mgr.config.max_delegation_depth}")
+    console.print(f"• [label]Delegation Recursion Depth:[/label] {cfg.max_delegation_depth}")
     guard_state = "[success]ON[/success]" if engine.safety_guard.enabled else "[error]OFF[/error]"
-    guard_model_str = engine.config_mgr.config.guard_model or f"{engine.config_mgr.config.active_model} (active)"
+    guard_model_str = cfg.guard_model or f"{cfg.active_model} (active)"
     console.print(
         f"• [label]Safety Guard:[/label] {guard_state} "
-        f"(mode: {engine.config_mgr.config.guard_autonomy}, model: {guard_model_str})"
+        f"(mode: {cfg.guard_autonomy}, model: {guard_model_str})"
     )
-    advisor_model_str = engine.config_mgr.config.advisor_model or f"{engine.config_mgr.config.active_model} (active)"
+    advisor_model_str = cfg.advisor_model or f"{cfg.active_model} (active)"
     console.print(f"• [label]Advisor Model:[/label] {advisor_model_str}")
+    router_model_str = cfg.router_model or "[dim]none set[/dim]"
+    console.print(f"• [label]Router Model:[/label] {router_model_str}")
+
+    tokens_s = "[success]ON[/success]" if cfg.show_tokens else "[error]OFF[/error]"
+    cost_s = "[success]ON[/success]" if cfg.show_cost else "[error]OFF[/error]"
+    stats_s = "[success]ON[/success]" if cfg.show_statistics else "[error]OFF[/error]"
+    console.print(f"• [label]Metrics Display:[/label] tokens ({tokens_s}), cost ({cost_s}), statistics ({stats_s})")
+
     console.print(f"• [label]Mode:[/label] {__import__('modes').MODES[engine.current_mode].label}")
     console.print(f"• [label]Debug Mode:[/label] {debug_state}")
     
@@ -93,9 +111,9 @@ async def cmd_status(engine: Any, args: List[str]):
     console.print(f"• [label]Allowed Directories:[/label] {len(engine.permission_manager.allowed_dirs)} directories")
 
     est_tokens = estimate_tokens(engine.messages)
-    window = max(1, model_cfg.context_window)
+    window = max(1, cfg.models.get(cfg.active_model, cfg.models.get(cfg.router_model, list(cfg.models.values())[0])).context_window) if cfg.models else 8192
     usage_pct = int((est_tokens / window) * 100)
-    autocompact_state = "[success]ON[/success]" if engine.config_mgr.config.auto_compact else "[error]OFF[/error]"
+    autocompact_state = "[success]ON[/success]" if cfg.auto_compact else "[error]OFF[/error]"
     console.print(
         f"• [label]Context Window:[/label] {len(engine.messages)} messages, "
         f"~{est_tokens}/{window} est. tokens ({usage_pct}%)"
@@ -106,7 +124,7 @@ async def cmd_status(engine: Any, args: List[str]):
     )
     console.print(
         f"• [label]Auto-Compaction:[/label] {autocompact_state} "
-        f"(triggers at {int(engine.config_mgr.config.auto_compact_threshold * 100)}%)"
+        f"(triggers at {int(cfg.auto_compact_threshold * 100)}%)"
     )
     console.print(f"• [label]System Prompt Length:[/label] {len(sys_prompt)} chars (~{len(sys_prompt.split())} words)")
 
@@ -126,13 +144,19 @@ async def cmd_config(engine: Any, args: List[str]):
         heal_s = "[success]ON[/success]" if engine.self_healer.enabled else "[error]OFF[/error]"
         hooks_s = "[success]ON[/success]" if hooks.hook_manager.enabled else "[error]OFF[/error]"
         compact_s = "[success]ON[/success]" if cfg.auto_compact else "[error]OFF[/error]"
+        tokens_s = "[success]ON[/success]" if cfg.show_tokens else "[error]OFF[/error]"
+        cost_s = "[success]ON[/success]" if cfg.show_cost else "[error]OFF[/error]"
+        stats_s = "[success]ON[/success]" if cfg.show_statistics else "[error]OFF[/error]"
 
         console.print("\n[success]Mesh System Configuration:[/success]")
         console.print(f"  • [label]proxy[/label]: {proxy_s}")
         console.print(f"  • [label]repair[/label]: {heal_s}")
         console.print(f"  • [label]hooks[/label]: {hooks_s}")
-        console.print(f"  • [label]compact[/label]: {compact_s} (threshold: {int(cfg.auto_compact_threshold * 100)}%)\n")
-        console.print("Usage: [warning]/config proxy [on|off][/warning] | [warning]/config repair [on|off][/warning] | [warning]/config hooks [on|off][/warning] | [warning]/config compact [on|off|threshold <0-100>][/warning]\n")
+        console.print(f"  • [label]compact[/label]: {compact_s} (threshold: {int(cfg.auto_compact_threshold * 100)}%)")
+        console.print(f"  • [label]tokens[/label]: {tokens_s}")
+        console.print(f"  • [label]cost[/label]: {cost_s}")
+        console.print(f"  • [label]statistics[/label]: {stats_s}\n")
+        console.print("Usage: [warning]/config proxy|repair|hooks|compact|tokens|cost|statistics [on|off][/warning]\n")
         return
 
     sub = args[0].lower()
@@ -197,8 +221,53 @@ async def cmd_config(engine: Any, args: List[str]):
             except ValueError:
                 console.print("[error]Threshold must be a number between 0 and 100.[/error]")
 
+    elif sub == "tokens":
+        if not sub_args:
+            state_str = "[success]ON[/success]" if cfg.show_tokens else "[error]OFF[/error]"
+            console.print(f"Token count display is {state_str}.")
+            return
+        act = sub_args[0].lower()
+        if act == "on":
+            cfg.show_tokens = True
+            engine.config_mgr.save()
+            console.print("[success]Token count display ENABLED.[/success]")
+        elif act == "off":
+            cfg.show_tokens = False
+            engine.config_mgr.save()
+            console.print("[warning]Token count display DISABLED.[/warning]")
+
+    elif sub == "cost":
+        if not sub_args:
+            state_str = "[success]ON[/success]" if cfg.show_cost else "[error]OFF[/error]"
+            console.print(f"Cost display is {state_str}.")
+            return
+        act = sub_args[0].lower()
+        if act == "on":
+            cfg.show_cost = True
+            engine.config_mgr.save()
+            console.print("[success]Cost display ENABLED.[/success]")
+        elif act == "off":
+            cfg.show_cost = False
+            engine.config_mgr.save()
+            console.print("[warning]Cost display DISABLED.[/warning]")
+
+    elif sub == "statistics":
+        if not sub_args:
+            state_str = "[success]ON[/success]" if cfg.show_statistics else "[error]OFF[/error]"
+            console.print(f"Token statistics display is {state_str}.")
+            return
+        act = sub_args[0].lower()
+        if act == "on":
+            cfg.show_statistics = True
+            engine.config_mgr.save()
+            console.print("[success]Token statistics display (TTFT, tok/s) ENABLED.[/success]")
+        elif act == "off":
+            cfg.show_statistics = False
+            engine.config_mgr.save()
+            console.print("[warning]Token statistics display DISABLED.[/warning]")
+
     else:
-        console.print("[error]Usage: /config [proxy|repair|hooks|compact] <args>[/error]")
+        console.print("[error]Usage: /config [proxy|repair|hooks|compact|tokens|cost|statistics] <args>[/error]")
 
 
 async def cmd_context(engine: Any, args: List[str]):
@@ -490,10 +559,10 @@ async def cmd_exit(engine: Any, args: List[str]):
 def register_system_commands(engine: Any):
     engine.cmd_registry.register("help", "Show available slash commands", lambda args: cmd_help(engine, args), category="Session & System")
     engine.cmd_registry.register("status", "Show current Mesh status overview", lambda args: cmd_status(engine, args), category="Models & Settings")
-    engine.cmd_registry.register("config", "View or set automation toggles: /config [proxy|repair|hooks|compact]", lambda args: cmd_config(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("config", "View or set automation toggles: /config proxy|repair|hooks|compact|tokens|cost|statistics [on|off]", lambda args: cmd_config(engine, args), category="Models & Settings")
     engine.cmd_registry.register("context", "Display context window and active tool names", lambda args: cmd_context(engine, args), category="Context & Integration")
     engine.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", lambda args: cmd_system(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("tools", "List registered tools with full schemas, or toggle inclusion: /tools [on|off]", lambda args: cmd_tools(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("tools", "List registered tools with full detailed descriptions and schemas, or toggle inclusion: /tools [on|off]", lambda args: cmd_tools(engine, args), category="Context & Integration")
     engine.cmd_registry.register("skills", "List skills, or toggle one: /skills enable <name> | /skills disable <name>", lambda args: cmd_skills(engine, args), category="Context & Integration")
     engine.cmd_registry.register("dirs", "List allowed directories, or edit them: /dirs add <path> | /dirs remove <path> | /dirs clear", lambda args: cmd_dirs(engine, args), category="Context & Integration")
     engine.cmd_registry.register("mcps", "List MCP servers, or toggle them: /mcps on | /mcps off | /mcps enable <server_name> | /mcps disable <server_name>", lambda args: cmd_mcps(engine, args), category="Context & Integration")

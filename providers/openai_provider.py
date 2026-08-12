@@ -39,6 +39,46 @@ class OpenAIProvider:
         except Exception as e:
             return False, [], str(e)
 
+    @staticmethod
+    async def fetch_available_models_details(provider_config: ProviderConfig) -> Tuple[bool, List[Dict[str, Any]], str]:
+        """
+        Queries the provider's /models REST endpoint to discover available models and their metadata.
+        Returns (success, list_of_model_dicts, error_message).
+        Each dict contains: {"id": str, "name": str, "context_window": int, "description": str}.
+        """
+        try:
+            client_kwargs: Dict[str, Any] = {
+                "base_url": provider_config.base_url,
+                "api_key": provider_config.api_key,
+            }
+            if provider_config.default_headers:
+                client_kwargs["default_headers"] = provider_config.default_headers
+
+            client = AsyncOpenAI(**client_kwargs)
+            response = await asyncio.wait_for(client.models.list(), timeout=12.0)
+            
+            models_details = []
+            for m in response.data:
+                m_id = getattr(m, "id", None)
+                if not m_id:
+                    continue
+                
+                ctx = getattr(m, "context_length", None) or getattr(m, "context_window", None)
+                desc = getattr(m, "description", None)
+                name = getattr(m, "name", None)
+
+                models_details.append({
+                    "id": m_id,
+                    "name": name or m_id.split("/")[-1].replace("-", " ").title(),
+                    "context_window": int(ctx) if ctx and str(ctx).isdigit() else None,
+                    "description": desc or ""
+                })
+
+            models_details.sort(key=lambda x: x["id"])
+            return True, models_details, ""
+        except Exception as e:
+            return False, [], str(e)
+
     async def stream_chat(
         self, 
         messages: List[Dict[str, Any]], 

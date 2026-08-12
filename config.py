@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 from pydantic import BaseModel, Field
 
 
@@ -20,6 +20,8 @@ class ModelConfig(BaseModel):
     provider: str
     model_id: str
     context_window: int = 8192
+    tags: List[str] = Field(default_factory=list)
+    description: Optional[str] = None
 
 
 class MeshConfig(BaseModel):
@@ -27,33 +29,18 @@ class MeshConfig(BaseModel):
     system_prompt: str = "You are a helpful text-based AI assistant running inside Mesh, an interactive terminal CLI."
     auto_compact: bool = True
     auto_compact_threshold: float = 0.75
-    # How many levels deep delegate_task may recurse (a sub-agent spawning its
-    # own sub-agents). Depth 1 = the main agent's direct sub-agent; depth 2
-    # = that sub-agent delegating further, etc. 2 is a meaningful default:
-    # enough for a sub-agent to genuinely split a task into independent
-    # pieces and hand those off too, without allowing runaway/unbounded
-    # recursive chains. User-adjustable via /delegate depth <n>.
+    # How many levels deep delegate_task may recurse
     max_delegation_depth: int = 2
-    # Model key (from `models` below) consulted by the advisor tool. None
-    # falls back to whichever model is currently active - set this to a
-    # specific key (e.g. a stronger reasoning model) to always get a second
-    # opinion from a consistent source rather than the model doing the task.
+    # Optional dedicated models for reasoning advisor, safety guard, and model router
     advisor_model: Optional[str] = None
-    # Whether risky tool calls (shell, file writes, MCP tools) get an
-    # automatic risk assessment before executing. See SafetyGuard in guard.py.
     guard_enabled: bool = True
-    # Model key used for that risk assessment. None falls back to the active
-    # model. Intentionally separate from advisor_model - this should
-    # typically be a small/cheap/local model, since it runs on every
-    # guarded tool call rather than only when explicitly asked for.
     guard_model: Optional[str] = None
-    # "supervised" (default): a medium-risk ("ask") verdict prompts the
-    # human interactively before proceeding, same UX as PermissionManager.
-    # "autonomous": medium-risk calls proceed automatically without
-    # prompting. High-risk ("deny") calls are always blocked outright in
-    # either mode - autonomy only removes friction for ambiguous cases, it
-    # never bypasses an outright denial.
     guard_autonomy: str = "supervised"
+    router_model: Optional[str] = None
+    # Metrics display toggles
+    show_tokens: bool = True
+    show_cost: bool = True
+    show_statistics: bool = True
     providers: Dict[str, ProviderConfig] = Field(default_factory=dict)
     models: Dict[str, ModelConfig] = Field(default_factory=dict)
 
@@ -75,6 +62,9 @@ class ConfigManager:
             f.write(self.config.model_dump_json(indent=2))
 
     def get_model_and_provider(self, key: str) -> Tuple[ModelConfig, ProviderConfig]:
+        if key == "auto":
+            raise KeyError("Active model is set to 'auto'. Specific model routing occurs per prompt.")
+
         if key not in self.config.models:
             raise KeyError(f"Model key '{key}' not found in models configuration.")
 
@@ -87,9 +77,22 @@ class ConfigManager:
         return model_cfg, provider_cfg
 
     def get_active_model_and_provider(self) -> Tuple[ModelConfig, ProviderConfig]:
+        if self.config.active_model == "auto":
+            if not self.config.router_model:
+                raise ValueError("Auto-routing mode is active, but 'router_model' is not configured in models.json.")
+            return self.get_model_and_provider(self.config.router_model)
         return self.get_model_and_provider(self.config.active_model)
 
     def set_active_model(self, key: str) -> None:
+        if key == "auto":
+            if not self.config.router_model:
+                raise ValueError("Cannot set active_model to 'auto': 'router_model' is not configured in models.json.")
+            if self.config.router_model not in self.config.models:
+                raise ValueError(f"Configured router model '{self.config.router_model}' does not exist in models.json.")
+            self.config.active_model = "auto"
+            self.save()
+            return
+
         if key not in self.config.models:
             raise ValueError(f"Model key '{key}' does not exist.")
         self.config.active_model = key
@@ -101,7 +104,9 @@ class ConfigManager:
         provider: str,
         model_id: str,
         name: Optional[str] = None,
-        context_window: int = 8192
+        context_window: int = 8192,
+        tags: Optional[List[str]] = None,
+        description: Optional[str] = None
     ) -> None:
         """Adds or updates a model entry in models.json."""
         if provider not in self.config.providers:
@@ -112,7 +117,9 @@ class ConfigManager:
             name=display_name,
             provider=provider,
             model_id=model_id,
-            context_window=context_window
+            context_window=context_window,
+            tags=tags or [],
+            description=description
         )
         self.config.models[key] = model_cfg
         self.save()
