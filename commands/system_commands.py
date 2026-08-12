@@ -3,6 +3,7 @@ from typing import List, Any
 from rich.table import Table
 from rich.text import Text
 from rich.markup import escape
+from rich.markdown import Markdown
 from compaction import compact_messages, estimate_tokens
 import symbol_search
 import project_rules
@@ -240,9 +241,13 @@ async def cmd_system(engine: Any, args: List[str]):
     sys_idx = next((i for i, m in enumerate(engine.messages) if m.get("role") == "system"), None)
 
     if not args:
-        current = engine.messages[sys_idx]["content"] if sys_idx is not None else "[dim]<none>[/dim]"
-        console.print(f"[success]Current System Prompt:[/success]\n{current}\n")
-        console.print("Usage: [warning]/system [text][/warning] or [warning]/system clear[/warning]")
+        current = engine.messages[sys_idx]["content"] if sys_idx is not None else ""
+        console.print("\n[success]Current System Prompt:[/success]\n")
+        if current:
+            console.print(Markdown(current))
+        else:
+            console.print("[dim]<none>[/dim]")
+        console.print("\nUsage: [warning]/system [text][/warning] or [warning]/system clear[/warning]\n")
         return
 
     new_prompt = " ".join(args).strip()
@@ -255,7 +260,9 @@ async def cmd_system(engine: Any, args: List[str]):
             engine.messages[sys_idx]["content"] = new_prompt
         else:
             engine.messages.insert(0, {"role": "system", "content": new_prompt})
-        console.print(f"[success]System prompt updated to:[/success]\n{new_prompt}")
+        console.print("\n[success]System prompt updated to:[/success]\n")
+        console.print(Markdown(new_prompt))
+        console.print()
 
 
 async def cmd_tools(engine: Any, args: List[str]):

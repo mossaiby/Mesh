@@ -510,7 +510,9 @@ async def cmd_reflexion(engine: Any, args: List[str]):
     if not args:
         lessons_text = reflexion.get_reflexion_instructions()
         if lessons_text:
-            console.print(f"\n[success]{lessons_text}[/success]\n")
+            console.print("\n[success]=== Reflexion Journal ===[/success]\n")
+            console.print(Markdown(lessons_text))
+            console.print()
         else:
             console.print("[dim]No distilled reflexion lessons currently saved.[/dim]")
         console.print("Usage: [warning]/reflexion distill[/warning] | [warning]/reflexion clear[/warning]\n")

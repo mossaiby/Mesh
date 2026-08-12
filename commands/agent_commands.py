@@ -1,4 +1,5 @@
 from typing import List, Any
+from rich.markdown import Markdown
 import delegation
 import explore
 import consensus
@@ -51,7 +52,9 @@ async def cmd_agent(engine: Any, args: List[str]):
         )
 
         if result["status"] == "success":
-            console.print(f"\n[success]🌲 Exploration Swarm Synthesis:[/success]\n\n{result['synthesis']}\n")
+            console.print("\n[success]🌲 Exploration Swarm Synthesis:[/success]\n")
+            console.print(Markdown(result['synthesis']))
+            console.print()
         else:
             console.print(f"[error]Exploration failed:[/error] {result.get('error', 'Unknown error')}")
 
@@ -69,7 +72,9 @@ async def cmd_agent(engine: Any, args: List[str]):
         )
 
         if result["status"] == "success":
-            console.print(f"\n[success]👥 Autonomous Task Squad Final Report:[/success]\n\n{result['final_report']}\n")
+            console.print("\n[success]👥 Autonomous Task Squad Final Report:[/success]\n")
+            console.print(Markdown(result['final_report']))
+            console.print()
         else:
             console.print(f"[error]Task squad pipeline failed.[/error]")
 
@@ -93,8 +98,11 @@ async def cmd_agent(engine: Any, args: List[str]):
         )
 
         if result["status"] == "success":
-            console.print(f"\n[label]Auditor Critique ({result['auditor_model']}):[/label]\n{result['critique']}\n")
-            console.print(f"[success]⚖️ Verified Consensus Recommendation ({result['proposer_model']}):[/success]\n{result['consensus_recommendation']}\n")
+            console.print(f"\n[label]Auditor Critique ({result['auditor_model']}):[/label]\n")
+            console.print(Markdown(result['critique']))
+            console.print(f"\n[success]⚖️ Verified Consensus Recommendation ({result['proposer_model']}):[/success]\n")
+            console.print(Markdown(result['consensus_recommendation']))
+            console.print()
         else:
             console.print(f"[error]Consensus audit failed:[/error] {result.get('error', 'Unknown error')}")
 
@@ -136,8 +144,10 @@ async def cmd_agent(engine: Any, args: List[str]):
         if status == "success":
             console.print(
                 f"\n[success]Sub-agent report[/success] "
-                f"[dim]({turns_used} turn(s), {n_calls} tool call(s)):[/dim]\n{result['report']}\n"
+                f"[dim]({turns_used} turn(s), {n_calls} tool call(s)):[/dim]\n"
             )
+            console.print(Markdown(result['report']))
+            console.print()
         elif status == "max_turns_reached":
             console.print(
                 f"\n[warning]{result['report']}[/warning] "
@@ -180,13 +190,15 @@ async def cmd_agent(engine: Any, args: List[str]):
             return
 
         question = " ".join(sub_args)
-        console.print(f"[brand]🧭 Consulting advisor:[/brand] {question}")
+        console.print(f"[brand]💬 Consulting advisor:[/brand] {question}")
 
         result = await advisor.get_advice(question=question, config_mgr=engine.config_mgr)
         if result["status"] == "error":
             console.print(f"[error]{result['error']}[/error]")
         else:
-            console.print(f"\n[success]Advice[/success] [dim](from {result['advisor_model']}):[/dim]\n{result['advice']}\n")
+            console.print(f"\n[success]Advice[/success] [dim](from {result['advisor_model']}):[/dim]\n")
+            console.print(Markdown(result['advice']))
+            console.print()
 
     else:
         console.print("[error]Usage: /agent [explore|squad|consensus|delegate|advisor] <args>[/error]")
