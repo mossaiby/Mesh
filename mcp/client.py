@@ -56,8 +56,7 @@ class MCPToolAdapter(BaseTool):
         self.parameters = parameters or {"type": "object", "properties": {}}
         self.session = session
         self.is_proxied = True  # Remote MCP tools route through SubAgentProxy
-        self.requires_guard = True  # MCP servers are third-party code with unpredictable
-                                     # side effects - always risk-assessed before calling out
+        self.requires_guard = True  # MCP servers are third-party code with unpredictable side effects
 
     async def execute(self, **kwargs) -> Any:
         return await self.session.call_tool(self.name, kwargs)
@@ -65,9 +64,10 @@ class MCPToolAdapter(BaseTool):
 
 class MCPClientSession:
     """Manages stdio subprocess transport and JSON-RPC messaging for a single MCP server."""
-    def __init__(self, name: str, config: MCPServerConfig):
+    def __init__(self, name: str, config: MCPServerConfig, config_mgr: Optional[Any] = None):
         self.name = name
         self.config = config
+        self._config_mgr = config_mgr
         self.process: Optional[asyncio.subprocess.Process] = None
         self._request_id = 0
         self._pending_requests: Dict[int, asyncio.Future] = {}
@@ -78,7 +78,7 @@ class MCPClientSession:
         self._reader_task: Optional[asyncio.Task] = None
         self._stderr_task: Optional[asyncio.Task] = None
 
-    async def connect(self) -> bool:
+    async def connect() -> bool:
         if not self.config.command:
             self.error_message = "Only stdio transport ('command') is currently configured."
             return False
@@ -115,16 +115,18 @@ class MCPClientSession:
         self._reader_task = asyncio.create_task(self._read_loop())
         self._stderr_task = asyncio.create_task(self._read_stderr_loop())
 
+        mcp_timeout = self._config_mgr.config.timeouts.mcp if self._config_mgr else 60.0
+
         try:
             await self._send_request("initialize", {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
                 "clientInfo": {"name": "Mesh", "version": __version__}
-            }, timeout=60.0)
+            }, timeout=mcp_timeout)
 
             await self._send_notification("notifications/initialized", {})
 
-            tools_res = await self._send_request("tools/list", {}, timeout=30.0)
+            tools_res = await self._send_request("tools/list", {}, timeout=mcp_timeout / 2.0)
             if "tools" in tools_res:
                 self.tools = tools_res["tools"]
 
@@ -138,7 +140,7 @@ class MCPClientSession:
             await self.close()
             return False
 
-    async def _send_request(self, method: str, params: Dict[str, Any], timeout: float = 30.0) -> Dict[str, Any]:
+    async def _send_request(self, method: str, params: Dict[str, Any], timeout: float = 60.0) -> Dict[str, Any]:
         if not self.process or self.process.stdin is None:
             raise RuntimeError("Server process stdin is unavailable.")
 
@@ -216,10 +218,11 @@ class MCPClientSession:
             pass
 
     async def call_tool(self, name: str, arguments: Dict[str, Any]) -> Any:
+        mcp_timeout = self._config_mgr.config.timeouts.mcp if self._config_mgr else 60.0
         res = await self._send_request("tools/call", {
             "name": name,
             "arguments": arguments
-        }, timeout=60.0)
+        }, timeout=mcp_timeout)
         
         if "content" in res:
             text_parts = [item.get("text", "") for item in res["content"] if item.get("type") == "text"]
@@ -265,8 +268,9 @@ class MCPClientSession:
 
 class MCPManager:
     """Manages parsing of mcps.json, server sessions, tool aggregation, and state toggles."""
-    def __init__(self, filepath: str = "mcps.json"):
+    def __init__(self, filepath: str = "mcps.json", config_mgr: Optional[Any] = None):
         self.filepath = filepath
+        self._config_mgr = config_mgr
         self.sessions: Dict[str, MCPClientSession] = {}
         self.adapters: Dict[str, List[MCPToolAdapter]] = {}
         self.enabled_servers: Dict[str, bool] = {}
@@ -284,7 +288,7 @@ class MCPManager:
         config = self.load_config()
 
         for name, server_cfg in config.mcpServers.items():
-            session = MCPClientSession(name, server_cfg)
+            session = MCPClientSession(name, server_cfg, config_mgr=self._config_mgr)
             self.sessions[name] = session
             self.adapters[name] = []
             self.enabled_servers[name] = True

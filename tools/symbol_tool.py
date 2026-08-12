@@ -27,11 +27,15 @@ class SearchSymbolsTool(BaseTool):
         "required": ["query"]
     }
 
+    def __init__(self, config_mgr: Optional[Any] = None):
+        self._config_mgr = config_mgr
+
     async def execute(self, query: str, kind: Optional[str] = None) -> Dict[str, Any]:
         if not symbol_search.symbol_indexer.symbol_index:
             symbol_search.symbol_indexer.index_directory(".")
         
-        matches = symbol_search.symbol_indexer.search_symbols(query, kind=kind)
+        limit_val = self._config_mgr.config.budgets.symbol if self._config_mgr else 30
+        matches = symbol_search.symbol_indexer.search_symbols(query, kind=kind, limit=limit_val)
         return {
             "query": query,
             "count": len(matches),

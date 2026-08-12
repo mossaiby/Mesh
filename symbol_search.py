@@ -3,7 +3,6 @@ import os
 from typing import Dict, Any, List, Optional, Tuple
 from theme import console
 
-# Try importing tree_sitter_languages for polyglot AST parsing
 try:
     import tree_sitter_languages
     TREE_SITTER_AVAILABLE = True
@@ -11,7 +10,6 @@ except ImportError:
     TREE_SITTER_AVAILABLE = False
 
 
-# Mapping file extensions to tree-sitter language identifiers
 LANGUAGE_EXTENSIONS: Dict[str, str] = {
     ".py": "python",
     ".js": "javascript",
@@ -36,8 +34,7 @@ LANGUAGE_EXTENSIONS: Dict[str, str] = {
 class SymbolIndexer:
     """
     Parses AST of codebase files across workspace directories using Tree-sitter,
-    building an in-memory index of classes, functions, interfaces, methods, and docstrings
-    for Python, JavaScript, TypeScript, Rust, Go, C++, Java, C#, PHP, and Ruby.
+    building an in-memory index of classes, functions, interfaces, methods, and docstrings.
     """
     def __init__(self):
         self.symbol_index: List[Dict[str, Any]] = []
@@ -86,7 +83,6 @@ class SymbolIndexer:
         """Recursively traverses Tree-sitter AST nodes to extract symbol signatures."""
         node_type = node.type
 
-        # Extract function / method / class / interface definitions
         if node_type in (
             "function_declaration", "function_definition", "method_definition",
             "class_declaration", "class_definition", "interface_declaration",
@@ -97,7 +93,6 @@ class SymbolIndexer:
                 symbol_name = code_bytes[name_node.start_byte:name_node.end_byte].decode("utf-8", errors="replace")
                 line_no = node.start_point[0] + 1
                 
-                # Signature preview (first line of node)
                 first_line = code_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="replace").splitlines()[0]
 
                 kind = "function"
@@ -154,7 +149,7 @@ class SymbolIndexer:
         except Exception:
             pass
 
-    def search_symbols(self, query: str, kind: Optional[str] = None) -> List[Dict[str, Any]]:
+    def search_symbols(self, query: str, kind: Optional[str] = None, limit: int = 30) -> List[Dict[str, Any]]:
         """Searches indexed codebase symbols matching query and optional kind filter."""
         query_lower = query.lower().strip()
         matches = []
@@ -170,7 +165,7 @@ class SymbolIndexer:
             ):
                 matches.append(item)
 
-        return matches[:30]
+        return matches[:limit]
 
 
 # Global symbol indexer instance

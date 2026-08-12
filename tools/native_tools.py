@@ -382,7 +382,7 @@ class ShellTool(BaseTool):
             "command": {"type": "string", "description": "Shell command to execute."},
             "timeout": {
                 "type": "number",
-                "description": "Optional timeout in seconds (default: 30.0). Set to 0 or null for infinite timeout."
+                "description": "Optional timeout in seconds. Set to 0 or null for infinite timeout."
             },
             "shell_prefix": {
                 "type": "string",
@@ -392,12 +392,16 @@ class ShellTool(BaseTool):
         "required": ["command"]
     }
 
-    def __init__(self, permission_manager: Optional[PermissionManager] = None):
+    def __init__(self, permission_manager: Optional[PermissionManager] = None, config_mgr: Optional[Any] = None):
         self.permission_manager = permission_manager or default_permission_manager
+        self._config_mgr = config_mgr
 
     async def execute(self, command: str, timeout: Optional[float] = 30.0, shell_prefix: Optional[str] = None) -> Dict[str, Any]:
         if not await self.permission_manager.check_and_request_permission(self.name, os.getcwd()):
             return {"error": "Permission denied for command execution in current working directory."}
+
+        if (timeout == 30.0 or timeout is None) and self._config_mgr is not None:
+            timeout = self._config_mgr.config.timeouts.shell
 
         full_command = f"{shell_prefix} {command}" if shell_prefix else command
 

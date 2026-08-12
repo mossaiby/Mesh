@@ -33,6 +33,9 @@ class WebSearchTool(BaseTool):
         "required": ["query"]
     }
 
+    def __init__(self, config_mgr: Optional[Any] = None):
+        self._config_mgr = config_mgr
+
     async def execute(self, query: str, max_results: int = 4) -> Dict[str, Any]:
         url = "https://lite.duckduckgo.com/lite/"
         headers = {
@@ -44,25 +47,13 @@ class WebSearchTool(BaseTool):
 
         # Limit result count strictly between 1 and 5
         limit = min(max(1, max_results), 5)
+        req_timeout = self._config_mgr.config.timeouts.web if self._config_mgr else 15.0
 
         try:
-            async with httpx.AsyncClient(timeout=12.0, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=req_timeout, follow_redirects=True) as client:
                 resp = await client.post(url, data=data, headers=headers)
                 html_text = resp.text
 
-            # Parse DuckDuckGo Lite HTML. Scope matching to anchors carrying
-            # the result-link class (rather than every <a> tag on the page) so
-            # link_matches stays aligned, position-for-position, with
-            # snippet_matches -- otherwise unrelated anchors (nav, pagination,
-            # header) could shift the two lists out of sync and pair a title
-            # with the wrong snippet.
-            #
-            # NOTE: DuckDuckGo Lite's real markup is
-            # <a rel="nofollow" href="..." class="result-link">Title</a> --
-            # href comes *before* class. Attribute order in HTML is not
-            # guaranteed, so we match each whole <a ...>...</a> tag first and
-            # then pull out class/href independently, rather than requiring
-            # one attribute to appear before the other in a single regex.
             link_matches: List[Tuple[str, str]] = []
             for attrs, inner_html in re.findall(r'<a\s+([^>]*)>(.*?)</a>', html_text, re.DOTALL):
                 if "result-link" not in attrs:
@@ -76,19 +67,13 @@ class WebSearchTool(BaseTool):
             valid_results: List[Dict[str, str]] = []
             seen_urls = set()
 
-            # Walk link_matches and snippet_matches together (they come from
-            # the same ordered sequence of result rows) so a title is always
-            # paired with the snippet from its own row, even if earlier rows
-            # get skipped as internal/duplicate links.
             for orig_idx, (url_str, raw_title) in enumerate(link_matches):
-                # Extract clean target URL if wrapped in DuckDuckGo redirect
                 if "uddg=" in url_str:
                     parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url_str).query)
                     clean_url = parsed.get("uddg", [url_str])[0]
                 else:
                     clean_url = url_str
 
-                # Filter out internal DuckDuckGo links, relative links, or duplicates
                 if (
                     "duckduckgo.com" in clean_url 
                     or not clean_url.startswith("http") 
@@ -148,21 +133,25 @@ class WebFetchTool(BaseTool):
             },
             "max_chars": {
                 "type": "integer",
-                "description": "Maximum characters of page text to return (default: 8000)."
+                "description": "Maximum characters of page text to return."
             }
         },
         "required": ["url"]
     }
 
-    async def execute(self, url: str, max_chars: int = 8000) -> Dict[str, Any]:
+    def __init__(self, config_mgr: Optional[Any] = None):
+        self._config_mgr = config_mgr
+
+    async def execute(self, url: str, max_chars: Optional[int] = None) -> Dict[str, Any]:
         headers = {"User-Agent": USER_AGENT}
+        req_timeout = self._config_mgr.config.timeouts.web if self._config_mgr else 15.0
+        char_limit = max_chars if max_chars is not None else (self._config_mgr.config.budgets.web if self._config_mgr else 8000)
 
         try:
-            async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+            async with httpx.AsyncClient(timeout=req_timeout, follow_redirects=True) as client:
                 resp = await client.get(url, headers=headers)
                 html_text = resp.text
 
-            # Strip scripts, styles, navigation, headers, and footers
             cleaned_html = re.sub(
                 r'<(script|style|nav|footer|header)[^>]*>.*?</\1>', 
                 '', 
@@ -170,16 +159,14 @@ class WebFetchTool(BaseTool):
                 flags=re.DOTALL | re.IGNORECASE
             )
 
-            # Remove remaining HTML tags
             text_content = re.sub(r'<[^>]+>', ' ', cleaned_html)
             text_content = unescape(text_content)
 
-            # Normalize lines and whitespace
             lines = [line.strip() for line in text_content.splitlines() if line.strip()]
             clean_text = "\n".join(lines)
 
-            if len(clean_text) > max_chars:
-                clean_text = clean_text[:max_chars] + f"\n\n[... Truncated at {max_chars} characters ...]"
+            if len(clean_text) > char_limit:
+                clean_text = clean_text[:char_limit] + f"\n\n[... Truncated at {char_limit} characters ...]"
 
             return {
                 "url": url,

@@ -1,5 +1,5 @@
 import asyncio
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from config import ConfigManager
 import delegation
 from theme import console
@@ -9,20 +9,23 @@ async def run_iterative_test_loop(
     test_command: str,
     tool_registry: Any,
     config_mgr: ConfigManager,
-    max_iterations: int = 5
+    max_iterations: Optional[int] = None
 ) -> Dict[str, Any]:
     """
     Executes a test/build command in an automated loop:
     Runs command -> captures errors -> spawns repair sub-agent -> re-tests -> repeats until green.
     """
-    console.print(f"\n[brand]🔄 Iterative Test Loop Started:[/brand] Executing '[accent]{test_command}[/accent]' (Max Iterations: {max_iterations})\n")
+    iterations_limit = max_iterations if max_iterations is not None else config_mgr.config.turns.loop
+    console.print(f"\n[brand]🔄 Iterative Test Loop Started:[/brand] Executing '[accent]{test_command}[/accent]' (Max Iterations: {iterations_limit})\n")
 
     shell_tool = tool_registry._tools.get("shell")
     if not shell_tool:
         return {"status": "error", "error": "Shell execution tool 'shell' is not registered."}
 
-    for iteration in range(1, max_iterations + 1):
-        console.print(f"[label]Iteration {iteration}/{max_iterations}:[/label] Running test command...")
+    agent_turns = config_mgr.config.turns.agent
+
+    for iteration in range(1, iterations_limit + 1):
+        console.print(f"[label]Iteration {iteration}/{iterations_limit}:[/label] Running test command...")
 
         exec_res = await shell_tool.execute(command=test_command)
         exit_code = exec_res.get("exit_code", 1)
@@ -38,7 +41,6 @@ async def run_iterative_test_loop(
                 "output": stdout or stderr
             }
 
-        # Failure output
         error_output = (stdout + "\n" + stderr).strip()
         console.print(f"[warning]⚠️ Tests failed on iteration {iteration} (Exit Code: {exit_code}).[/warning] Spawning repair sub-agent...")
 
@@ -53,7 +55,7 @@ async def run_iterative_test_loop(
             task=repair_task,
             tool_registry=tool_registry,
             config_mgr=config_mgr,
-            max_turns=6,
+            max_turns=agent_turns,
             verbose=False
         )
 
@@ -69,6 +71,6 @@ async def run_iterative_test_loop(
 
     return {
         "status": "failed",
-        "message": f"Test command '{test_command}' failed to pass within {max_iterations} iterations.",
+        "message": f"Test command '{test_command}' failed to pass within {iterations_limit} iterations.",
         "last_output": error_output[:1000]
     }

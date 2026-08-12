@@ -31,7 +31,7 @@ class AnthropicProvider:
         self.client = AsyncAnthropic(**client_kwargs)
 
     @staticmethod
-    async def fetch_available_models_details(provider_config: ProviderConfig) -> Tuple[bool, List[Dict[str, Any]], str]:
+    async def fetch_available_models_details(provider_config: ProviderConfig, timeout: float = 12.0) -> Tuple[bool, List[Dict[str, Any]], str]:
         if not ANTHROPIC_AVAILABLE:
             return False, [], "The 'anthropic' Python SDK is required. Run 'pip install anthropic'."
 
@@ -45,7 +45,7 @@ class AnthropicProvider:
                 client_kwargs["default_headers"] = provider_config.default_headers
 
             client = AsyncAnthropic(**client_kwargs)
-            response = await asyncio.wait_for(client.models.list(), timeout=12.0)
+            response = await asyncio.wait_for(client.models.list(), timeout=timeout)
             
             models_details = []
             async for m in response:
@@ -76,7 +76,6 @@ class AnthropicProvider:
                 "input_schema": fn.get("parameters", {"type": "object", "properties": {}})
             })
 
-        # Add prompt caching to the last tool definition
         if converted:
             converted[-1]["cache_control"] = {"type": "ephemeral"}
 
@@ -95,7 +94,7 @@ class AnthropicProvider:
                     system_blocks.append({
                         "type": "text",
                         "text": content,
-                        "cache_control": {"type": "ephemeral"}  # Prompt caching on system prompt
+                        "cache_control": {"type": "ephemeral"}
                     })
 
             elif role == "user":
@@ -173,7 +172,6 @@ class AnthropicProvider:
         if anthropic_tools:
             kwargs["tools"] = anthropic_tools
 
-        # Configure Anthropic Extended Thinking & Effort
         is_thinking_model = "3-7" in self.model_config.model_id or "thinking" in self.model_config.model_id
         if is_thinking_model and thinking_enabled:
             budget_map = {"low": 2048, "medium": 8192, "high": 16384}

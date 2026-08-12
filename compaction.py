@@ -1,4 +1,4 @@
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
 from config import ConfigManager
 from providers import get_provider
 
@@ -39,12 +39,14 @@ def find_safe_split_index(chat_msgs: List[Dict[str, Any]], min_keep: int = 2) ->
 async def compact_messages(
     messages: List[Dict[str, Any]], 
     config_mgr: ConfigManager, 
-    min_keep: int = 2
+    min_keep: Optional[int] = None
 ) -> Tuple[List[Dict[str, Any]], bool, str]:
+    keep_count = min_keep if min_keep is not None else config_mgr.config.compaction_settings.minkeep
+
     system_msgs = [m for m in messages if m.get("role") == "system"]
     chat_msgs = [m for m in messages if m.get("role") != "system"]
 
-    split_idx = find_safe_split_index(chat_msgs, min_keep=min_keep)
+    split_idx = find_safe_split_index(chat_msgs, min_keep=keep_count)
 
     if split_idx <= 0:
         return messages, False, "Not enough conversation history to compact (requires at least 4-6 messages)."
@@ -120,7 +122,7 @@ async def compact_messages(
 async def maybe_auto_compact(
     messages: List[Dict[str, Any]],
     config_mgr: ConfigManager,
-    min_keep: int = 2
+    min_keep: Optional[int] = None
 ) -> Tuple[List[Dict[str, Any]], bool, str]:
     cfg = config_mgr.config
     if not cfg.auto_compact:
@@ -139,7 +141,8 @@ async def maybe_auto_compact(
     if estimated < trigger_at:
         return messages, False, ""
 
-    new_messages, success, details = await compact_messages(messages, config_mgr, min_keep=min_keep)
+    keep_count = min_keep if min_keep is not None else cfg.compaction_settings.minkeep
+    new_messages, success, details = await compact_messages(messages, config_mgr, min_keep=keep_count)
     if not success:
         return messages, False, ""
 

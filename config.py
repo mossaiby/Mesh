@@ -16,6 +16,40 @@ def apply_network_proxy(proxy_url: Optional[str]) -> None:
             os.environ.pop(k, None)
 
 
+class TimeoutsConfig(BaseModel):
+    web: float = 15.0
+    shell: float = 30.0
+    mcp: float = 60.0
+    linter: float = 10.0
+    python: float = 10.0
+    api: float = 12.0
+
+
+class BudgetsConfig(BaseModel):
+    web: int = 8000
+    repomap: int = 500
+    dream: int = 12000
+    gitdiff: int = 4000
+    symbol: int = 30
+
+
+class TurnsConfig(BaseModel):
+    agent: int = 6
+    engine: int = 10
+    loop: int = 5
+    depth: int = 2
+    branches: int = 3
+
+
+class RepairConfig(BaseModel):
+    retries: int = 2
+    delay: float = 0.75
+
+
+class CompactionSettings(BaseModel):
+    minkeep: int = 2
+
+
 class ProviderConfig(BaseModel):
     name: str
     base_url: str
@@ -58,6 +92,14 @@ class MeshConfig(BaseModel):
     show_tokens: bool = True
     show_cost: bool = True
     show_statistics: bool = True
+
+    # Categorized system parameters
+    timeouts: TimeoutsConfig = Field(default_factory=TimeoutsConfig)
+    budgets: BudgetsConfig = Field(default_factory=BudgetsConfig)
+    turns: TurnsConfig = Field(default_factory=TurnsConfig)
+    repair_settings: RepairConfig = Field(default_factory=RepairConfig)
+    compaction_settings: CompactionSettings = Field(default_factory=CompactionSettings)
+
     providers: Dict[str, ProviderConfig] = Field(default_factory=dict)
     models: Dict[str, ModelConfig] = Field(default_factory=dict)
 
@@ -73,10 +115,15 @@ class ConfigManager:
         with open(self.filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
         cfg = MeshConfig(**data)
+        # Sync max_delegation_depth with turns.depth
+        if cfg.turns.depth != cfg.max_delegation_depth:
+            cfg.turns.depth = cfg.max_delegation_depth
         apply_network_proxy(cfg.network_proxy)
         return cfg
 
     def save(self) -> None:
+        # Keep turns.depth and max_delegation_depth in sync
+        self.config.max_delegation_depth = self.config.turns.depth
         apply_network_proxy(self.config.network_proxy)
         with open(self.filepath, "w", encoding="utf-8") as f:
             f.write(self.config.model_dump_json(indent=2))

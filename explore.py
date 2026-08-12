@@ -54,11 +54,12 @@ def _safe_parse_json(raw: str) -> Dict[str, Any]:
 async def generate_dynamic_strategies(
     task: str,
     config_mgr: ConfigManager,
-    num_branches: int = 3
+    num_branches: Optional[int] = None
 ) -> List[str]:
+    branches = num_branches if num_branches is not None else config_mgr.config.turns.branches
     prompt = [
         {"role": "system", "content": STRATEGY_GENERATOR_SYSTEM_PROMPT},
-        {"role": "user", "content": f"Task: {task}\nNumber of distinct strategies requested: {num_branches}"}
+        {"role": "user", "content": f"Task: {task}\nNumber of distinct strategies requested: {branches}"}
     ]
 
     try:
@@ -70,7 +71,7 @@ async def generate_dynamic_strategies(
         data = _safe_parse_json(raw_text)
         strategies = data.get("strategies") or []
         if isinstance(strategies, list) and len(strategies) > 0:
-            return [str(s).strip() for s in strategies if str(s).strip()][:num_branches]
+            return [str(s).strip() for s in strategies if str(s).strip()][:branches]
     except Exception:
         pass
 
@@ -78,7 +79,7 @@ async def generate_dynamic_strategies(
         f"Approach 1 (Direct): Investigate and solve '{task}' directly using standard conventions.",
         f"Approach 2 (Defensive / Validation): Investigate '{task}' focusing on edge-case validation and error bounds.",
         f"Approach 3 (Alternative Structural): Investigate '{task}' exploring alternative architecture patterns."
-    ][:num_branches]
+    ][:branches]
 
 
 async def explore_branches(
@@ -86,17 +87,19 @@ async def explore_branches(
     strategies: Optional[List[str]],
     tool_registry: Any,
     config_mgr: ConfigManager,
-    num_branches: int = 3,
-    max_turns: int = 6,
+    num_branches: Optional[int] = None,
+    max_turns: Optional[int] = None,
     debug_mode: bool = False
 ) -> Dict[str, Any]:
-    num_branches = min(max(2, num_branches), 5)
+    branches_count = num_branches if num_branches is not None else config_mgr.config.turns.branches
+    num_branches = min(max(2, branches_count), 5)
+    turns_limit = max_turns if max_turns is not None else config_mgr.config.turns.agent
 
     if not strategies:
         console.print(f"[brand]🧠 Strategy Generator:[/brand] Synthesizing {num_branches} custom mission statements for task...")
         strategies = await generate_dynamic_strategies(task, config_mgr, num_branches=num_branches)
 
-    console.print(f"\n[brand]🌲 Speculative Exploration Swarm:[/brand] Launching {len(strategies)} parallel branches:\n")
+    console.print(f"\n[brand]🌳 Speculative Exploration Swarm:[/brand] Launching {len(strategies)} parallel branches:\n")
 
     for i, strat in enumerate(strategies, 1):
         console.print(f"  [accent]▶ Branch {i}:[/accent] {strat}")
@@ -109,7 +112,7 @@ async def explore_branches(
             task=branch_task,
             tool_registry=tool_registry,
             config_mgr=config_mgr,
-            max_turns=max_turns,
+            max_turns=turns_limit,
             verbose=debug_mode
         )
         res["strategy"] = strategy

@@ -47,6 +47,7 @@ import context_mentions
 import router
 import distill
 import repair
+import hooks
 from pricing import pricing_manager
 from checkpoint import CheckpointManager
 from guard import SafetyGuard
@@ -86,7 +87,8 @@ class MeshEngine:
         self.permission_manager = PermissionManager()
         self.skill_registry = SkillRegistry(self.tool_registry)
         self.cmd_registry = CommandRegistry()
-        self.mcp_manager = MCPManager()
+        self.mcp_manager = MCPManager(config_mgr=self.config_mgr)
+        hooks.hook_manager._config_mgr = self.config_mgr
         self.debug_mode: bool = False
         self.subagent_distiller.debug_mode = self.debug_mode
         self.tools_enabled: bool = True
@@ -135,7 +137,7 @@ class MeshEngine:
         if proj_rules_section:
             full_sys += f"\n\n{proj_rules_section}"
 
-        repo_map_section = repo_map.get_repo_map_instructions(".", token_budget=500)
+        repo_map_section = repo_map.get_repo_map_instructions(".", token_budget=self.config_mgr.config.budgets.repomap)
         if repo_map_section:
             full_sys += f"\n\n{repo_map_section}"
 
@@ -147,20 +149,20 @@ class MeshEngine:
             self.messages = [{"role": "system", "content": full_sys}]
 
     def setup_defaults(self):
-        # 1. Register Base Tools with PermissionManager
+        # 1. Register Base Tools with PermissionManager & ConfigManager
         self.tool_registry.register(CalculatorTool())
         self.tool_registry.register(MemoryTool(self.config_mgr))
         self.tool_registry.register(NoteTool())
         self.tool_registry.register(AskUserTool())
         self.tool_registry.register(TodoTool())
-        self.tool_registry.register(WebSearchTool())
-        self.tool_registry.register(WebFetchTool())
+        self.tool_registry.register(WebSearchTool(self.config_mgr))
+        self.tool_registry.register(WebFetchTool(self.config_mgr))
         self.tool_registry.register(ReadFileTool(self.permission_manager))
         self.tool_registry.register(WriteFileTool(self.permission_manager))
         self.tool_registry.register(EditFileTool(self.permission_manager))
         self.tool_registry.register(HashEditTool(self.permission_manager))
         self.tool_registry.register(GlobTool(self.permission_manager))
-        self.tool_registry.register(ShellTool(self.permission_manager))
+        self.tool_registry.register(ShellTool(self.permission_manager, self.config_mgr))
         self.tool_registry.register(BackgroundShellTool())
         self.tool_registry.register(GitStatusTool())
         self.tool_registry.register(GitDiffTool())
@@ -174,7 +176,7 @@ class MeshEngine:
         self.tool_registry.register(ExploreTool(self.tool_registry, self.config_mgr))
         self.tool_registry.register(SynthesizeTool(self.tool_registry))
         self.tool_registry.register(ConsensusTool(self.config_mgr))
-        self.tool_registry.register(SearchSymbolsTool())
+        self.tool_registry.register(SearchSymbolsTool(self.config_mgr))
         
         # Load any existing dynamic tools from custom_tools/
         tool_synthesis.load_all_custom_tools(self.tool_registry)
@@ -183,7 +185,7 @@ class MeshEngine:
         symbol_search.symbol_indexer.index_directory(".")
 
         # 2. Register Skills & Load skills.json
-        self.skill_registry.register(PythonCodingSkill())
+        self.skill_registry.register(PythonCodingSkill(self.config_mgr))
         self.skill_registry.load_from_file()
 
         # 3. Register Command Handlers
@@ -270,7 +272,6 @@ class MeshEngine:
                         console.print("[error]Unknown command. Type /help for options.[/error]")
                     continue
 
-                # Parse @filename context mentions
                 formatted_input, _ = context_mentions.process_prompt_context_mentions(user_input, ".")
 
                 pre_prompt_count = len(self.messages)
@@ -287,7 +288,7 @@ class MeshEngine:
                 break
 
     async def process_inference(self, pre_prompt_count: Optional[int] = None):
-        max_turns = 10
+        max_turns = self.config_mgr.config.turns.engine
         current_turn = 0
         rollback_count = pre_prompt_count if pre_prompt_count is not None else max(0, len(self.messages) - 1)
 
@@ -295,7 +296,6 @@ class MeshEngine:
             while current_turn < max_turns:
                 current_turn += 1
 
-                # Select active model or consult dynamic model router
                 if self.config_mgr.config.active_model == "auto":
                     latest_user_prompt = ""
                     for msg in reversed(self.messages):
@@ -334,7 +334,6 @@ class MeshEngine:
                 turn_prompt_tokens = 0
                 turn_completion_tokens = 0
 
-                # Measure streaming timing performance
                 t_start = time.perf_counter()
                 t_first_token = None
 
@@ -389,13 +388,11 @@ class MeshEngine:
 
                 t_end = time.perf_counter()
 
-                # Calculate tokens post-stream if not returned in API usage chunk
                 if turn_prompt_tokens == 0:
                     turn_prompt_tokens = estimate_tokens(self.messages)
                 if turn_completion_tokens == 0 and response_text:
                     turn_completion_tokens = max(1, len(response_text) // 4)
 
-                # Real-time USD cost calculation
                 turn_model_key = chosen_key if self.config_mgr.config.active_model == "auto" else self.config_mgr.config.active_model
                 _, _, turn_cost = pricing_manager.get_token_cost(turn_model_key, turn_prompt_tokens, turn_completion_tokens)
 
@@ -403,12 +400,10 @@ class MeshEngine:
                 self.session_completion_tokens += turn_completion_tokens
                 self.session_cost_usd += turn_cost
 
-                # Performance Statistics Calculation
                 ttft_sec = (t_first_token - t_start) if t_first_token is not None else (t_end - t_start)
                 gen_sec = (t_end - t_first_token) if t_first_token is not None else 0.0
                 tps = (turn_completion_tokens / gen_sec) if gen_sec > 0.001 else 0.0
 
-                # Assemble configurable results metrics footer
                 cfg = self.config_mgr.config
                 metrics_parts = []
 
@@ -461,7 +456,6 @@ class MeshEngine:
                     if self.debug_mode:
                         console.print(f"[brand]🔧 DEBUG - Tool Execution Result:[/brand]\n{tool_result}")
 
-                    # Log errors to reflexion event recorder
                     if isinstance(tool_result, str) and '"error":' in tool_result:
                         reflexion.record_reflexion_event(
                             event_type="tool_failure",

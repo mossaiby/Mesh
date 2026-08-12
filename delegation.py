@@ -27,9 +27,7 @@ DELEGATE_SYSTEM_PROMPT = (
 
 ALWAYS_EXCLUDED_TOOLS = {"ask_user"}
 
-DEFAULT_MAX_TURNS = 6
 HARD_MAX_TURNS_CAP = 10
-
 MAX_CONCURRENT_DELEGATIONS = 4
 _delegation_semaphore = asyncio.Semaphore(MAX_CONCURRENT_DELEGATIONS)
 
@@ -69,15 +67,16 @@ async def run_delegated_task(
     task: str,
     tool_registry: Any,
     config_mgr: ConfigManager,
-    max_turns: int = DEFAULT_MAX_TURNS,
+    max_turns: Optional[int] = None,
     excluded_tools: Optional[set] = None,
     verbose: bool = True,
     depth: int = 1,
     max_depth: Optional[int] = None,
 ) -> Dict[str, Any]:
-    effective_max_depth = max_depth if max_depth is not None else getattr(
-        config_mgr.config, "max_delegation_depth", 2
-    )
+    default_turns = config_mgr.config.turns.agent
+    turns_limit = max_turns if max_turns is not None else default_turns
+
+    effective_max_depth = max_depth if max_depth is not None else config_mgr.config.turns.depth
 
     excluded = set(excluded_tools) if excluded_tools is not None else set(ALWAYS_EXCLUDED_TOOLS)
     if depth >= effective_max_depth:
@@ -108,7 +107,7 @@ async def run_delegated_task(
         if verbose:
             console.print(f"[brand]📤 Delegating task to sub-agent:[/brand] {depth_tag}{task}")
 
-        for turn in range(max_turns):
+        for turn in range(turns_limit):
             turns_used = turn + 1
             tool_calls_to_run: List[Dict[str, str]] = []
 
@@ -193,11 +192,11 @@ async def run_delegated_task(
                 })
 
         if verbose:
-            console.print(f"[warning]⚠️   Sub-agent hit the {max_turns}-turn limit without finishing.[/warning] {depth_tag}")
+            console.print(f"[warning]⚠️   Sub-agent hit the {turns_limit}-turn limit without finishing.[/warning] {depth_tag}")
         return {
             "status": "max_turns_reached",
             "report": (
-                f"Sub-agent did not finish within its {max_turns}-turn limit. "
+                f"Sub-agent did not finish within its {turns_limit}-turn limit. "
                 "Partial progress was made - see tool_calls for what was attempted."
             ),
             "tool_calls": tool_call_log,

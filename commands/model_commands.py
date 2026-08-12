@@ -109,7 +109,7 @@ async def cmd_models(engine: Any, args: List[str]):
             p_cfg = engine.config_mgr.config.providers[p_key]
 
             console.print(f"[brand]🔍 Fetching model metadata from {p_cfg.name} matching pattern '{pattern}'...[/brand]")
-            success, model_details, err = await fetch_models_details(p_cfg)
+            success, model_details, err = await fetch_models_details(p_cfg, timeout=engine.config_mgr.config.timeouts.api)
 
             if not success or not model_details:
                 console.print(f"[error]Failed to discover models from {p_cfg.name}: {err}[/error]")
@@ -177,7 +177,7 @@ async def cmd_models(engine: Any, args: List[str]):
         p_cfg = engine.config_mgr.config.providers[selected_provider]
         console.print(f"[brand]🔍 Fetching available models from {p_cfg.name}...[/brand]")
 
-        success, model_details, err = await fetch_models_details(p_cfg)
+        success, model_details, err = await fetch_models_details(p_cfg, timeout=engine.config_mgr.config.timeouts.api)
         if not success or not model_details:
             console.print(f"[error]Failed to discover models from {p_cfg.name}: {err}[/error]")
             return
@@ -248,7 +248,7 @@ async def cmd_models(engine: Any, args: List[str]):
         configured_model_ids = {m.model_id for m in engine.config_mgr.config.models.values()}
 
         async def query_p(key: str, p_cfg):
-            success, model_details, err = await fetch_models_details(p_cfg)
+            success, model_details, err = await fetch_models_details(p_cfg, timeout=engine.config_mgr.config.timeouts.api)
             return key, p_cfg, success, model_details, err
 
         results = await asyncio.gather(*(query_p(k, p) for k, p in providers_to_query.items()))
@@ -443,13 +443,13 @@ async def cmd_switch(engine: Any, args: List[str]):
 def register_model_commands(engine: Any):
     engine.cmd_registry.register(
         "models",
-        "List, discover, or add models: /models | /models discover [<provider>] | /models add [<provider>] [<pattern>]",
+        "List, discover, or add models: /models [discover|add] [<provider>] [<pattern>]",
         lambda args: cmd_models(engine, args),
         category="Models & Settings"
     )
     engine.cmd_registry.register(
         "switch",
-        "Switch active model or mode: /switch auto | /switch router [<key>] | /switch <model_key>",
+        "Switch active model or mode: /switch [auto|router|<model_key>]",
         lambda args: cmd_switch(engine, args),
         category="Models & Settings"
     )

@@ -39,6 +39,7 @@ async def run_squad_pipeline(
 
     pipeline_outputs: List[Dict[str, Any]] = []
     accumulated_context = f"Main Task: {task}\n"
+    turns_limit = config_mgr.config.turns.agent
 
     for step in SQUAD_ROLES:
         role_name = step["role"]
@@ -52,7 +53,7 @@ async def run_squad_pipeline(
             task=stage_task,
             tool_registry=tool_registry,
             config_mgr=config_mgr,
-            max_turns=6,
+            max_turns=turns_limit,
             verbose=verbose
         )
 

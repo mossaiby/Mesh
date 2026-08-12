@@ -32,7 +32,7 @@ class OpenAIProvider:
         return any(k in m_id or k in m_name for k in reasoning_keywords)
 
     @staticmethod
-    async def fetch_available_models(provider_config: ProviderConfig) -> Tuple[bool, List[str], str]:
+    async def fetch_available_models(provider_config: ProviderConfig, timeout: float = 12.0) -> Tuple[bool, List[str], str]:
         try:
             client_kwargs: Dict[str, Any] = {
                 "base_url": provider_config.base_url,
@@ -42,14 +42,14 @@ class OpenAIProvider:
                 client_kwargs["default_headers"] = provider_config.default_headers
 
             client = AsyncOpenAI(**client_kwargs)
-            response = await asyncio.wait_for(client.models.list(), timeout=12.0)
+            response = await asyncio.wait_for(client.models.list(), timeout=timeout)
             model_ids = [m.id for m in response.data if hasattr(m, "id")]
             return True, sorted(model_ids), ""
         except Exception as e:
             return False, [], str(e)
 
     @staticmethod
-    async def fetch_available_models_details(provider_config: ProviderConfig) -> Tuple[bool, List[Dict[str, Any]], str]:
+    async def fetch_available_models_details(provider_config: ProviderConfig, timeout: float = 12.0) -> Tuple[bool, List[Dict[str, Any]], str]:
         try:
             client_kwargs: Dict[str, Any] = {
                 "base_url": provider_config.base_url,
@@ -59,7 +59,7 @@ class OpenAIProvider:
                 client_kwargs["default_headers"] = provider_config.default_headers
 
             client = AsyncOpenAI(**client_kwargs)
-            response = await asyncio.wait_for(client.models.list(), timeout=12.0)
+            response = await asyncio.wait_for(client.models.list(), timeout=timeout)
             
             models_details = []
             for m in response.data:

@@ -10,8 +10,9 @@ class HookManager:
     Detects and executes linter/formatter hooks after file edits (write_file/edit_file)
     and attaches feedback directly into tool outputs.
     """
-    def __init__(self, enabled: bool = True):
+    def __init__(self, enabled: bool = True, config_mgr: Optional[Any] = None):
         self.enabled = enabled
+        self._config_mgr = config_mgr
 
     def _detect_linter_cmd(self, filepath: str) -> Optional[List[str]]:
         """Detects available linter/formatter CLI tools based on file extension."""
@@ -46,6 +47,8 @@ class HookManager:
         if not cmd:
             return None
 
+        timeout_val = self._config_mgr.config.timeouts.linter if self._config_mgr else 10.0
+
         try:
             res = subprocess.run(
                 cmd,
@@ -53,7 +56,7 @@ class HookManager:
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=10,
+                timeout=timeout_val,
                 cwd=os.getcwd()
             )
             if res.returncode != 0:

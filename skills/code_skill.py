@@ -1,6 +1,6 @@
 import sys
 import subprocess
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 from tools.base import BaseTool
 from skills.base import BaseSkill
 
@@ -19,7 +19,11 @@ class PythonExecutionTool(BaseTool):
         "required": ["code"]
     }
 
+    def __init__(self, config_mgr: Optional[Any] = None):
+        self._config_mgr = config_mgr
+
     async def execute(self, code: str) -> Dict[str, Any]:
+        timeout_val = self._config_mgr.config.timeouts.python if self._config_mgr else 10.0
         try:
             res = subprocess.run(
                 [sys.executable, "-c", code],
@@ -27,7 +31,7 @@ class PythonExecutionTool(BaseTool):
                 text=True,
                 encoding="utf-8",
                 errors="replace",
-                timeout=10
+                timeout=timeout_val
             )
             return {
                 "stdout": res.stdout,
@@ -46,5 +50,8 @@ class PythonCodingSkill(BaseSkill):
         "idiomatic Python. You can execute snippets directly using the execute_python tool."
     )
 
+    def __init__(self, config_mgr: Optional[Any] = None):
+        self._config_mgr = config_mgr
+
     def get_tools(self) -> List[BaseTool]:
-        return [PythonExecutionTool()]
+        return [PythonExecutionTool(self._config_mgr)]

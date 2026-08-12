@@ -27,9 +27,6 @@ class RepoMapGenerator:
         graph_edges: Dict[str, Set[str]] = {}
         symbol_freqs: Dict[str, int] = {}
 
-        # Collect all known symbol names
-        known_symbols = {s["name"] for s in symbols if s.get("name")}
-
         for sym in symbols:
             filepath = sym.get("filepath", "")
             name = sym.get("name", "")
@@ -39,7 +36,6 @@ class RepoMapGenerator:
             graph_edges.setdefault(filepath, set())
             symbol_freqs.setdefault(name, 0)
 
-            # Check if symbol name is referenced in signatures or docstrings of other files
             for other_sym in symbols:
                 other_file = other_sym.get("filepath", "")
                 if other_file != filepath:
@@ -92,7 +88,6 @@ class RepoMapGenerator:
         graph, freqs = self.build_dependency_graph()
         pagerank = self.compute_pagerank(graph)
 
-        # Sort files by PageRank score descending
         sorted_files = sorted(
             pagerank.keys(),
             key=lambda f: (pagerank.get(f, 0.0), len([s for s in symbols if s.get("filepath") == f])),
@@ -124,7 +119,6 @@ class RepoMapGenerator:
             lines.append(file_header)
             char_count += len(file_header)
 
-            # Sort symbols in file by frequency
             file_symbols.sort(key=lambda s: (freqs.get(s["name"], 0), -s.get("line", 0)), reverse=True)
 
             for sym in file_symbols[:6]:  # max 6 key symbols per file

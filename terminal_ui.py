@@ -63,7 +63,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
     """
     Context-aware completion engine for Mesh: autocompletes slash commands,
     positional subcommands, model keys, operating modes, background jobs,
-    memory keys, and local filesystem paths.
+    memory keys, config parameter categories & values, and local filesystem paths.
     """
     def __init__(self, mesh_instance: Any):
         self.mesh = mesh_instance
@@ -123,6 +123,14 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
         # -------------------------------------------------------------
         # 3. Context-Aware Subcommand & Argument Completions
         # -------------------------------------------------------------
+
+        # --- /debug ---
+        if cmd0 == "/debug":
+            if current_arg_index == 1:
+                for opt in ("on", "off"):
+                    if opt.startswith(current_word.lower()):
+                        yield Completion(opt, start_position=-len(current_word))
+            return
 
         # --- /agent ---
         if cmd0 == "/agent":
@@ -203,11 +211,14 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
         if cmd0 == "/config":
             if current_arg_index == 1:
                 subs = [
+                    ("set", "Set timeout, budget, turns, repair, & compaction parameters"),
                     ("distill", "Toggle sub-agent tool output distillation"),
                     ("proxy", "View or configure global network HTTP/HTTPS/SOCKS proxy"),
                     ("repair", "Toggle self-repair tool recovery"),
                     ("hooks", "Toggle post-edit linter hooks"),
                     ("compact", "Toggle auto-compaction"),
+                    ("thinking", "Toggle extended thinking/reasoning mode"),
+                    ("effort", "Set reasoning effort level (low|medium|high)"),
                     ("tokens", "Toggle turn token count display"),
                     ("cost", "Toggle turn and session USD cost display"),
                     ("statistics", "Toggle TTFT and tok/s performance statistics display")
@@ -217,18 +228,37 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                         yield Completion(sub, start_position=-len(current_word), display_meta=meta)
             elif current_arg_index == 2:
                 word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
-                if word1 in ("distill", "repair", "hooks", "tokens", "cost", "statistics"):
+                if word1 in ("distill", "repair", "hooks", "tokens", "cost", "statistics", "thinking"):
                     for opt in ("on", "off"):
+                        if opt.startswith(current_word.lower()):
+                            yield Completion(opt, start_position=-len(current_word))
+                elif word1 == "effort":
+                    for opt in ("low", "medium", "high"):
                         if opt.startswith(current_word.lower()):
                             yield Completion(opt, start_position=-len(current_word))
                 elif word1 == "proxy":
                     for opt in ("clear", "off"):
                         if opt.startswith(current_word.lower()):
                             yield Completion(opt, start_position=-len(current_word))
-                elif word1 in ("compact", "autocompact"):
+                elif word1 == "compact":
                     for opt in ("on", "off", "threshold"):
                         if opt.startswith(current_word.lower()):
                             yield Completion(opt, start_position=-len(current_word))
+                elif word1 == "set":
+                    from commands.system_commands import CONFIG_SET_MAP
+                    for cat in CONFIG_SET_MAP.keys():
+                        if cat.startswith(current_word.lower()):
+                            yield Completion(cat, start_position=-len(current_word), display_meta=f"{cat} parameters")
+            elif current_arg_index == 3:
+                word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
+                word2 = typed_words[2].lower() if len(typed_words) > 2 else ""
+                if word1 == "set":
+                    from commands.system_commands import CONFIG_SET_MAP
+                    if word2 in CONFIG_SET_MAP:
+                        params = CONFIG_SET_MAP[word2]
+                        for p_name, (_, _, _, desc) in params.items():
+                            if p_name.startswith(current_word.lower()):
+                                yield Completion(p_name, start_position=-len(current_word), display_meta=desc[:40])
             return
 
         # --- /mode ---

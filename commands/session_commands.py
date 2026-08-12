@@ -514,7 +514,7 @@ async def cmd_script(engine: Any, args: List[str]):
 
 async def cmd_project(engine: Any, args: List[str]):
     if args and args[0].lower() in ("map", "graph"):
-        map_text = repo_map.get_repo_map_instructions(".", token_budget=800)
+        map_text = repo_map.get_repo_map_instructions(".", token_budget=engine.config_mgr.config.budgets.repomap)
         if map_text:
             console.print(f"\n[success]=== Repository Architecture Map ===[/success]\n")
             console.print(Markdown(map_text))
@@ -574,16 +574,16 @@ async def cmd_reflexion(engine: Any, args: List[str]):
 
 
 def register_session_commands(engine: Any):
-    engine.cmd_registry.register("cd", "Change working directory & reload workspace context: /cd <path>", lambda args: cmd_cd(engine, args), category="Workspace & Developer Tools")
-    engine.cmd_registry.register("shell", "Direct shell execution (bypasses LLM): /shell <cmd> | ! <cmd>", lambda args: cmd_shell(engine, args), category="Workspace & Developer Tools")
-    engine.cmd_registry.register("python", "Direct Python execution (bypasses LLM): /python <code> | # <code>", lambda args: cmd_python(engine, args), category="Workspace & Developer Tools")
-    engine.cmd_registry.register("goal", "View, set, or manage the pinned session goal: /goal <text> [| criterion 1 | criterion 2 ...] | /goal done <criterion #> | /goal clear", lambda args: cmd_goal(engine, args), category="Memory & Knowledge")
-    engine.cmd_registry.register("note", "View notes, or edit them: /note append <text> | /note clear", lambda args: cmd_note(engine, args), category="Memory & Knowledge")
-    engine.cmd_registry.register("memory", "View memory, or edit it: /memory save <key> <value> | /memory get <key> | /memory search <query> | /memory delete <key> | /memory clear", lambda args: cmd_memory(engine, args), category="Memory & Knowledge")
-    engine.cmd_registry.register("dream", "Analyze the conversation and extract candidate notes, memory facts, and skills", lambda args: cmd_dream(engine, args), category="Memory & Knowledge")
-    engine.cmd_registry.register("script", "Execute commands and prompts line-by-line from a script file: /script <file.txt>", lambda args: cmd_script(engine, args), category="Workspace & Developer Tools")
-    engine.cmd_registry.register("project", "View or reload workspace project rules and repo map: /project [map|reload]", lambda args: cmd_project(engine, args), category="Workspace & Developer Tools")
+    engine.cmd_registry.register("cd", "Change working directory and reload workspace context: /cd <path>", lambda args: cmd_cd(engine, args), category="Workspace & Developer Tools")
+    engine.cmd_registry.register("shell", "Execute shell command directly (bypasses LLM): /shell <cmd> | !<cmd>", lambda args: cmd_shell(engine, args), category="Workspace & Developer Tools")
+    engine.cmd_registry.register("python", "Execute Python snippet directly (bypasses LLM): /python <code> | #<code>", lambda args: cmd_python(engine, args), category="Workspace & Developer Tools")
+    engine.cmd_registry.register("goal", "View, set, or manage pinned session goal: /goal [<text>] [| criteria] | /goal done <#> | /goal clear", lambda args: cmd_goal(engine, args), category="Memory & Knowledge")
+    engine.cmd_registry.register("note", "View or edit persistent Markdown notes: /note [append <text>|clear]", lambda args: cmd_note(engine, args), category="Memory & Knowledge")
+    engine.cmd_registry.register("memory", "View or edit persistent memory key-value store: /memory [save|get|list|search|delete|clear] <args>", lambda args: cmd_memory(engine, args), category="Memory & Knowledge")
+    engine.cmd_registry.register("dream", "Analyze conversation transcript and extract persistent notes, memory facts, and skills: /dream", lambda args: cmd_dream(engine, args), category="Memory & Knowledge")
+    engine.cmd_registry.register("script", "Execute commands and prompts line-by-line from script file: /script <file.txt>", lambda args: cmd_script(engine, args), category="Workspace & Developer Tools")
+    engine.cmd_registry.register("project", "View or reload project rules and repository map: /project [map|reload]", lambda args: cmd_project(engine, args), category="Workspace & Developer Tools")
     engine.cmd_registry.register("reflexion", "View or distill cross-session error lessons: /reflexion [distill|clear]", lambda args: cmd_reflexion(engine, args), category="Memory & Knowledge")
     engine.cmd_registry.register("checkpoint", "Save, fork, restore, or list session checkpoints: /checkpoint [save|fork|restore|list] <args>", lambda args: cmd_checkpoint(engine, args), category="Session & System")
-    engine.cmd_registry.register("diff", "Display unified diff or revert recent file edit: /diff | /diff undo", lambda args: cmd_diff(engine, args), category="Workspace & Developer Tools")
+    engine.cmd_registry.register("diff", "Display unified file diff or revert last edit: /diff | /diff undo", lambda args: cmd_diff(engine, args), category="Workspace & Developer Tools")
     engine.cmd_registry.register("git", "Run native Git commands: /git [status|diff|commit|push|branch]", lambda args: cmd_git(engine, args), category="Workspace & Developer Tools")

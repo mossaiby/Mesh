@@ -83,13 +83,13 @@ class RepairEngine:
         self,
         config_mgr: ConfigManager,
         enabled: bool = True,
-        mechanical_retries: int = 2,
-        mechanical_delay: float = 0.75
+        mechanical_retries: Optional[int] = None,
+        mechanical_delay: Optional[float] = None
     ):
         self.config_mgr = config_mgr
         self.enabled = enabled
-        self.mechanical_retries = mechanical_retries
-        self.mechanical_delay = mechanical_delay
+        self.mechanical_retries = mechanical_retries if mechanical_retries is not None else config_mgr.config.repair_settings.retries
+        self.mechanical_delay = mechanical_delay if mechanical_delay is not None else config_mgr.config.repair_settings.delay
 
     async def attempt_repair(
         self,

@@ -88,7 +88,8 @@ async def dream_extract(
     empty = {"notes": [], "memory": [], "skills": []}
 
     chat_only = [m for m in messages if m.get("role") != "system"]
-    transcript = _format_transcript(chat_only)
+    budget_chars = config_mgr.config.budgets.dream
+    transcript = _format_transcript(chat_only, max_chars=budget_chars)
     if not transcript.strip():
         return empty, "Conversation is empty; nothing to dream about."
 

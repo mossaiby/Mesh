@@ -32,7 +32,7 @@ async def cmd_agent(engine: Any, args: List[str]):
                 console.print("[error]Usage: /agent explore [<num_branches>] <task description>[/error]")
                 return
 
-            num_branches = 3
+            num_branches = engine.config_mgr.config.turns.branches
             if sub_args[0].isdigit() and 2 <= int(sub_args[0]) <= 5:
                 num_branches = int(sub_args[0])
                 task = " ".join(sub_args[1:])
@@ -53,7 +53,7 @@ async def cmd_agent(engine: Any, args: List[str]):
             )
 
             if result["status"] == "success":
-                console.print("\n[success]🌲 Exploration Swarm Synthesis:[/success]\n")
+                console.print("\n[success]🌳 Exploration Swarm Synthesis:[/success]\n")
                 console.print(Markdown(result['synthesis']))
                 console.print()
             else:
@@ -115,7 +115,7 @@ async def cmd_agent(engine: Any, args: List[str]):
             if sub_args[0].lower() == "depth":
                 if len(sub_args) == 1:
                     console.print(
-                        f"Delegation recursion depth is currently [accent]{engine.config_mgr.config.max_delegation_depth}[/accent] "
+                        f"Delegation recursion depth is currently [accent]{engine.config_mgr.config.turns.depth}[/accent] "
                         f"(1 = no recursion beyond the first sub-agent).\nUsage: [warning]/agent delegate depth <n>[/warning]"
                     )
                     return
@@ -127,7 +127,9 @@ async def cmd_agent(engine: Any, args: List[str]):
                 if n < 1:
                     console.print("[error]Depth must be at least 1.[/error]")
                     return
+                engine.config_mgr.config.turns.depth = n
                 engine.config_mgr.config.max_delegation_depth = n
+                engine.config_mgr.save()
                 console.print(f"[success]Delegation recursion depth set to {n}.[/success]")
                 return
 
@@ -271,7 +273,7 @@ async def cmd_loop(engine: Any, args: List[str]):
             test_command=test_cmd,
             tool_registry=engine.tool_registry,
             config_mgr=engine.config_mgr,
-            max_iterations=5
+            max_iterations=engine.config_mgr.config.turns.loop
         )
 
         if result["status"] == "success":
@@ -394,8 +396,8 @@ async def cmd_mode(engine: Any, args: List[str]):
 
 
 def register_agent_commands(engine: Any):
-    engine.cmd_registry.register("agent", "Sub-agent swarm & reasoning workflows: /agent [explore|squad|consensus|delegate|advisor] <args>", lambda args: cmd_agent(engine, args), category="Agents & Workflows")
-    engine.cmd_registry.register("loop", "Iterative auto-test/fix loop: /loop <test_or_build_command>", lambda args: cmd_loop(engine, args), category="Agents & Workflows")
-    engine.cmd_registry.register("jobs", "View or manage background jobs: /jobs | /jobs log <job_id> | /jobs stop <job_id> | /jobs clear", lambda args: cmd_jobs(engine, args), category="Agents & Workflows")
-    engine.cmd_registry.register("guard", "View or configure the tool-call safety guard: /guard [on|off] | /guard mode [supervised|autonomous] | /guard model [<key>] | /guard trust <tool>", lambda args: cmd_guard(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("agent", "Run sub-agent swarm and reasoning workflows: /agent [explore|squad|consensus|delegate|advisor] <args>", lambda args: cmd_agent(engine, args), category="Agents & Workflows")
+    engine.cmd_registry.register("loop", "Run iterative auto-test and repair loop: /loop <test_or_build_command>", lambda args: cmd_loop(engine, args), category="Agents & Workflows")
+    engine.cmd_registry.register("jobs", "View or manage background job processes: /jobs [log|stop|clear] [<job_id>]", lambda args: cmd_jobs(engine, args), category="Agents & Workflows")
+    engine.cmd_registry.register("guard", "View or configure safety guard settings: /guard [on|off|mode|model|trust] <args>", lambda args: cmd_guard(engine, args), category="Models & Settings")
     engine.cmd_registry.register("mode", "View or switch operating mode: /mode [plan|build|review|yolo]", lambda args: cmd_mode(engine, args), category="Models & Settings")

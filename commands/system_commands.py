@@ -1,8 +1,6 @@
 import asyncio
 import sys
 from typing import List, Any
-from rich.table import Table
-from rich.text import Text
 from rich.markup import escape
 from rich.markdown import Markdown
 from compaction import compact_messages, estimate_tokens
@@ -11,6 +9,40 @@ import project_rules
 import hooks
 from theme import console
 from version import __version__
+
+
+CONFIG_SET_MAP = {
+    "timeout": {
+        "web": ("timeouts", "web", float, "Web search/fetch HTTP request timeout (sec)"),
+        "shell": ("timeouts", "shell", float, "Native shell command execution timeout (sec)"),
+        "mcp": ("timeouts", "mcp", float, "MCP client request timeout (sec)"),
+        "linter": ("timeouts", "linter", float, "Post-edit linter hook execution timeout (sec)"),
+        "python": ("timeouts", "python", float, "Python execution tool timeout (sec)"),
+        "api": ("timeouts", "api", float, "Provider model discovery API call timeout (sec)"),
+    },
+    "budget": {
+        "web": ("budgets", "web", int, "Web fetch maximum text character limit"),
+        "repomap": ("budgets", "repomap", int, "Repository architecture map token budget"),
+        "dream": ("budgets", "dream", int, "Dream analysis transcript max character budget"),
+        "gitdiff": ("budgets", "gitdiff", int, "Git commit message generator diff character budget"),
+        "symbol": ("budgets", "symbol", int, "Maximum symbol search matches returned"),
+    },
+    "turns": {
+        "agent": ("turns", "agent", int, "Default maximum tool turns per sub-agent"),
+        "engine": ("turns", "engine", int, "Maximum assistant turn loops per prompt turn"),
+        "loop": ("turns", "loop", int, "Maximum test/fix iterations for /loop"),
+        "depth": ("turns", "depth", int, "Maximum delegation recursion depth"),
+        "branches": ("turns", "branches", int, "Default parallel strategy branches for /agent explore"),
+    },
+    "repair": {
+        "retries": ("repair_settings", "retries", int, "Mechanical retries for transient tool errors"),
+        "delay": ("repair_settings", "delay", float, "Mechanical retry delay in seconds"),
+    },
+    "compact": {
+        "threshold": ("auto_compact_threshold", None, float, "Auto-compaction context threshold ratio (0.01-1.0 or 1-100%)"),
+        "minkeep": ("compaction_settings", "minkeep", int, "Minimum recent messages to keep uncompacted"),
+    }
+}
 
 
 async def cmd_help(engine: Any, args: List[str]):
@@ -143,6 +175,115 @@ async def cmd_status(engine: Any, args: List[str]):
         console.print("• [label]Goal:[/label] [muted]none set[/muted]\n")
 
 
+async def _handle_config_set(engine: Any, set_args: List[str]):
+    cfg = engine.config_mgr.config
+
+    if not set_args:
+        console.print("\n[success]Configurable System Parameters (/config set):[/success]\n")
+        for cat, params in CONFIG_SET_MAP.items():
+            console.print(f"[brand]▸ Category: {cat}[/brand]")
+            for p_name, (container_attr, sub_attr, val_type, desc) in params.items():
+                if sub_attr:
+                    curr_val = getattr(getattr(cfg, container_attr), sub_attr)
+                else:
+                    curr_val = getattr(cfg, container_attr)
+                    if p_name == "threshold":
+                        curr_val = f"{int(curr_val * 100)}%"
+                console.print(f"  • [label]{cat} {p_name}[/label]: [accent]{curr_val}[/accent] — [dim]{desc}[/dim]")
+            console.print()
+        console.print("Usage: [warning]/config set <category> <param> <value>[/warning] (e.g. [warning]/config set timeout web 120[/warning])\n")
+        return
+
+    category = set_args[0].lower()
+    if category not in CONFIG_SET_MAP:
+        valid_cats = ", ".join(CONFIG_SET_MAP.keys())
+        console.print(f"[error]Unknown config set category '{category}'. Valid categories: {valid_cats}[/error]")
+        return
+
+    params = CONFIG_SET_MAP[category]
+
+    if len(set_args) == 1:
+        console.print(f"\n[success]Category '{category}' Parameters:[/success]\n")
+        for p_name, (container_attr, sub_attr, val_type, desc) in params.items():
+            if sub_attr:
+                curr_val = getattr(getattr(cfg, container_attr), sub_attr)
+            else:
+                curr_val = getattr(cfg, container_attr)
+                if p_name == "threshold":
+                    curr_val = f"{int(curr_val * 100)}%"
+            console.print(f"  • [label]{category} {p_name}[/label]: [accent]{curr_val}[/accent] — [dim]{desc}[/dim]")
+        console.print(f"\nUsage: [warning]/config set {category} <param> <value>[/warning]\n")
+        return
+
+    param = set_args[1].lower()
+    if param not in params:
+        valid_params = ", ".join(params.keys())
+        console.print(f"[error]Unknown parameter '{param}' in category '{category}'. Valid parameters: {valid_params}[/error]")
+        return
+
+    container_attr, sub_attr, val_type, desc = params[param]
+
+    if len(set_args) == 2:
+        if sub_attr:
+            curr_val = getattr(getattr(cfg, container_attr), sub_attr)
+        else:
+            curr_val = getattr(cfg, container_attr)
+            if param == "threshold":
+                curr_val = f"{int(curr_val * 100)}%"
+        console.print(
+            f"Parameter [label]{category} {param}[/label] is currently: [accent]{curr_val}[/accent]\n"
+            f"Description: [dim]{desc}[/dim]\n"
+            f"Usage: [warning]/config set {category} {param} <value>[/warning]"
+        )
+        return
+
+    raw_val = set_args[2]
+
+    try:
+        if val_type == int:
+            typed_val = int(raw_val)
+            if typed_val < 0:
+                console.print("[error]Value must be a positive integer.[/error]")
+                return
+        elif val_type == float:
+            typed_val = float(raw_val)
+            if param == "threshold":
+                if typed_val > 1.0:
+                    typed_val = typed_val / 100.0
+                if not (0.01 <= typed_val <= 1.0):
+                    console.print("[error]Threshold percentage must be between 1 and 100 (or 0.01 and 1.0).[/error]")
+                    return
+            elif typed_val <= 0:
+                console.print("[error]Value must be greater than zero.[/error]")
+                return
+        else:
+            typed_val = raw_val
+    except ValueError:
+        console.print(f"[error]Invalid value '{raw_val}'. Expected type: {val_type.__name__}.[/error]")
+        return
+
+    # Update config model
+    if sub_attr:
+        setattr(getattr(cfg, container_attr), sub_attr, typed_val)
+    else:
+        setattr(cfg, container_attr, typed_val)
+
+    # Sync dependent runtime engines & settings
+    if category == "turns" and param == "depth":
+        cfg.max_delegation_depth = typed_val
+    elif category == "repair":
+        if hasattr(engine, "repair_engine") and engine.repair_engine:
+            if param == "retries":
+                engine.repair_engine.mechanical_retries = typed_val
+            elif param == "delay":
+                engine.repair_engine.mechanical_delay = typed_val
+
+    engine.config_mgr.save()
+
+    display_val = f"{int(typed_val * 100)}%" if param == "threshold" else f"{typed_val}"
+    console.print(f"[success]✔ Successfully set [label]{category} {param}[/label] to [accent]{display_val}[/accent].[/success]")
+
+
 async def cmd_config(engine: Any, args: List[str]):
     cfg = engine.config_mgr.config
 
@@ -168,14 +309,19 @@ async def cmd_config(engine: Any, args: List[str]):
         console.print(f"  • [label]effort[/label]: {effort_s}")
         console.print(f"  • [label]tokens[/label]: {tokens_s}")
         console.print(f"  • [label]cost[/label]: {cost_s}")
-        console.print(f"  • [label]statistics[/label]: {stats_s}\n")
-        console.print("Usage: [warning]/config distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics [args][/warning]\n")
+        console.print(f"  • [label]statistics[/label]: {stats_s}")
+        console.print("  • [label]set[/label]: Fine-tune timeouts, budgets, turns, repair, & compaction parameters")
+        console.print("    [dim](Usage: /config set <category> <param> <value>, e.g. /config set timeout web 120)[/dim]\n")
+        console.print("Usage: [warning]/config distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|set [args][/warning]\n")
         return
 
     sub = args[0].lower()
     sub_args = args[1:]
 
-    if sub == "distill":
+    if sub == "set":
+        await _handle_config_set(engine, sub_args)
+
+    elif sub == "distill":
         if not sub_args:
             state_str = "[success]ON[/success]" if engine.subagent_distiller.enabled else "[error]OFF[/error]"
             console.print(f"Sub-agent tool output distillation is {state_str}.")
@@ -325,7 +471,7 @@ async def cmd_config(engine: Any, args: List[str]):
             console.print("[warning]Token statistics display DISABLED.[/warning]")
 
     else:
-        console.print("[error]Usage: /config [distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics] <args>[/error]")
+        console.print("[error]Usage: /config [distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|set] <args>[/error]")
 
 
 async def cmd_context(engine: Any, args: List[str]):
@@ -617,17 +763,17 @@ async def cmd_exit(engine: Any, args: List[str]):
 
 
 def register_system_commands(engine: Any):
-    engine.cmd_registry.register("help", "Show available slash commands", lambda args: cmd_help(engine, args), category="Session & System")
-    engine.cmd_registry.register("status", "Show current Mesh status overview", lambda args: cmd_status(engine, args), category="Models & Settings")
-    engine.cmd_registry.register("config", "View or set automation & proxy toggles: /config distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics [args]", lambda args: cmd_config(engine, args), category="Models & Settings")
-    engine.cmd_registry.register("context", "Display context window and active tool names", lambda args: cmd_context(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", lambda args: cmd_system(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("tools", "List registered tools with full detailed descriptions and schemas, or toggle inclusion: /tools [on|off]", lambda args: cmd_tools(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("skills", "List skills, or toggle one: /skills enable <name> | /skills disable <name>", lambda args: cmd_skills(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("dirs", "List allowed directories, or edit them: /dirs add <path> | /dirs remove <path> | /dirs clear", lambda args: cmd_dirs(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("mcps", "List MCP servers, or toggle them: /mcps on | /mcps off | /mcps enable <server_name> | /mcps disable <server_name>", lambda args: cmd_mcps(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("compact", "Semantically summarize older conversation context", lambda args: cmd_compact(engine, args), category="Context & Integration")
-    engine.cmd_registry.register("clear", "Clear the conversation context window", lambda args: cmd_clear(engine, args), category="Session & System")
-    engine.cmd_registry.register("retry", "Retry the last LLM response turn", lambda args: cmd_retry(engine, args), category="Session & System")
-    engine.cmd_registry.register("debug", "Toggle debug mode (CoT & tool traces): /debug on | /debug off", lambda args: cmd_debug(engine, args), category="Session & System")
-    engine.cmd_registry.register("exit", "Exit Mesh", lambda args: cmd_exit(engine, args), category="Session & System")
+    engine.cmd_registry.register("help", "Display available slash commands and usage help: /help [<command>]", lambda args: cmd_help(engine, args), category="Session & System")
+    engine.cmd_registry.register("status", "Display Mesh system status and configuration overview: /status", lambda args: cmd_status(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("config", "View or configure system settings and parameters: /config [distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|set] <args>", lambda args: cmd_config(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("context", "Display conversation context window, active tools, and MCP server states: /context", lambda args: cmd_context(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("system", "View or update the system prompt: /system [<text>] | /system clear", lambda args: cmd_system(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("tools", "List registered tools and schemas, or toggle tool execution: /tools [on|off]", lambda args: cmd_tools(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("skills", "List registered skills, or toggle a skill: /skills enable|disable <name>", lambda args: cmd_skills(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("dirs", "View or modify allowed working directories: /dirs [add|remove|clear] [<path>]", lambda args: cmd_dirs(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("mcps", "View or toggle Model Context Protocol servers: /mcps [on|off|enable|disable] [<server>]", lambda args: cmd_mcps(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("compact", "Semantically summarize older conversation history to free context tokens: /compact", lambda args: cmd_compact(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("clear", "Clear conversation context window (preserves system prompt and skills): /clear", lambda args: cmd_clear(engine, args), category="Session & System")
+    engine.cmd_registry.register("retry", "Retry the last assistant turn: /retry", lambda args: cmd_retry(engine, args), category="Session & System")
+    engine.cmd_registry.register("debug", "View or toggle debug mode (CoT & tool execution traces): /debug [on|off]", lambda args: cmd_debug(engine, args), category="Session & System")
+    engine.cmd_registry.register("exit", "Close active sessions and exit Mesh: /exit", lambda args: cmd_exit(engine, args), category="Session & System")
