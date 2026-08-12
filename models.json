@@ -9,8 +9,9 @@
   "guard_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
   "guard_autonomy": "supervised",
   "router_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
+  "network_proxy": "socks5h://localhost:1080",
   "show_tokens": true,
-  "show_cost": false,
+  "show_cost": true,
   "show_statistics": true,
   "providers": {
     "openai": {

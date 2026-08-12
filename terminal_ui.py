@@ -203,7 +203,8 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
         if cmd0 == "/config":
             if current_arg_index == 1:
                 subs = [
-                    ("proxy", "Toggle sub-agent proxy distillation"),
+                    ("distill", "Toggle sub-agent tool output distillation"),
+                    ("proxy", "View or configure global network HTTP/HTTPS/SOCKS proxy"),
                     ("repair", "Toggle self-healing tool recovery"),
                     ("hooks", "Toggle post-edit linter hooks"),
                     ("compact", "Toggle auto-compaction"),
@@ -216,8 +217,12 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                         yield Completion(sub, start_position=-len(current_word), display_meta=meta)
             elif current_arg_index == 2:
                 word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
-                if word1 in ("proxy", "repair", "hooks", "tokens", "cost", "statistics"):
+                if word1 in ("distill", "repair", "hooks", "tokens", "cost", "statistics"):
                     for opt in ("on", "off"):
+                        if opt.startswith(current_word.lower()):
+                            yield Completion(opt, start_position=-len(current_word))
+                elif word1 == "proxy":
+                    for opt in ("clear", "off"):
                         if opt.startswith(current_word.lower()):
                             yield Completion(opt, start_position=-len(current_word))
                 elif word1 in ("compact", "autocompact"):

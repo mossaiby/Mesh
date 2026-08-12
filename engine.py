@@ -45,11 +45,11 @@ import modes
 import jobs
 import context_mentions
 import router
+import distill
+import repair
 from pricing import pricing_manager
 from checkpoint import CheckpointManager
 from guard import SafetyGuard
-from subagent import SubAgentProxy
-from self_heal import SelfHealer
 from terminal_ui import MeshPromptSession
 from commands.registry import CommandRegistry
 from commands import (
@@ -74,10 +74,10 @@ class MeshEngine:
         self.config_mgr = ConfigManager()
         self.renderer = StreamRenderer()
         self.tool_registry = ToolRegistry()
-        self.subagent_proxy = SubAgentProxy(self.config_mgr)
-        self.tool_registry.subagent_proxy = self.subagent_proxy
-        self.self_healer = SelfHealer(self.config_mgr)
-        self.tool_registry.self_healer = self.self_healer
+        self.subagent_distiller = distill.SubAgentDistiller(self.config_mgr)
+        self.tool_registry.subagent_distiller = self.subagent_distiller
+        self.repair_engine = repair.RepairEngine(self.config_mgr)
+        self.tool_registry.repair_engine = self.repair_engine
         self.safety_guard = SafetyGuard(self.config_mgr, enabled=self.config_mgr.config.guard_enabled)
         self.tool_registry.safety_guard = self.safety_guard
         self.checkpoint_mgr = CheckpointManager()
@@ -88,7 +88,7 @@ class MeshEngine:
         self.cmd_registry = CommandRegistry()
         self.mcp_manager = MCPManager()
         self.debug_mode: bool = False
-        self.subagent_proxy.debug_mode = self.debug_mode
+        self.subagent_distiller.debug_mode = self.debug_mode
         self.tools_enabled: bool = True
         self.current_mode: str = modes.DEFAULT_MODE
         self._pre_yolo_guard_autonomy: Optional[str] = None
@@ -103,6 +103,14 @@ class MeshEngine:
         self.setup_defaults()
         self.tool_registry.mode_blocked_tools = modes.blocked_tools_for_mode(self.current_mode, self.tool_registry)
         self.update_system_message(self.config_mgr.config.system_prompt)
+
+    @property
+    def subagent_proxy(self):
+        return self.subagent_distiller
+
+    @property
+    def self_healer(self):
+        return self.repair_engine
 
     def reload_project_context(self):
         """Re-indexes codebase symbols, reloads project rules, and regenerates Repo Map for CWD."""

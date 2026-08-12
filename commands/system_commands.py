@@ -62,8 +62,8 @@ async def cmd_status(engine: Any, args: List[str]):
     console.print(f"  [dim]Provider: {p_str}[/dim]")
     
     tools_state = "[success]ENABLED[/success]" if engine.tools_enabled else "[error]DISABLED[/error]"
-    proxy_state = "[success]ON[/success]" if engine.subagent_proxy.enabled else "[error]OFF[/error]"
-    selfheal_state = "[success]ON[/success]" if engine.self_healer.enabled else "[error]OFF[/error]"
+    distill_state = "[success]ON[/success]" if engine.subagent_distiller.enabled else "[error]OFF[/error]"
+    repair_state = "[success]ON[/success]" if engine.repair_engine.enabled else "[error]OFF[/error]"
     hooks_state = "[success]ON[/success]" if hooks.hook_manager.enabled else "[error]OFF[/error]"
     debug_state = "[success]ON[/success]" if engine.debug_mode else "[error]OFF[/error]"
     
@@ -76,8 +76,8 @@ async def cmd_status(engine: Any, args: List[str]):
     proj_rules_str = f"[success]{filename}[/success]" if filename else "[dim]none[/dim]"
     console.print(f"• [label]Project Rules:[/label] {proj_rules_str}")
 
-    console.print(f"• [label]Sub-Agent Proxy Distillation:[/label] {proxy_state}")
-    console.print(f"• [label]Self-Healing Tool-Error Recovery:[/label] {selfheal_state}")
+    console.print(f"• [label]Sub-Agent Tool Distillation:[/label] {distill_state}")
+    console.print(f"• [label]Self-Healing Repair Engine:[/label] {repair_state}")
     console.print(f"• [label]Post-Edit Linter Hooks:[/label] {hooks_state}")
     console.print(f"• [label]Delegation Recursion Depth:[/label] {cfg.max_delegation_depth}")
     guard_state = "[success]ON[/success]" if engine.safety_guard.enabled else "[error]OFF[/error]"
@@ -90,6 +90,9 @@ async def cmd_status(engine: Any, args: List[str]):
     console.print(f"• [label]Advisor Model:[/label] {advisor_model_str}")
     router_model_str = cfg.router_model or "[dim]none set[/dim]"
     console.print(f"• [label]Router Model:[/label] {router_model_str}")
+
+    proxy_url_str = cfg.network_proxy or "[dim]disabled (direct)[/dim]"
+    console.print(f"• [label]Network Proxy:[/label] {proxy_url_str}")
 
     tokens_s = "[success]ON[/success]" if cfg.show_tokens else "[error]OFF[/error]"
     cost_s = "[success]ON[/success]" if cfg.show_cost else "[error]OFF[/error]"
@@ -140,8 +143,9 @@ async def cmd_config(engine: Any, args: List[str]):
     cfg = engine.config_mgr.config
 
     if not args:
-        proxy_s = "[success]ON[/success]" if engine.subagent_proxy.enabled else "[error]OFF[/error]"
-        heal_s = "[success]ON[/success]" if engine.self_healer.enabled else "[error]OFF[/error]"
+        distill_s = "[success]ON[/success]" if engine.subagent_distiller.enabled else "[error]OFF[/error]"
+        proxy_s = f"[accent]{cfg.network_proxy}[/accent]" if cfg.network_proxy else "[dim]disabled[/dim]"
+        repair_s = "[success]ON[/success]" if engine.repair_engine.enabled else "[error]OFF[/error]"
         hooks_s = "[success]ON[/success]" if hooks.hook_manager.enabled else "[error]OFF[/error]"
         compact_s = "[success]ON[/success]" if cfg.auto_compact else "[error]OFF[/error]"
         tokens_s = "[success]ON[/success]" if cfg.show_tokens else "[error]OFF[/error]"
@@ -149,41 +153,57 @@ async def cmd_config(engine: Any, args: List[str]):
         stats_s = "[success]ON[/success]" if cfg.show_statistics else "[error]OFF[/error]"
 
         console.print("\n[success]Mesh System Configuration:[/success]")
+        console.print(f"  • [label]distill[/label]: {distill_s}")
         console.print(f"  • [label]proxy[/label]: {proxy_s}")
-        console.print(f"  • [label]repair[/label]: {heal_s}")
+        console.print(f"  • [label]repair[/label]: {repair_s}")
         console.print(f"  • [label]hooks[/label]: {hooks_s}")
         console.print(f"  • [label]compact[/label]: {compact_s} (threshold: {int(cfg.auto_compact_threshold * 100)}%)")
         console.print(f"  • [label]tokens[/label]: {tokens_s}")
         console.print(f"  • [label]cost[/label]: {cost_s}")
         console.print(f"  • [label]statistics[/label]: {stats_s}\n")
-        console.print("Usage: [warning]/config proxy|repair|hooks|compact|tokens|cost|statistics [on|off][/warning]\n")
+        console.print("Usage: [warning]/config distill|proxy|repair|hooks|compact|tokens|cost|statistics [args][/warning]\n")
         return
 
     sub = args[0].lower()
     sub_args = args[1:]
 
-    if sub == "proxy":
+    if sub == "distill":
         if not sub_args:
-            state_str = "[success]ON[/success]" if engine.subagent_proxy.enabled else "[error]OFF[/error]"
-            console.print(f"Proxy distillation is {state_str}.")
+            state_str = "[success]ON[/success]" if engine.subagent_distiller.enabled else "[error]OFF[/error]"
+            console.print(f"Sub-agent tool output distillation is {state_str}.")
             return
         if sub_args[0].lower() == "on":
-            engine.subagent_proxy.enabled = True
-            console.print("[success]Sub-agent proxy distillation ENABLED.[/success]")
+            engine.subagent_distiller.enabled = True
+            console.print("[success]Sub-agent tool output distillation ENABLED.[/success]")
         elif sub_args[0].lower() == "off":
-            engine.subagent_proxy.enabled = False
-            console.print("[warning]Sub-agent proxy distillation DISABLED.[/warning]")
+            engine.subagent_distiller.enabled = False
+            console.print("[warning]Sub-agent tool output distillation DISABLED.[/warning]")
+
+    elif sub == "proxy":
+        if not sub_args:
+            proxy_str = f"[accent]{cfg.network_proxy}[/accent]" if cfg.network_proxy else "[dim]disabled (direct connection)[/dim]"
+            console.print(f"Network proxy is currently: {proxy_str}\nUsage: [warning]/config proxy <url>[/warning] | [warning]/config proxy clear[/warning]")
+            return
+        target_val = sub_args[0]
+        if target_val.lower() in ("clear", "off", "none", "disable"):
+            cfg.network_proxy = None
+            engine.config_mgr.save()
+            console.print("[success]Cleared network proxy setting and unset proxy environment variables.[/success]")
+        else:
+            cfg.network_proxy = target_val
+            engine.config_mgr.save()
+            console.print(f"[success]Network proxy set to '[accent]{target_val}[/accent]' and applied to environment variables.[/success]")
 
     elif sub in ("repair", "selfheal"):
         if not sub_args:
-            state_str = "[success]ON[/success]" if engine.self_healer.enabled else "[error]OFF[/error]"
+            state_str = "[success]ON[/success]" if engine.repair_engine.enabled else "[error]OFF[/error]"
             console.print(f"Self-healing repair is {state_str}.")
             return
         if sub_args[0].lower() == "on":
-            engine.self_healer.enabled = True
+            engine.repair_engine.enabled = True
             console.print("[success]Self-healing tool recovery ENABLED.[/success]")
         elif sub_args[0].lower() == "off":
-            engine.self_healer.enabled = False
+            engine.repair_engine.enabled = False
             console.print("[warning]Self-healing tool recovery DISABLED.[/warning]")
 
     elif sub == "hooks":
@@ -267,7 +287,7 @@ async def cmd_config(engine: Any, args: List[str]):
             console.print("[warning]Token statistics display DISABLED.[/warning]")
 
     else:
-        console.print("[error]Usage: /config [proxy|repair|hooks|compact|tokens|cost|statistics] <args>[/error]")
+        console.print("[error]Usage: /config [distill|proxy|repair|hooks|compact|tokens|cost|statistics] <args>[/error]")
 
 
 async def cmd_context(engine: Any, args: List[str]):
@@ -294,7 +314,8 @@ async def cmd_context(engine: Any, args: List[str]):
         console.print()
 
     tools_state = "[success]ENABLED[/success]" if engine.tools_enabled else "[error]DISABLED[/error]"
-    console.print(f"[success]=== ACTIVE TOOL NAMES ({tools_state}) ===[/success]\n")
+    distill_s = "[success]ON[/success]" if engine.subagent_distiller.enabled else "[error]OFF[/error]"
+    console.print(f"[success]=== ACTIVE TOOL NAMES ({tools_state} | Distillation: {distill_s}) ===[/success]\n")
     if engine.tools_enabled:
         schemas = engine.tool_registry.get_schemas()
         if schemas:
@@ -352,8 +373,8 @@ async def cmd_system(engine: Any, args: List[str]):
 async def cmd_tools(engine: Any, args: List[str]):
     if not args:
         state_str = "[success]ENABLED[/success]" if engine.tools_enabled else "[error]DISABLED[/error]"
-        proxy_s = "[success]ON[/success]" if engine.subagent_proxy.enabled else "[error]OFF[/error]"
-        console.print(f"\n[success]=== REGISTERED TOOLS & SCHEMAS ({state_str} | Proxy Distillation: {proxy_s}) ===[/success]\n")
+        distill_s = "[success]ON[/success]" if engine.subagent_distiller.enabled else "[error]OFF[/error]"
+        console.print(f"\n[success]=== REGISTERED TOOLS & SCHEMAS ({state_str} | Distillation: {distill_s}) ===[/success]\n")
         schemas = engine.tool_registry.get_schemas()
         if not schemas:
             console.print("  [dim]No tools currently registered.[/dim]\n")
@@ -537,11 +558,11 @@ async def cmd_debug(engine: Any, args: List[str]):
     arg = args[0].lower()
     if arg == "on":
         engine.debug_mode = True
-        engine.subagent_proxy.debug_mode = True
+        engine.subagent_distiller.debug_mode = True
         console.print("[success]Debug mode enabled.[/success] CoT and Tool execution details will be shown.")
     elif arg == "off":
         engine.debug_mode = False
-        engine.subagent_proxy.debug_mode = False
+        engine.subagent_distiller.debug_mode = False
         console.print("[warning]Debug mode disabled.[/warning] CoT will be hidden.")
     else:
         console.print("[error]Invalid debug option. Use '/debug on' or '/debug off'.[/error]")
@@ -559,7 +580,7 @@ async def cmd_exit(engine: Any, args: List[str]):
 def register_system_commands(engine: Any):
     engine.cmd_registry.register("help", "Show available slash commands", lambda args: cmd_help(engine, args), category="Session & System")
     engine.cmd_registry.register("status", "Show current Mesh status overview", lambda args: cmd_status(engine, args), category="Models & Settings")
-    engine.cmd_registry.register("config", "View or set automation toggles: /config proxy|repair|hooks|compact|tokens|cost|statistics [on|off]", lambda args: cmd_config(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("config", "View or set automation & proxy toggles: /config distill|proxy|repair|hooks|compact|tokens|cost|statistics [args]", lambda args: cmd_config(engine, args), category="Models & Settings")
     engine.cmd_registry.register("context", "Display context window and active tool names", lambda args: cmd_context(engine, args), category="Context & Integration")
     engine.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", lambda args: cmd_system(engine, args), category="Context & Integration")
     engine.cmd_registry.register("tools", "List registered tools with full detailed descriptions and schemas, or toggle inclusion: /tools [on|off]", lambda args: cmd_tools(engine, args), category="Context & Integration")

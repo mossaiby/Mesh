@@ -21,17 +21,12 @@ REPAIR_SYSTEM_PROMPT = (
     "If not confidently fixable, return fixable: false and corrected_arguments: null."
 )
 
-# Error substrings that indicate a transient, safe-to-retry-unchanged failure
-# (network/timeout/rate-limit issues), as opposed to something wrong with the
-# arguments themselves. Retried mechanically, with no model call involved.
 TRANSIENT_PATTERNS = [
     "timeout", "timed out", "connection", "temporarily unavailable",
     "rate limit", "429", "connection reset", "network", "econnrefused",
     "econnreset", "service unavailable", "502", "503", "504",
 ]
 
-# Never attempt any healing on these - they're deliberate boundaries
-# (a permission/guard decision), not a broken tool call to be fixed.
 NON_HEALABLE_PATTERNS = [
     "permission denied",
     "blocked by safety guard",
@@ -39,10 +34,6 @@ NON_HEALABLE_PATTERNS = [
     "execution denied"
 ]
 
-# Tools excluded from LLM-based argument auto-repair: either the side effect
-# of blindly re-running corrected arguments is too severe to do without a
-# human in the loop (arbitrary shell execution), or the tool is about human
-# interaction rather than a "wrong argument" situation.
 REPAIR_EXCLUDED_TOOLS = {"shell", "ask_user"}
 
 
@@ -57,8 +48,6 @@ def is_non_healable(error_message: str) -> bool:
 
 
 def _safe_parse_json(raw: str) -> Dict[str, Any]:
-    """Best-effort JSON parsing that tolerates stray markdown fences some
-    models add despite instructions not to."""
     raw = (raw or "").strip()
 
     if raw.startswith("```"):
@@ -83,28 +72,11 @@ def _safe_parse_json(raw: str) -> Dict[str, Any]:
     return data if isinstance(data, dict) else {}
 
 
-class SelfHealer:
+class RepairEngine:
     """
-    Provides two independent, best-effort layers of automatic recovery for
-    failed tool calls, used by ToolRegistry.execute() so that both the main
-    agent loop and delegated sub-agents (which share the same ToolRegistry)
-    benefit from it:
-
-      1. Mechanical retry - no model call. If the error looks transient
-         (network/timeout/rate-limit), retry the exact same arguments a
-         couple of times with a short delay before giving up on that path.
-
-      2. LLM-assisted argument repair - one small, focused sub-agent call
-         (the same "small out-of-band LLM call" pattern used by dream.py,
-         compaction.py, and memory_search.py elsewhere in Mesh) that looks
-         at the tool's schema, the arguments that failed, and the error
-         message, and proposes corrected arguments if - and only if - it's
-         confident the fix is purely structural, not something requiring
-         outside knowledge like "what the real file path actually is".
-
-    Both layers always fall back to returning the original error untouched
-    if they can't help - this never masks a real failure, it only adds a
-    best-effort recovery attempt in front of it.
+    Provides automatic recovery for failed tool calls:
+    1. Mechanical retries for transient errors.
+    2. LLM-assisted argument repair for structural mistakes.
     """
 
     def __init__(
@@ -126,8 +98,7 @@ class SelfHealer:
         failed_arguments: Dict[str, Any],
         error_message: str
     ) -> Optional[Dict[str, Any]]:
-        """Runs the repair sub-agent call. Returns corrected arguments as a
-        dict if a confident fix was found, otherwise None."""
+        """Runs the repair sub-agent call. Returns corrected arguments as a dict if found."""
         if tool_name in REPAIR_EXCLUDED_TOOLS:
             return None
 
@@ -165,3 +136,7 @@ class SelfHealer:
             return None
 
         return corrected
+
+
+# Backward compatibility alias
+SelfHealer = RepairEngine

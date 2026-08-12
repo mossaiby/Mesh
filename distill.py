@@ -1,18 +1,18 @@
 import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from config import ConfigManager
 from providers.openai_provider import OpenAIProvider
 from theme import console
 
 
-class SubAgentProxy:
+class SubAgentDistiller:
     """
-    Sub-agent proxy that executes tools on behalf of the main agent and
+    Sub-agent distiller that executes tools on behalf of the main agent and
     distills/summarizes raw tool outputs into structured JSON based on intent.
     """
     def __init__(self, config_mgr: ConfigManager):
         self.config_mgr = config_mgr
-        self.enabled: bool = False  # Disabled by default so _intent is omitted until /proxy on
+        self.enabled: bool = False  # Disabled by default so _intent is omitted until /config distill on
         self.debug_mode: bool = False
 
     async def distill_tool_result(
@@ -37,7 +37,7 @@ class SubAgentProxy:
             return raw_str if (raw_str.startswith("{") or raw_str.startswith("[")) else json.dumps({"raw_output": raw_str})
 
         if self.debug_mode:
-            console.print(f"\n[brand]🤖 [SUB-AGENT PROXY] Distilling '{tool_name}' output for intent:[/brand] [italic]{intent}[/italic]")
+            console.print(f"\n[brand]🤖 [SUB-AGENT DISTILLER] Distilling '{tool_name}' output for intent:[/brand] [italic]{intent}[/italic]")
 
         messages = [
             {
@@ -92,7 +92,7 @@ class SubAgentProxy:
                         console.print(f"[brand]{cval}[/brand]", end="")
 
             if self.debug_mode:
-                console.print("\n[brand]🤖 [SUB-AGENT PROXY] Distillation Complete.[/brand]\n")
+                console.print("\n[brand]🤖 [SUB-AGENT DISTILLER] Distillation Complete.[/brand]\n")
 
             if distilled.strip():
                 return json.dumps({
@@ -104,10 +104,14 @@ class SubAgentProxy:
             return raw_str if (raw_str.startswith("{") or raw_str.startswith("[")) else json.dumps({"raw_output": raw_str})
         except Exception as e:
             if self.debug_mode:
-                console.print(f"\n[error]🤖 [SUB-AGENT PROXY] Distillation Failed:[/error] {e}\n")
+                console.print(f"\n[error]🤖 [SUB-AGENT DISTILLER] Distillation Failed:[/error] {e}\n")
             return json.dumps({
                 "status": "partial_fallback",
                 "intent": intent,
                 "raw_output": raw_str,
                 "error": str(e)
             })
+
+
+# Backward compatibility alias
+SubAgentProxy = SubAgentDistiller

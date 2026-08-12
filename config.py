@@ -4,6 +4,18 @@ from typing import Dict, Optional, Tuple, List
 from pydantic import BaseModel, Field
 
 
+def apply_network_proxy(proxy_url: Optional[str]) -> None:
+    """Sets or clears HTTP/HTTPS/ALL_PROXY environment variables."""
+    if proxy_url and proxy_url.strip():
+        url = proxy_url.strip()
+        os.environ["HTTP_PROXY"] = url
+        os.environ["HTTPS_PROXY"] = url
+        os.environ["ALL_PROXY"] = url
+    else:
+        for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"):
+            os.environ.pop(k, None)
+
+
 class ProviderConfig(BaseModel):
     name: str
     base_url: str
@@ -37,6 +49,8 @@ class MeshConfig(BaseModel):
     guard_model: Optional[str] = None
     guard_autonomy: str = "supervised"
     router_model: Optional[str] = None
+    # Global network proxy URL
+    network_proxy: Optional[str] = None
     # Metrics display toggles
     show_tokens: bool = True
     show_cost: bool = True
@@ -55,9 +69,12 @@ class ConfigManager:
             raise FileNotFoundError(f"Configuration file {self.filepath} not found.")
         with open(self.filepath, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return MeshConfig(**data)
+        cfg = MeshConfig(**data)
+        apply_network_proxy(cfg.network_proxy)
+        return cfg
 
     def save(self) -> None:
+        apply_network_proxy(self.config.network_proxy)
         with open(self.filepath, "w", encoding="utf-8") as f:
             f.write(self.config.model_dump_json(indent=2))
 

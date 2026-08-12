@@ -7,9 +7,18 @@ class BaseTool(ABC):
     name: str
     description: str
     parameters: Dict[str, Any]
-    is_proxied: bool = False  # Set to True for heavy tools that benefit from sub-agent distillation
+    is_distilled: bool = False  # Set to True for heavy tools that benefit from sub-agent distillation
     requires_guard: bool = False  # Set to True for tools whose calls should be risk-assessed
                                    # by the SafetyGuard before executing (shell, file writes, MCP tools)
+
+    @property
+    def is_proxied(self) -> bool:
+        """Backward-compatibility property alias for is_distilled."""
+        return self.is_distilled
+
+    @is_proxied.setter
+    def is_proxied(self, value: bool) -> None:
+        self.is_distilled = value
 
     @abstractmethod
     async def execute(self, **kwargs) -> Any:
@@ -25,8 +34,8 @@ class BaseTool(ABC):
         if "required" in schema_params and "_intent" in schema_params["required"]:
             schema_params["required"].remove("_intent")
 
-        # Inject required _intent parameter ONLY if tool is proxied AND intent injection is enabled
-        if self.is_proxied and inject_intent:
+        # Inject required _intent parameter ONLY if tool is distilled AND intent injection is enabled
+        if self.is_distilled and inject_intent:
             props = schema_params.get("properties", {})
             props["_intent"] = {
                 "type": "string",
