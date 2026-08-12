@@ -81,7 +81,6 @@ async def cmd_models(engine: Any, args: List[str]):
                 console.print(f"[error]Failed to discover models from {p_cfg.name}: {err}[/error]")
                 return
 
-            # Pattern matching: wildcard fnmatch if wildcard exists, else substring check
             pat_lower = pattern.lower()
             if any(c in pattern for c in "*?[]"):
                 matching_ids = [m for m in model_ids if fnmatch.fnmatch(m.lower(), pat_lower)]
@@ -89,7 +88,6 @@ async def cmd_models(engine: Any, args: List[str]):
                 matching_ids = [m for m in model_ids if pat_lower in m.lower()]
 
             if not matching_ids:
-                # Fallback to direct model ID if no endpoint match
                 matching_ids = [pattern]
 
             configured_keys = set(engine.config_mgr.config.models.keys())
@@ -188,7 +186,6 @@ async def cmd_models(engine: Any, args: List[str]):
 
         console.print("[brand]🔍 Discovering models offered by provider endpoints...[/brand]\n")
 
-        # Collect configured model_ids to mark them in output
         configured_model_ids = {m.model_id for m in engine.config_mgr.config.models.values()}
 
         async def query_p(key: str, p_cfg):
@@ -204,7 +201,7 @@ async def cmd_models(engine: Any, args: List[str]):
                     console.print("  [dim]No models returned by endpoint.[/dim]\n")
                 else:
                     console.print(f"  [success]Discovered {len(model_ids)} available model(s):[/success]")
-                    for m_id in model_ids[:30]:  # Cap at 30 for clean display
+                    for m_id in model_ids[:30]:
                         configured_tag = " [accent](configured)[/accent]" if m_id in configured_model_ids else ""
                         console.print(f"    - [text]{m_id}[/text]{configured_tag}")
                     if len(model_ids) > 30:
@@ -307,5 +304,15 @@ async def cmd_switch(engine: Any, args: List[str]):
 
 
 def register_model_commands(engine: Any):
-    engine.cmd_registry.register("models", "List, discover, or add models: /models | /models discover [<provider>] | /models add [<provider>] [<pattern>]", lambda args: cmd_models(engine, args))
-    engine.cmd_registry.register("switch", "Switch active model interactively, or directly: /switch <model_key>", lambda args: cmd_switch(engine, args))
+    engine.cmd_registry.register(
+        "models",
+        "List, discover, or add models: /models | /models discover [<provider>] | /models add [<provider>] [<pattern>]",
+        lambda args: cmd_models(engine, args),
+        category="Models & Settings"
+    )
+    engine.cmd_registry.register(
+        "switch",
+        "Switch active model interactively, or directly: /switch <model_key>",
+        lambda args: cmd_switch(engine, args),
+        category="Models & Settings"
+    )

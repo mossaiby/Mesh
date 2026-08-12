@@ -14,17 +14,32 @@ from version import __version__
 
 
 async def cmd_help(engine: Any, args: List[str]):
+    commands = engine.cmd_registry.list_commands()
+
+    if args:
+        target = args[0].lower().strip()
+        if not target.startswith("/"):
+            target = f"/{target}"
+
+        if target in commands:
+            desc = commands[target]
+            console.print(f"\n[success]Help for {target}:[/success]")
+            console.print(f"  [label]{target}[/label] — {escape(desc)}\n")
+            return
+        else:
+            console.print(f"[error]Unknown command '{target}'. Type /help to see available commands.[/error]\n")
+            return
+
     console.print("\n[success]Available Slash Commands:[/success]\n")
 
-    table = Table(show_header=False, box=None, padding=(0, 1, 0, 2))
-    table.add_column("Command", style="label", no_wrap=True)
-    table.add_column("Description")
+    categorized = engine.cmd_registry.list_commands_by_category()
 
-    for cmd, desc in engine.cmd_registry.list_commands().items():
-        table.add_row(cmd, Text(desc))
+    for category, cmds in categorized.items():
+        console.print(f"[brand]━━━ {category} ━━━[/brand]")
+        cmd_labels = [f"[label]{cmd}[/label]" for cmd, _ in cmds]
+        console.print(f"  {', '.join(cmd_labels)}\n")
 
-    console.print(table)
-    console.print()
+    console.print("Type [warning]/help <command>[/warning] (e.g., [warning]/help git[/warning]) for detailed usage.\n")
 
 
 async def cmd_status(engine: Any, args: List[str]):
@@ -473,17 +488,17 @@ async def cmd_exit(engine: Any, args: List[str]):
 
 
 def register_system_commands(engine: Any):
-    engine.cmd_registry.register("help", "Show available slash commands", lambda args: cmd_help(engine, args))
-    engine.cmd_registry.register("status", "Show current Mesh status overview", lambda args: cmd_status(engine, args))
-    engine.cmd_registry.register("config", "View or set automation toggles: /config [proxy|repair|hooks|compact]", lambda args: cmd_config(engine, args))
-    engine.cmd_registry.register("context", "Display context window and active tool names", lambda args: cmd_context(engine, args))
-    engine.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", lambda args: cmd_system(engine, args))
-    engine.cmd_registry.register("tools", "List registered tools with full schemas, or toggle inclusion: /tools [on|off]", lambda args: cmd_tools(engine, args))
-    engine.cmd_registry.register("skills", "List skills, or toggle one: /skills enable <name> | /skills disable <name>", lambda args: cmd_skills(engine, args))
-    engine.cmd_registry.register("dirs", "List allowed directories, or edit them: /dirs add <path> | /dirs remove <path> | /dirs clear", lambda args: cmd_dirs(engine, args))
-    engine.cmd_registry.register("mcps", "List MCP servers, or toggle them: /mcps on | /mcps off | /mcps enable <server_name> | /mcps disable <server_name>", lambda args: cmd_mcps(engine, args))
-    engine.cmd_registry.register("compact", "Semantically summarize older conversation context", lambda args: cmd_compact(engine, args))
-    engine.cmd_registry.register("clear", "Clear the conversation context window", lambda args: cmd_clear(engine, args))
-    engine.cmd_registry.register("retry", "Retry the last LLM response turn", lambda args: cmd_retry(engine, args))
-    engine.cmd_registry.register("debug", "Toggle debug mode (CoT & tool traces): /debug on | /debug off", lambda args: cmd_debug(engine, args))
-    engine.cmd_registry.register("exit", "Exit Mesh", lambda args: cmd_exit(engine, args))
+    engine.cmd_registry.register("help", "Show available slash commands", lambda args: cmd_help(engine, args), category="Session & System")
+    engine.cmd_registry.register("status", "Show current Mesh status overview", lambda args: cmd_status(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("config", "View or set automation toggles: /config [proxy|repair|hooks|compact]", lambda args: cmd_config(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("context", "Display context window and active tool names", lambda args: cmd_context(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("system", "Show the system prompt, or set it: /system <text> | /system clear", lambda args: cmd_system(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("tools", "List registered tools with full schemas, or toggle inclusion: /tools [on|off]", lambda args: cmd_tools(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("skills", "List skills, or toggle one: /skills enable <name> | /skills disable <name>", lambda args: cmd_skills(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("dirs", "List allowed directories, or edit them: /dirs add <path> | /dirs remove <path> | /dirs clear", lambda args: cmd_dirs(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("mcps", "List MCP servers, or toggle them: /mcps on | /mcps off | /mcps enable <server_name> | /mcps disable <server_name>", lambda args: cmd_mcps(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("compact", "Semantically summarize older conversation context", lambda args: cmd_compact(engine, args), category="Context & Integration")
+    engine.cmd_registry.register("clear", "Clear the conversation context window", lambda args: cmd_clear(engine, args), category="Session & System")
+    engine.cmd_registry.register("retry", "Retry the last LLM response turn", lambda args: cmd_retry(engine, args), category="Session & System")
+    engine.cmd_registry.register("debug", "Toggle debug mode (CoT & tool traces): /debug on | /debug off", lambda args: cmd_debug(engine, args), category="Session & System")
+    engine.cmd_registry.register("exit", "Exit Mesh", lambda args: cmd_exit(engine, args), category="Session & System")
