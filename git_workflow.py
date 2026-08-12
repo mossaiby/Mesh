@@ -22,6 +22,8 @@ def is_git_repository(root_dir: str = ".") -> bool:
             ["git", "rev-parse", "--is-inside-work-tree"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=root_dir
         )
         return res.returncode == 0 and "true" in res.stdout.lower()
@@ -36,6 +38,8 @@ def get_git_branch(root_dir: str = ".") -> str:
             ["git", "branch", "--show-current"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=root_dir
         )
         return res.stdout.strip() or "HEAD"
@@ -54,6 +58,8 @@ def get_git_status(root_dir: str = ".") -> Dict[str, Any]:
             ["git", "status", "--porcelain"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=root_dir
         )
         lines = [l.strip() for l in res.stdout.splitlines() if l.strip()]
@@ -73,7 +79,14 @@ def get_git_diff(staged: bool = False, root_dir: str = ".") -> str:
 
     cmd = ["git", "diff", "--cached"] if staged else ["git", "diff"]
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, cwd=root_dir)
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=root_dir
+        )
         return res.stdout.strip() or "<no git diff output>"
     except Exception as e:
         return f"Error executing git diff: {str(e)}"
@@ -117,12 +130,21 @@ def run_git_commit(message: str, add_all: bool = True, root_dir: str = ".") -> T
 
     try:
         if add_all:
-            subprocess.run(["git", "add", "-A"], check=True, cwd=root_dir)
+            subprocess.run(
+                ["git", "add", "-A"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=root_dir
+            )
 
         res = subprocess.run(
             ["git", "commit", "-m", message],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=root_dir
         )
         if res.returncode == 0:
@@ -149,7 +171,14 @@ def run_git_push(
         cmd.append("--force-with-lease")
 
     try:
-        res = subprocess.run(cmd, capture_output=True, text=True, cwd=root_dir)
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=root_dir
+        )
         if res.returncode == 0:
             output = res.stdout.strip() or res.stderr.strip() or "Pushed successfully."
             return True, output
@@ -168,6 +197,8 @@ def create_or_switch_branch(branch_name: str, root_dir: str = ".") -> Tuple[bool
             ["git", "checkout", "-b", branch_name],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=root_dir
         )
         if res.returncode != 0:
@@ -175,6 +206,8 @@ def create_or_switch_branch(branch_name: str, root_dir: str = ".") -> Tuple[bool
                 ["git", "checkout", branch_name],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 cwd=root_dir
             )
         if res.returncode == 0:

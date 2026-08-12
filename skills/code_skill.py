@@ -25,6 +25,8 @@ class PythonExecutionTool(BaseTool):
                 [sys.executable, "-c", code],
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=10
             )
             return {
