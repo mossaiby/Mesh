@@ -227,8 +227,9 @@ class MeshEngine:
 
     async def run(self, script_file: Optional[str] = None, non_interactive: bool = False):
         console.print(
-            f"[brand]Mesh v{__import__('version').__version__}[/brand] — "
-            f"Developed by [accent]Farshid Mossaiby[/accent] ([accent]https://github.com/mossaiby/Mesh[/accent])"
+            f"[brand]⚡ Mesh: A Modern, Modular and Hackable AI Harness[/brand] "
+            f"([dim]v{__import__('version').__version__}[/dim])\n"
+            f"Developed by [accent]Farshid Mossaiby[/accent] ([accent]https://github.com/mossaiby/Mesh[/accent])\n"
         )
         console.print("[dim]Initializing MCP servers...[/dim]")
         

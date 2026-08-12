@@ -1,6 +1,8 @@
-# ⚡ Mesh AI Harness
+# ⚡ Mesh: A Modern, Modular and Hackable AI Harness
 
-A modular, text-based AI CLI harness written in Python. Mesh connects to any OpenAI- or Anthropic-compatible model provider and wraps it with a full agentic toolset: file editing, shell access, web search, MCP servers, sub-agent delegation, persistent memory, and a safety layer that gates risky tool calls — all driven from a single terminal chat loop.
+*Developed by* **Farshid Mossaiby**
+
+A modern, modular and hackable AI CLI harness written in Python. Mesh connects to any OpenAI- or Anthropic-compatible model provider and wraps it with a full agentic toolset: file editing, shell access, web search, MCP servers, sub-agent delegation, persistent memory, and a safety layer that gates risky tool calls — all driven from a single terminal chat loop.
 
 ---
 
@@ -25,22 +27,22 @@ A modular, text-based AI CLI harness written in Python. Mesh connects to any Ope
 ## 🏗️ Architecture Overview
 
 ```
-                         ┌───────────────────────────────────────────┐
-                         │                User (CLI)                 │
-                         └───────────────────────┬───────────────────┘
+                          ┌───────────────────────────────────────────┐
+                          │                User (CLI)                 │
+                          └───────────────────────┬───────────────────┘
                                                   │
-                                        ┌─────────▼─────────┐
-                                        │    MeshEngine      │
-                                        │   (engine.py)       │
-                                        └─────────┬───────────┘
+                                        ┌─────────▼───────┐
+                                        │    MeshEngine   │
+                                        │   (engine.py)   │
+                                        └─────────┬───────┘
                                                   │
-      ┌───────────────┬───────────────┬──────────┼──────────┬───────────────┬────────────────┐
-      │               │               │          │          │               │                │
-┌─────▼─────┐  ┌───────▼──────┐ ┌──────▼─────┐ ┌──▼───┐ ┌────▼─────┐ ┌───────▼──────┐ ┌────────▼────────┐
-│ Providers │  │ Tool Registry│ │  Safety    │ │Skills│ │   MCP    │ │ Sub-Agents   │ │ Memory / Notes  │
-│ (OpenAI/  │  │ & Permissions│ │  Guard     │ │      │ │  Client  │ │ (delegate /  │ │ / Checkpoints /  │
-│ Anthropic)│  │              │ │            │ │      │ │(mcps.json)│ │ squad / etc.)│ │ Reflexion       │
-└───────────┘  └──────────────┘ └────────────┘ └──────┘ └──────────┘ └──────────────┘ └─────────────────┘
+      ┌─────────────────┬──────────────┬──────────┼────────────┬────────────────┬──────────────────┐
+      │                 │              │          │            │                │                  │
+┌─────▼──────┐  ┌───────▼───────┐ ┌────▼───┐ ┌────▼───┐ ┌──────▼──────┐ ┌───────▼───────┐ ┌────────▼────────┐
+│ Providers  │  │ Tool Registry │ │ Safety │ │ Skills │ │    MCP      │ │ Sub-Agents    │ │ Memory / Notes  │
+│ (OpenAI/   │  │ & Permissions │ │ Guard  │ │        │ │   Client    │ │ (delegate /   │ │ / Checkpoints / │
+│ Anthropic) │  │               │ │        │ │        │ │ (mcps.json) │ │ squad / etc.) │ │ Reflexion       │
+└────────────┘  └───────────────┘ └────────┘ └────────┘ └─────────────┘ └───────────────┘ └─────────────────┘
 ```
 
 ---
@@ -285,27 +287,27 @@ Use **`↑` / `↓` Arrow Keys** and **Enter** to make a selection.
 
 ```
 Mesh/
-├── main.py                    # CLI entry point (argparse + asyncio.run)
-├── engine.py                  # MeshEngine: core orchestration loop
-├── config.py                  # ConfigManager and Pydantic config schemas
-├── version.py                 # Central version identifier
-├── theme.py                   # Rich console theme/styling
-├── models.json                # Provider endpoints and model configurations
-├── mcps.json                  # MCP server definitions
-├── skills.json                # Declarative skills configuration
-├── requirements.txt           # Python dependencies
+├── main.py                      # CLI entry point (argparse + asyncio.run)
+├── engine.py                    # MeshEngine: core orchestration loop
+├── config.py                    # ConfigManager and Pydantic config schemas
+├── version.py                   # Central version identifier
+├── theme.py                     # Rich console theme/styling
+├── models.json                  # Provider endpoints and model configurations
+├── mcps.json                    # MCP server definitions
+├── skills.json                  # Declarative skills configuration
+├── requirements.txt             # Python dependencies
 │
-├── compaction.py              # Semantic context window compaction
-├── distill.py                 # Sub-agent proxy output distillation
-├── delegation.py               # Sub-agent task delegation primitives
-├── squad.py                   # Multi-agent task squad pipeline
-├── explore.py                  # Parallel branch-exploration sub-agents
-├── consensus.py                # Multi-perspective consensus workflow
-├── advisor.py                  # Second-opinion advisory workflow
-├── test_loop.py                # Autonomous /loop test-and-repair driver
-├── guard.py                    # LLM-backed tool-call safety guard
-├── modes.py                    # Plan / Build / Review / YOLO mode definitions
-├── hooks.py                    # Lifecycle hook manager
+├── compaction.py                # Semantic context window compaction
+├── distill.py                   # Sub-agent proxy output distillation
+├── delegation.py                # Sub-agent task delegation primitives
+├── squad.py                     # Multi-agent task squad pipeline
+├── explore.py                   # Parallel branch-exploration sub-agents
+├── consensus.py                 # Multi-perspective consensus workflow
+├── advisor.py                   # Second-opinion advisory workflow
+├── test_loop.py                 # Autonomous /loop test-and-repair driver
+├── guard.py                     # LLM-backed tool-call safety guard
+├── modes.py                     # Plan / Build / Review / YOLO mode definitions
+├── hooks.py                     # Lifecycle hook manager
 ├── checkpoint.py                # Session checkpoint save/fork/restore
 ├── file_history.py              # File-edit history & undo tracking
 ├── reflexion.py                 # Cross-session error-lesson distillation
@@ -313,16 +315,16 @@ Mesh/
 ├── memory_search.py             # Semantic search over persistent memory
 ├── project_rules.py             # Workspace project-rules loader
 ├── repo_map.py                  # Tree-sitter-based repository map generator
-├── symbol_search.py              # Symbol indexer used by repo_map
-├── context_mentions.py           # @-mention context resolution
-├── git_workflow.py               # Higher-level Git workflow helpers
-├── jobs.py                       # Background job manager
-├── router.py                     # Auto-routing model selection
-├── pricing.py                    # Token/cost accounting
-├── python_executor.py            # Sandboxed Python execution helper
-├── repair.py                     # Auto-repair helper utilities
-├── tool_synthesis.py             # Dynamic tool synthesis
-├── terminal_ui.py                 # Interactive arrow-key menus
+├── symbol_search.py             # Symbol indexer used by repo_map
+├── context_mentions.py          # @-mention context resolution
+├── git_workflow.py              # Higher-level Git workflow helpers
+├── jobs.py                      # Background job manager
+├── router.py                    # Auto-routing model selection
+├── pricing.py                   # Token/cost accounting
+├── python_executor.py           # Sandboxed Python execution helper
+├── repair.py                    # Auto-repair helper utilities
+├── tool_synthesis.py            # Dynamic tool synthesis
+├── terminal_ui.py               # Interactive arrow-key menus
 │
 ├── providers/
 │   ├── openai_provider.py       # Async OpenAI-compatible client wrapper
@@ -332,42 +334,42 @@ Mesh/
 │   └── stream_renderer.py       # Rich Markdown & CoT streaming renderer
 │
 ├── mcp/
-│   └── client.py                 # Native stdio/URL MCP client
+│   └── client.py                # Native stdio/URL MCP client
 │
 ├── tools/
-│   ├── base.py                   # BaseTool class with dynamic schema injection
-│   ├── registry.py               # Central tool execution & proxy dispatcher
-│   ├── permissions.py            # PermissionManager & directory authorization
-│   ├── native_tools.py           # read_file, write_file, edit_file, hash_edit, glob_files, shell
-│   ├── web_tools.py              # Key-less web_search (DDG) & web_fetch
-│   ├── memory_tool.py            # Key-value memory tool
-│   ├── note_tool.py              # notes.md manager tool
-│   ├── todo_tool.py              # Multi-step task tracking tool
-│   ├── goal_tool.py              # Session goal tool
-│   ├── job_tool.py               # Background job tool
-│   ├── git_tool.py               # git_status/diff/commit/push/branch tools
-│   ├── ask_tool.py               # Interactive human-in-the-loop tool
-│   ├── delegate_tool.py          # Sub-agent delegation tool
-│   ├── explore_tool.py           # Branch-exploration tool
-│   ├── consensus_tool.py         # Consensus workflow tool
-│   ├── advisor_tool.py           # Advisor workflow tool
-│   └── symbol_tool.py            # Symbol search tool
+│   ├── base.py                  # BaseTool class with dynamic schema injection
+│   ├── registry.py              # Central tool execution & proxy dispatcher
+│   ├── permissions.py           # PermissionManager & directory authorization
+│   ├── native_tools.py          # read_file, write_file, edit_file, hash_edit, glob_files, shell
+│   ├── web_tools.py             # Key-less web_search (DDG) & web_fetch
+│   ├── memory_tool.py           # Key-value memory tool
+│   ├── note_tool.py             # notes.md manager tool
+│   ├── todo_tool.py             # Multi-step task tracking tool
+│   ├── goal_tool.py             # Session goal tool
+│   ├── job_tool.py              # Background job tool
+│   ├── git_tool.py              # git_status/diff/commit/push/branch tools
+│   ├── ask_tool.py              # Interactive human-in-the-loop tool
+│   ├── delegate_tool.py         # Sub-agent delegation tool
+│   ├── explore_tool.py          # Branch-exploration tool
+│   ├── consensus_tool.py        # Consensus workflow tool
+│   ├── advisor_tool.py          # Advisor workflow tool
+│   └── symbol_tool.py           # Symbol search tool
 │
 ├── skills/
-│   ├── base.py                   # Skill base class definition
-│   ├── registry.py               # Skill manager & instruction composer
-│   └── code_skill.py             # Python coding skill implementation
+│   ├── base.py                  # Skill base class definition
+│   ├── registry.py              # Skill manager & instruction composer
+│   └── code_skill.py            # Python coding skill implementation
 │
 └── commands/
-    ├── registry.py                # Slash command registry & dispatcher
-    ├── agent_commands.py          # /agent, /loop, /jobs, /guard, /mode
-    ├── model_commands.py          # /models, /switch
-    ├── session_commands.py        # /cd, /shell, /python, /goal, /note, /memory,
-    │                               #   /dream, /script, /project, /reflexion,
-    │                               #   /checkpoint, /diff, /git
-    └── system_commands.py         # /help, /status, /config, /context, /system,
-                                    #   /tools, /skills, /dirs, /mcps, /compact,
-                                    #   /clear, /retry, /debug, /exit
+    ├── registry.py              # Slash command registry & dispatcher
+    ├── agent_commands.py        # /agent, /loop, /jobs, /guard, /mode
+    ├── model_commands.py        # /models, /switch
+    ├── session_commands.py      # /cd, /shell, /python, /goal, /note, /memory,
+    │                            #   /dream, /script, /project, /reflexion,
+    │                            #   /checkpoint, /diff, /git
+    └── system_commands.py       # /help, /status, /config, /context, /system,
+                                 #   /tools, /skills, /dirs, /mcps, /compact,
+                                 #   /clear, /retry, /debug, /exit
 ```
 
 ---
