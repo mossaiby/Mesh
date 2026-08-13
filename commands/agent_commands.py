@@ -21,7 +21,7 @@ async def cmd_agent(engine: Any, args: List[str]):
             console.print("  • [label]consensus[/label]: Adversarial multi-model audit (/agent consensus <q> | <proposal>)")
             console.print("  • [label]delegate[/label]: Hand task to an autonomous sub-agent (/agent delegate <task>)")
             console.print("  • [label]advisor[/label]: Consult second opinion (/agent advisor <question> | /agent advisor model [<key>])")
-            console.print("\nUsage: [warning]/agent explore <task>[/warning] | [warning]/agent squad <task>[/warning] | [warning]/agent consensus <q> \| <p>[/warning] | [warning]/agent delegate <task>[/warning] | [warning]/agent advisor <q>[/warning]\n")
+            console.print("\nUsage: [warning]/agent explore <task>[/warning] | [warning]/agent squad <task>[/warning] | [warning]/agent consensus <q> | <p>[/warning] | [warning]/agent delegate <task>[/warning] | [warning]/agent advisor <q>[/warning]\n")
             return
 
         sub = args[0].lower()
