@@ -95,7 +95,7 @@
       "name": "Gemma 4 E4B",
       "provider": "lmstudio",
       "model_id": "google/gemma-4-e4b",
-      "context_window": 131072,
+      "context_window": 8192,
       "tags": [
         "local",
         "fast",
@@ -107,7 +107,7 @@
       "name": "MiniCPM5 1B",
       "provider": "lmstudio",
       "model_id": "minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
-      "context_window": 131072,
+      "context_window": 4096,
       "tags": [
         "local",
         "fast",

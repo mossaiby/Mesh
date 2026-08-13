@@ -1,5 +1,6 @@
 import asyncio
 import fnmatch
+import re
 import sys
 from typing import List, Optional, Any
 from rich.live import Live
@@ -7,6 +8,20 @@ from rich.text import Text
 from providers import fetch_models_details
 from tools.ask_tool import _read_single_key
 from theme import console
+
+
+COMMON_CONTEXT_SIZES = [
+    (8192, "8,192 tokens (8K)"),
+    (16384, "16,384 tokens (16K)"),
+    (32768, "32,768 tokens (32K)"),
+    (65536, "65,536 tokens (64K)"),
+    (128000, "128,000 tokens (128K)"),
+    (200000, "200,000 tokens (200K)"),
+    (262144, "262,144 tokens (256K)"),
+    (524288, "524,288 tokens (512K)"),
+    (1000000, "1,000,000 tokens (1M)"),
+    (2097152, "2,097,152 tokens (2M)"),
+]
 
 
 def _interactive_item_picker(items: List[str], title: str) -> Optional[str]:
@@ -92,138 +107,151 @@ def _infer_tags_for_model(model_id: str) -> List[str]:
     return tags
 
 
+async def infer_context_window(
+    model_id: str,
+    provider: str,
+    explicit_ctx: Optional[int] = None,
+    discovered_ctx: Optional[int] = None,
+    config_mgr: Optional[Any] = None
+) -> int:
+    """
+    Determines context window size using a clean multi-layer resolution strategy:
+    1. Explicit user argument override
+    2. Endpoint discovery metadata
+    3. Dynamic web search verification fallback
+    4. Interactive menu selection (8K to 2M tokens)
+    """
+    # 1. Explicit user CLI argument
+    if explicit_ctx and explicit_ctx > 0:
+        return explicit_ctx
+
+    # 2. Endpoint discovery metadata
+    if discovered_ctx and discovered_ctx > 0:
+        return discovered_ctx
+
+    # 3. Dynamic Web Search Verification Fallback
+    if config_mgr:
+        try:
+            from tools.web_tools import WebSearchTool
+            search_tool = WebSearchTool(config_mgr)
+            query = f"{model_id} context window size tokens"
+            res = await search_tool.execute(query=query, max_results=3)
+            results = res.get("results", [])
+            for item in results:
+                snippet = (item.get("snippet", "") + " " + item.get("title", "")).lower()
+                match = re.search(r'(\d+[\d,]*)\s*(?:token|context|k\b)', snippet)
+                if match:
+                    raw_num = match.group(1).replace(",", "")
+                    num_val = int(float(raw_num[:-1]) * 1000) if raw_num.endswith("k") else int(raw_num)
+                    if num_val in (8192, 16384, 32768, 65536, 128000, 200000, 262144, 524288, 1000000, 2097152):
+                        return num_val
+        except Exception:
+            pass
+
+    # 4. Interactive User Selection Menu (8K to 2M)
+    loop = asyncio.get_running_loop()
+    menu_items = [label for _, label in COMMON_CONTEXT_SIZES]
+    prompt_title = f"Select Context Window Size for Model '{model_id}'"
+    
+    selected_label = await loop.run_in_executor(
+        None,
+        lambda: _interactive_item_picker(menu_items, prompt_title)
+    )
+
+    if selected_label:
+        for size_val, label in COMMON_CONTEXT_SIZES:
+            if selected_label == label:
+                return size_val
+
+    # Fallback default if menu cancelled
+    return 128000
+
+
 async def cmd_models(engine: Any, args: List[str]):
     sub = args[0].lower() if args else ""
 
     if sub == "add":
-        loop = asyncio.get_running_loop()
-
-        if len(args) >= 3:
-            p_key = args[1].lower()
-            pattern = args[2]
-
-            if p_key not in engine.config_mgr.config.providers:
-                console.print(f"[error]Unknown provider '{p_key}'. Configured providers: {', '.join(engine.config_mgr.config.providers.keys())}[/error]")
-                return
-
-            p_cfg = engine.config_mgr.config.providers[p_key]
-
-            console.print(f"[brand]🔍 Fetching model metadata from {p_cfg.name} matching pattern '{pattern}'...[/brand]")
-            success, model_details, err = await fetch_models_details(p_cfg, timeout=engine.config_mgr.config.timeouts.api)
-
-            if not success or not model_details:
-                console.print(f"[error]Failed to discover models from {p_cfg.name}: {err}[/error]")
-                return
-
-            pat_lower = pattern.lower()
-            if any(c in pattern for c in "*?[]"):
-                matching_models = [m for m in model_details if fnmatch.fnmatch(m["id"].lower(), pat_lower)]
-            else:
-                matching_models = [m for m in model_details if pat_lower in m["id"].lower()]
-
-            if not matching_models:
-                matching_models = [{"id": pattern, "name": pattern.split("/")[-1].title(), "context_window": None, "description": ""}]
-
-            configured_keys = set(engine.config_mgr.config.models.keys())
-            added_count = 0
-            skipped_count = 0
-
-            for m_info in matching_models:
-                m_id = m_info["id"]
-                model_key = f"{p_key}:{m_id}"
-                if model_key in configured_keys:
-                    skipped_count += 1
-                    continue
-
-                default_ctx = m_info.get("context_window") or (128000 if ("groq" in p_key or "openrouter" in p_key) else 8192)
-                tags = _infer_tags_for_model(m_id)
-                desc = m_info.get("description") or f"{m_info.get('name', m_id)} via {p_cfg.name}"
-
-                engine.config_mgr.add_model(
-                    key=model_key,
-                    provider=p_key,
-                    model_id=m_id,
-                    name=m_info.get("name"),
-                    context_window=default_ctx,
-                    tags=tags,
-                    description=desc
-                )
-                console.print(f"  [success]✔ Added:[/success] [label]{model_key}[/label] ([dim]{m_id}[/dim] - {default_ctx} tokens)")
-                added_count += 1
-
-            if added_count > 0:
-                console.print(f"\n[success]Successfully added {added_count} model(s) matching '{pattern}' to config.json![/success]")
-                if skipped_count > 0:
-                    console.print(f"[dim]({skipped_count} model(s) were already configured)[/dim]\n")
-            elif skipped_count > 0:
-                console.print(f"[warning]All {skipped_count} model(s) matching '{pattern}' are already configured in config.json.[/warning]\n")
-            else:
-                console.print(f"[warning]No models found matching pattern '{pattern}' from {p_cfg.name}.[/warning]\n")
-
+        if len(args) == 1:
+            providers_str = ", ".join(engine.config_mgr.config.providers.keys())
+            console.print(
+                "[error]Usage: /models add <provider> [<pattern>] [<context_window>][/error]\n"
+                f"Configured providers: [accent]{providers_str}[/accent]\n"
+                "Examples: [warning]/models add groq *[/warning] | "
+                "[warning]/models add openrouter *free*[/warning] | "
+                "[warning]/models add lmstudio google/gemma-4-e4b 32768[/warning]\n"
+            )
             return
 
-        providers = list(engine.config_mgr.config.providers.keys())
-        if not providers:
-            console.print("[error]No providers configured in config.json.[/error]")
+        p_key = args[1].lower()
+        pattern = args[2] if len(args) >= 3 else "*"
+        explicit_ctx = int(args[3]) if len(args) >= 4 and args[3].isdigit() else None
+
+        if p_key not in engine.config_mgr.config.providers:
+            console.print(f"[error]Unknown provider '{p_key}'. Configured providers: {', '.join(engine.config_mgr.config.providers.keys())}[/error]")
             return
 
-        selected_provider = await loop.run_in_executor(
-            None, 
-            lambda: _interactive_item_picker(providers, "Select a Provider to Discover & Add Models")
-        )
-        if not selected_provider or selected_provider not in engine.config_mgr.config.providers:
-            return
+        p_cfg = engine.config_mgr.config.providers[p_key]
 
-        p_cfg = engine.config_mgr.config.providers[selected_provider]
-        console.print(f"[brand]🔍 Fetching available models from {p_cfg.name}...[/brand]")
-
+        console.print(f"[brand]🔍 Fetching model metadata from {p_cfg.name} matching pattern '{pattern}'...[/brand]")
         success, model_details, err = await fetch_models_details(p_cfg, timeout=engine.config_mgr.config.timeouts.api)
+
         if not success or not model_details:
             console.print(f"[error]Failed to discover models from {p_cfg.name}: {err}[/error]")
             return
 
-        configured_model_ids = {m.model_id for m in engine.config_mgr.config.models.values()}
-        unconfigured_details = [m for m in model_details if m["id"] not in configured_model_ids]
+        pat_lower = pattern.lower()
+        if any(c in pattern for c in "*?[]"):
+            matching_models = [m for m in model_details if fnmatch.fnmatch(m["id"].lower(), pat_lower)]
+        else:
+            matching_models = [m for m in model_details if pat_lower in m["id"].lower()]
 
-        if not unconfigured_details:
-            console.print(f"[warning]All {len(model_details)} models discovered from {p_cfg.name} are already configured![/warning]")
-            return
+        if not matching_models and pattern != "*":
+            matching_models = [{"id": pattern, "name": pattern.split("/")[-1].title(), "context_window": None, "description": ""}]
 
-        unconfigured_ids = [m["id"] for m in unconfigured_details]
-        selected_model_id = await loop.run_in_executor(
-            None, 
-            lambda: _interactive_item_picker(unconfigured_ids, f"Select a Discovered Model to Add from {p_cfg.name}")
-        )
-        if not selected_model_id:
-            return
+        configured_keys = set(engine.config_mgr.config.models.keys())
+        added_count = 0
+        skipped_count = 0
 
-        m_info = next((m for m in unconfigured_details if m["id"] == selected_model_id), {})
-        default_ctx = m_info.get("context_window") or (128000 if ("groq" in selected_provider or "openrouter" in selected_provider) else 8192)
-        model_key = f"{selected_provider}:{selected_model_id}"
-        tags = _infer_tags_for_model(selected_model_id)
-        desc = m_info.get("description") or f"{m_info.get('name', selected_model_id)} via {p_cfg.name}"
+        for m_info in matching_models:
+            m_id = m_info["id"]
+            model_key = f"{p_key}:{m_id}"
+            if model_key in configured_keys:
+                skipped_count += 1
+                continue
 
-        try:
+            discovered_ctx = m_info.get("context_window")
+            final_ctx = await infer_context_window(
+                model_id=m_id,
+                provider=p_key,
+                explicit_ctx=explicit_ctx,
+                discovered_ctx=discovered_ctx,
+                config_mgr=engine.config_mgr
+            )
+
+            tags = _infer_tags_for_model(m_id)
+            desc = m_info.get("description") or f"{m_info.get('name', m_id)} via {p_cfg.name}"
+
             engine.config_mgr.add_model(
                 key=model_key,
-                provider=selected_provider,
-                model_id=selected_model_id,
+                provider=p_key,
+                model_id=m_id,
                 name=m_info.get("name"),
-                context_window=default_ctx,
+                context_window=final_ctx,
                 tags=tags,
                 description=desc
             )
-            console.print(f"\n[success]Successfully added model '[label]{model_key}[/label]' ({selected_model_id}) to config.json![/success]")
-            
-            switch_choice = await loop.run_in_executor(
-                None,
-                lambda: _interactive_item_picker(["Yes, switch active model now", "No, keep current active model"], f"Switch active model to {model_key}?")
-            )
-            if switch_choice and switch_choice.startswith("Yes"):
-                engine.config_mgr.set_active_model(model_key)
-                console.print(f"[success]Switched active model to: [label]{model_key}[/label][/success]")
-        except Exception as e:
-            console.print(f"[error]Failed to add model: {e}[/error]")
+            console.print(f"  [success]✔ Added:[/success] [label]{model_key}[/label] ([dim]{m_id}[/dim] - [accent]{final_ctx:,}[/accent] tokens context)")
+            added_count += 1
+
+        if added_count > 0:
+            console.print(f"\n[success]Successfully added {added_count} model(s) matching '{pattern}' to config.json![/success]")
+            if skipped_count > 0:
+                console.print(f"[dim]({skipped_count} model(s) were already configured)[/dim]\n")
+        elif skipped_count > 0:
+            console.print(f"[warning]All {skipped_count} model(s) matching '{pattern}' are already configured in config.json.[/warning]\n")
+        else:
+            console.print(f"[warning]No models found matching pattern '{pattern}' from {p_cfg.name}.[/warning]\n")
+
         return
 
     elif sub in ("discover", "fetch", "list-remote"):
@@ -263,7 +291,8 @@ async def cmd_models(engine: Any, args: List[str]):
                     for m_info in model_details[:30]:
                         m_id = m_info["id"]
                         configured_tag = " [accent](configured)[/accent]" if m_id in configured_model_ids else ""
-                        ctx_str = f" ({m_info['context_window']} tokens)" if m_info.get("context_window") else ""
+                        ctx_val = m_info.get("context_window")
+                        ctx_str = f" ({ctx_val:,} tokens)" if ctx_val else ""
                         console.print(f"    - [text]{m_id}[/text]{ctx_str}{configured_tag}")
                     if len(model_details) > 30:
                         console.print(f"    [dim]... (+{len(model_details) - 30} more models)[/dim]")
@@ -271,7 +300,7 @@ async def cmd_models(engine: Any, args: List[str]):
             else:
                 console.print(f"  [error]Discovery failed:[/error] {err}\n")
 
-        console.print("Tip: Run [warning]/models add[/warning] to interactively pick or batch-add models (e.g. /models add openrouter *free*).\n")
+        console.print("Tip: Run [warning]/models add <provider> [<pattern>][/warning] to add models (e.g. /models add openrouter *free*).\n")
         return
 
     cfg = engine.config_mgr.config
@@ -302,13 +331,13 @@ async def cmd_models(engine: Any, args: List[str]):
         console.print(
             f"{mark} [label]{key}[/label] -> {model_cfg.name} via "
             f"[brand]{provider_name}[/brand] ([dim]{model_cfg.model_id}[/dim]) "
-            f"[dim]— {model_cfg.context_window} token context[/dim]{roles_str}{tags_str}{desc_str}"
+            f"[dim]— {model_cfg.context_window:,} token context[/dim]{roles_str}{tags_str}{desc_str}"
         )
     
     if active == "auto":
         console.print(f"\n[brand]🔀 Active Mode: AUTO-ROUTING[/brand] (using router model: [accent]{cfg.router_model or 'none'}[/accent])")
 
-    console.print("\nUsage: [warning]/models[/warning] | [warning]/models discover [<provider>][/warning] | [warning]/models add [<provider>] [<pattern>][/warning]\n")
+    console.print("\nUsage: [warning]/models[/warning] | [warning]/models discover [<provider>][/warning] | [warning]/models add <provider> [<pattern>] [<context_window>][/warning]\n")
 
 
 async def cmd_switch(engine: Any, args: List[str]):
@@ -407,7 +436,7 @@ async def cmd_switch(engine: Any, args: List[str]):
             nonlocal current_idx
             with Live(render_switch_menu(current_idx), console=console, auto_refresh=False, vertical_overflow="visible") as live:
                 while True:
-                    live.update(render_switch_menu(current_idx), refresh=True)
+                    live.update(render_switch_menu(current_idx), print=True)
                     try:
                         key = _read_single_key()
                     except Exception:
@@ -443,7 +472,7 @@ async def cmd_switch(engine: Any, args: List[str]):
 def register_model_commands(engine: Any):
     engine.cmd_registry.register(
         "models",
-        "List, discover, or add models: /models [discover|add] [<provider>] [<pattern>]",
+        "List, discover, or add models: /models [discover|add] [<provider>] [<pattern>] [<context_window>]",
         lambda args: cmd_models(engine, args),
         category="Models & Settings"
     )

@@ -210,7 +210,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
             if current_arg_index == 1:
                 subs = [
                     ("discover", "Query provider endpoints for offered models"),
-                    ("add", "Interactively pick or batch-add models")
+                    ("add", "Add models: /models add <provider> [<pattern>] [<context_window>]")
                 ]
                 for sub, meta in subs:
                     if sub.startswith(current_word.lower()):
@@ -222,6 +222,26 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                     for p in providers:
                         if p.lower().startswith(current_word.lower()):
                             yield Completion(p, start_position=-len(current_word))
+            elif current_arg_index == 3:
+                word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
+                if word1 == "add":
+                    patterns = [
+                        ("*", "All available models"),
+                        ("*free*", "Free tier models"),
+                        ("*coding*", "Coding models"),
+                        ("*reasoning*", "Reasoning / thinking models"),
+                        ("*vision*", "Vision-capable models")
+                    ]
+                    for pat, meta in patterns:
+                        if pat.startswith(current_word.lower()):
+                            yield Completion(pat, start_position=-len(current_word), display_meta=meta)
+            elif current_arg_index == 4:
+                word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
+                if word1 == "add":
+                    sizes = ["8192", "16384", "32768", "65536", "128000", "200000", "262144", "524288", "1000000", "2097152"]
+                    for sz in sizes:
+                        if sz.startswith(current_word):
+                            yield Completion(sz, start_position=-len(current_word), display_meta=f"{int(sz):,} tokens")
             return
 
         # --- /switch ---
