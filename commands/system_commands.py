@@ -7,6 +7,7 @@ from compaction import compact_messages, estimate_tokens
 import symbol_search
 import project_rules
 import hooks
+import jobs
 from theme import console
 from version import __version__
 
@@ -262,13 +263,11 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
         console.print(f"[error]Invalid value '{raw_val}'. Expected type: {val_type.__name__}.[/error]")
         return
 
-    # Update config model
     if sub_attr:
         setattr(getattr(cfg, container_attr), sub_attr, typed_val)
     else:
         setattr(cfg, container_attr, typed_val)
 
-    # Sync dependent runtime engines & settings
     if category == "turns" and param == "depth":
         cfg.max_delegation_depth = typed_val
     elif category == "repair":
@@ -755,11 +754,14 @@ async def cmd_debug(engine: Any, args: List[str]):
 
 async def cmd_exit(engine: Any, args: List[str]):
     console.print("[warning]Closing MCP connections and exiting. Goodbye![/warning]")
+    if engine.session_manager.active_session_name:
+        engine.session_manager.save_session()
     try:
+        await jobs.job_manager.stop_all()
         await asyncio.wait_for(engine.mcp_manager.close_all(), timeout=3.0)
     except Exception:
         pass
-    sys.exit(0)
+    engine.is_running = False
 
 
 def register_system_commands(engine: Any):

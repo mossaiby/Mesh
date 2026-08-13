@@ -99,6 +99,7 @@ class MeshEngine:
         self.debug_mode: bool = False
         self.subagent_distiller.debug_mode = self.debug_mode
         self.tools_enabled: bool = True
+        self.is_running: bool = False
         self.current_mode: str = modes.DEFAULT_MODE
         self._pre_yolo_guard_autonomy: Optional[str] = None
         self._pre_yolo_permission_auto_approve: Optional[bool] = None
@@ -245,12 +246,10 @@ class MeshEngine:
             f"Developed by [accent]Farshid Mossaiby[/accent] ([accent]https://github.com/mossaiby/Mesh[/accent])\n"
         )
 
-        # Process logging CLI argument
         if log_file is not None:
             self.session_logger.enable(filepath=log_file)
-            console.print(f"[success]Session logging ENABLED -> `{self.session_logger.filepath}`[/success]")
+            console.print(f"[success]Session Markdown logging ENABLED -> `{self.session_logger.filepath}`[/success]")
 
-        # Process session save/resume CLI argument
         if resume_latest:
             latest = self.session_manager.get_latest_session_name()
             if latest:
@@ -273,20 +272,25 @@ class MeshEngine:
             await self.run_script_file(script_file)
             if non_interactive:
                 console.print("\n[warning]Script execution complete in non-interactive mode. Exiting...[/warning]")
-                await self.cmd_registry.dispatch("/exit")
+                if self.session_manager.active_session_name:
+                    self.session_manager.save_session()
+                await jobs.job_manager.stop_all()
+                await asyncio.wait_for(self.mcp_manager.close_all(), timeout=3.0)
+                return
 
         console.print("[brand]Ready.[/brand] Type [warning]/help[/warning] for commands or start chatting.\n")
         
-        while True:
+        self.is_running = True
+        while self.is_running:
             try:
                 user_input = await self.prompt_session.get_input_async()
                 if not user_input:
                     continue
                 if user_input.lower() in ["exit", "quit", "/exit"]:
-                    if self.session_manager.active_session_name:
-                        self.session_manager.save_session()
-                    await jobs.job_manager.stop_all()
                     await self.cmd_registry.dispatch("/exit")
+                    if not self.is_running:
+                        break
+                    continue
 
                 if user_input.startswith("!"):
                     cmd_text = user_input[1:].strip()
@@ -300,6 +304,8 @@ class MeshEngine:
 
                 if self.cmd_registry.is_command(user_input):
                     handled = await self.cmd_registry.dispatch(user_input)
+                    if not self.is_running:
+                        break
                     if not handled:
                         console.print("[error]Unknown command. Type /help for options.[/error]")
                     continue
@@ -320,6 +326,7 @@ class MeshEngine:
                     await asyncio.wait_for(self.mcp_manager.close_all(), timeout=2.0)
                 except Exception:
                     pass
+                self.is_running = False
                 break
 
     async def process_inference(self, pre_prompt_count: Optional[int] = None):
@@ -328,7 +335,7 @@ class MeshEngine:
         rollback_count = pre_prompt_count if pre_prompt_count is not None else max(0, len(self.messages) - 1)
 
         try:
-            while current_turn < max_turns:
+            while current_turn < max_turns and self.is_running:
                 current_turn += 1
 
                 if self.config_mgr.config.active_model == "auto":
