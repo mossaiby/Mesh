@@ -60,6 +60,13 @@ class CompactionSettings(BaseModel):
     minkeep: int = 2
 
 
+class LoggingConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    enabled: bool = False
+    filepath: str = "session.md"
+
+
 class ProviderConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -115,6 +122,7 @@ class MeshConfig(BaseModel):
     turns: TurnsConfig = Field(default_factory=TurnsConfig)
     repair_settings: RepairConfig = Field(default_factory=RepairConfig)
     compaction_settings: CompactionSettings = Field(default_factory=CompactionSettings)
+    logging: LoggingConfig = Field(default_factory=LoggingConfig)
 
     providers: Dict[str, ProviderConfig] = Field(default_factory=dict)
     models: Dict[str, ModelConfig] = Field(default_factory=dict)
@@ -133,14 +141,12 @@ class ConfigManager:
             data = json.load(f)
 
         cfg = MeshConfig(**data)
-        # Sync max_delegation_depth with turns.depth
         if cfg.turns.depth != cfg.max_delegation_depth:
             cfg.turns.depth = cfg.max_delegation_depth
         apply_network_proxy(cfg.network_proxy)
         return cfg
 
     def save(self) -> None:
-        # Keep turns.depth and max_delegation_depth in sync
         self.config.max_delegation_depth = self.config.turns.depth
         apply_network_proxy(self.config.network_proxy)
         with open(self.filepath, "w", encoding="utf-8") as f:
@@ -193,7 +199,6 @@ class ConfigManager:
         tags: Optional[List[str]] = None,
         description: Optional[str] = None
     ) -> None:
-        """Adds or updates a model entry in config.json."""
         if provider not in self.config.providers:
             raise KeyError(f"Provider '{provider}' not found in providers configuration.")
 

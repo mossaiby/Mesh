@@ -44,6 +44,10 @@
   "compaction_settings": {
     "minkeep": 2
   },
+  "logging": {
+    "enabled": false,
+    "filepath": "c:\\temp\\testlog.md"
+  },
   "providers": {
     "openai": {
       "name": "OpenAI Official",

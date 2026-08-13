@@ -1,0 +1,9 @@
+{
+  "events": [
+    {
+      "type": "tool_failure",
+      "details": "Tool 'web_fetch' failed with args {\"url\":\"https://www.mossaiby.ir/\"}: {\"error\": \"Failed to fetch URL 'https://www.mossaiby.ir/': [SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: Hostname mismatch, certificate is not valid for 'www.mossaiby.ir'. (_ssl.c:1006)\"}"
+    }
+  ],
+  "lessons": []
+}

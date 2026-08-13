@@ -62,7 +62,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
     """
     Context-aware completion engine for Mesh: autocompletes slash commands,
     positional subcommands, model keys, operating modes, background jobs,
-    memory keys, config parameter categories & values, and local filesystem paths.
+    memory keys, session names, config parameters, and local filesystem paths.
     """
     def __init__(self, mesh_instance: Any):
         self.mesh = mesh_instance
@@ -90,7 +90,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
         cmd0 = raw_words[0].lower() if raw_words else ""
 
         # -------------------------------------------------------------
-        # 1. `@` Mention Path Completion (available anywhere in prompt)
+        # 1. `@` Mention Path Completion
         # -------------------------------------------------------------
         if "@" in text:
             at_idx = text.rfind("@")
@@ -105,7 +105,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
             return
 
         # -------------------------------------------------------------
-        # 2. Command Name Completion (current_arg_index == 0)
+        # 2. Command Name Completion
         # -------------------------------------------------------------
         if current_arg_index == 0:
             if current_word.startswith("/"):
@@ -122,6 +122,49 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
         # -------------------------------------------------------------
         # 3. Context-Aware Subcommand & Argument Completions
         # -------------------------------------------------------------
+
+        # --- /log ---
+        if cmd0 == "/log":
+            if current_arg_index == 1:
+                subs = [
+                    ("on", "Enable Markdown session logging"),
+                    ("off", "Disable Markdown session logging"),
+                    ("status", "Show logging status and file path")
+                ]
+                for sub, meta in subs:
+                    if sub.startswith(current_word.lower()):
+                        yield Completion(sub, start_position=-len(current_word), display_meta=meta)
+
+                for full_text, display, meta in get_path_completions(current_word):
+                    yield Completion(full_text, start_position=-len(current_word), display=display, display_meta=meta)
+            elif current_arg_index == 2:
+                word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
+                if word1 == "on":
+                    for full_text, display, meta in get_path_completions(current_word):
+                        yield Completion(full_text, start_position=-len(current_word), display=display, display_meta=meta)
+            return
+
+        # --- /session ---
+        if cmd0 == "/session":
+            if current_arg_index == 1:
+                subs = [
+                    ("save", "Save state to disk under sessions/"),
+                    ("load", "Load state from disk"),
+                    ("list", "List all saved disk sessions"),
+                    ("delete", "Delete saved disk session")
+                ]
+                for sub, meta in subs:
+                    if sub.startswith(current_word.lower()):
+                        yield Completion(sub, start_position=-len(current_word), display_meta=meta)
+            elif current_arg_index == 2:
+                word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
+                if word1 in ("load", "restore", "delete"):
+                    sessions = self.mesh.session_manager.list_sessions()
+                    for s in sessions:
+                        s_name = s["name"]
+                        if s_name.lower().startswith(current_word.lower()):
+                            yield Completion(s_name, start_position=-len(current_word), display_meta=f"{s['messages_count']} msgs ({s['saved_at']})")
+            return
 
         # --- /debug ---
         if cmd0 == "/debug":
@@ -499,7 +542,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                         yield Completion(clean_c, start_position=-len(current_word))
             return
 
-        # --- Path-based Commands (/cd, /script, /shell, !, /python, #, /loop) ---
+        # --- Path-based Commands ---
         if cmd0 in ("/cd", "/script", "/shell", "!", "/python", "#", "/loop") or current_word.startswith(("./", "../", "/", "~")):
             for full_text, display, meta in get_path_completions(current_word):
                 yield Completion(
@@ -510,7 +553,6 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                 )
             return
 
-        # Fallback: path completions if typing a token with path separators
         if "/" in current_word or "\\" in current_word:
             for full_text, display, meta in get_path_completions(current_word):
                 yield Completion(

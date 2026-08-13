@@ -48,6 +48,8 @@ import router
 import distill
 import repair
 import hooks
+from session_logger import SessionLogger
+from session_manager import SessionManager
 from pricing import pricing_manager
 from checkpoint import CheckpointManager
 from guard import SafetyGuard
@@ -75,6 +77,11 @@ class MeshEngine:
         self.config_mgr = ConfigManager()
         self.renderer = StreamRenderer()
         self.tool_registry = ToolRegistry()
+        self.session_logger = SessionLogger(
+            filepath=self.config_mgr.config.logging.filepath,
+            enabled=self.config_mgr.config.logging.enabled
+        )
+        self.session_manager = SessionManager(self)
         self.subagent_distiller = distill.SubAgentDistiller(self.config_mgr)
         self.tool_registry.subagent_distiller = self.subagent_distiller
         self.repair_engine = repair.RepairEngine(self.config_mgr)
@@ -149,7 +156,7 @@ class MeshEngine:
             self.messages = [{"role": "system", "content": full_sys}]
 
     def setup_defaults(self):
-        # 1. Register Base Tools with PermissionManager & ConfigManager
+        # 1. Register Base Tools
         self.tool_registry.register(CalculatorTool())
         self.tool_registry.register(MemoryTool(self.config_mgr))
         self.tool_registry.register(NoteTool())
@@ -178,24 +185,20 @@ class MeshEngine:
         self.tool_registry.register(ConsensusTool(self.config_mgr))
         self.tool_registry.register(SearchSymbolsTool(self.config_mgr))
         
-        # Load any existing dynamic tools from custom_tools/
         tool_synthesis.load_all_custom_tools(self.tool_registry)
-
-        # Index codebase symbols asynchronously on launch
         symbol_search.symbol_indexer.index_directory(".")
 
-        # 2. Register Skills & Load skills.json
+        # 2. Register Skills
         self.skill_registry.register(PythonCodingSkill(self.config_mgr))
         self.skill_registry.load_from_file()
 
-        # 3. Register Command Handlers
+        # 3. Register Commands
         register_system_commands(self)
         register_model_commands(self)
         register_agent_commands(self)
         register_session_commands(self)
 
     async def run_script_file(self, filepath: str):
-        """Reads and executes a script file line-by-line (commands & prompts)."""
         if not os.path.exists(filepath):
             console.print(f"[error]Script file '{filepath}' not found.[/error]")
             return
@@ -225,16 +228,45 @@ class MeshEngine:
                 formatted_input, _ = context_mentions.process_prompt_context_mentions(line, ".")
                 pre_prompt_count = len(self.messages)
                 self.messages.append({"role": "user", "content": formatted_input})
+                self.session_logger.log_user_prompt(formatted_input)
                 await self.process_inference(pre_prompt_count)
 
-    async def run(self, script_file: Optional[str] = None, non_interactive: bool = False):
+    async def run(
+        self,
+        script_file: Optional[str] = None,
+        non_interactive: bool = False,
+        log_file: Optional[str] = None,
+        session_name: Optional[str] = None,
+        resume_latest: bool = False
+    ):
         console.print(
             f"[brand]⚡ Mesh: A Modern, Modular and Hackable AI Harness[/brand] "
             f"([dim]v{__import__('version').__version__}[/dim])\n"
             f"Developed by [accent]Farshid Mossaiby[/accent] ([accent]https://github.com/mossaiby/Mesh[/accent])\n"
         )
+
+        # Process logging CLI argument
+        if log_file is not None:
+            self.session_logger.enable(filepath=log_file)
+            console.print(f"[success]Session logging ENABLED -> `{self.session_logger.filepath}`[/success]")
+
+        # Process session save/resume CLI argument
+        if resume_latest:
+            latest = self.session_manager.get_latest_session_name()
+            if latest:
+                success, msg = self.session_manager.load_session(latest)
+                console.print(f"[{'success' if success else 'error'}]{msg}[/{'success' if success else 'error'}]")
+            else:
+                console.print("[warning]No saved sessions found to resume.[/warning]")
+        elif session_name:
+            if os.path.exists(os.path.join("sessions", f"{session_name}.json")):
+                success, msg = self.session_manager.load_session(session_name)
+                console.print(f"[{'success' if success else 'error'}]{msg}[/{'success' if success else 'error'}]")
+            else:
+                self.session_manager.active_session_name = session_name
+                console.print(f"[success]Active session set to '[accent]{session_name}[/accent]'.[/success]")
+
         console.print("[dim]Initializing MCP servers...[/dim]")
-        
         await self.mcp_manager.initialize_all(self.tool_registry)
 
         if script_file:
@@ -251,16 +283,16 @@ class MeshEngine:
                 if not user_input:
                     continue
                 if user_input.lower() in ["exit", "quit", "/exit"]:
+                    if self.session_manager.active_session_name:
+                        self.session_manager.save_session()
                     await jobs.job_manager.stop_all()
                     await self.cmd_registry.dispatch("/exit")
 
-                # Handle Direct Shell Shortcut ! <command>
                 if user_input.startswith("!"):
                     cmd_text = user_input[1:].strip()
                     await self.cmd_registry.dispatch(f"/shell {cmd_text}")
                     continue
 
-                # Handle Direct Python Shortcut # <code>
                 if user_input.startswith("#"):
                     code_text = user_input[1:].strip()
                     await self.cmd_registry.dispatch(f"/python {code_text}")
@@ -276,10 +308,13 @@ class MeshEngine:
 
                 pre_prompt_count = len(self.messages)
                 self.messages.append({"role": "user", "content": formatted_input})
+                self.session_logger.log_user_prompt(formatted_input)
                 await self.process_inference(pre_prompt_count)
 
             except (KeyboardInterrupt, EOFError):
                 console.print("\n[warning]Exiting...[/warning]")
+                if self.session_manager.active_session_name:
+                    self.session_manager.save_session()
                 try:
                     await jobs.job_manager.stop_all()
                     await asyncio.wait_for(self.mcp_manager.close_all(), timeout=2.0)
@@ -324,6 +359,7 @@ class MeshEngine:
                 self.messages, auto_compacted, compact_details = await maybe_auto_compact(self.messages, self.config_mgr)
                 if auto_compacted:
                     console.print(f"[warning]📑   {compact_details}[/warning]")
+                    self.session_logger.log_system_event(compact_details)
 
                 provider = get_provider(model_cfg, provider_cfg, self.config_mgr)
                 schemas = self.tool_registry.get_schemas() if self.tools_enabled else None
@@ -387,6 +423,9 @@ class MeshEngine:
                     return
 
                 t_end = time.perf_counter()
+
+                if response_text:
+                    self.session_logger.log_assistant_response(response_text, model_name=model_cfg.name)
 
                 if turn_prompt_tokens == 0:
                     turn_prompt_tokens = estimate_tokens(self.messages)
@@ -452,6 +491,8 @@ class MeshEngine:
                         console.print(f"[accent]⚡ Tool Execution Request: {tool_call['name']}({tool_call['args']})[/accent]")
 
                     tool_result = await self.tool_registry.execute(tool_call["name"], tool_call["args"])
+
+                    self.session_logger.log_tool_call(tool_call["name"], tool_call["args"], tool_result)
 
                     if self.debug_mode:
                         console.print(f"[brand]🔧 DEBUG - Tool Execution Result:[/brand]\n{tool_result}")

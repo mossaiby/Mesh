@@ -19,6 +19,94 @@ from python_executor import python_executor
 from theme import console
 
 
+async def cmd_log(engine: Any, args: List[str]):
+    logger = engine.session_logger
+    cfg = engine.config_mgr.config.logging
+
+    if not args:
+        state_str = "[success]ENABLED[/success]" if logger.enabled else "[error]DISABLED[/error]"
+        console.print(
+            f"Session Markdown logging is currently {state_str}.\n"
+            f"Active log file: `{logger.filepath}`\n"
+            f"Usage: [warning]/log on [<path>][/warning] | [warning]/log off[/warning] | [warning]/log status[/warning]"
+        )
+        return
+
+    sub = args[0].lower()
+
+    if sub == "on":
+        target_path = args[1] if len(args) >= 2 else logger.filepath
+        logger.enable(target_path)
+        cfg.enabled = True
+        cfg.filepath = target_path
+        engine.config_mgr.save()
+        console.print(f"[success]Session Markdown logging ENABLED -> `{target_path}`[/success]")
+
+    elif sub == "off":
+        logger.disable()
+        cfg.enabled = False
+        engine.config_mgr.save()
+        console.print("[warning]Session Markdown logging DISABLED.[/warning]")
+
+    elif sub == "status":
+        await cmd_log(engine, [])
+
+    else:
+        # Treat as custom filepath: /log session_2.md
+        logger.enable(sub)
+        cfg.enabled = True
+        cfg.filepath = sub
+        engine.config_mgr.save()
+        console.print(f"[success]Session Markdown logging ENABLED -> `{sub}`[/success]")
+
+
+async def cmd_session(engine: Any, args: List[str]):
+    sm = engine.session_manager
+
+    if not args:
+        active = sm.active_session_name or "none (in-memory)"
+        sessions = sm.list_sessions()
+        console.print(f"\n[success]Disk Sessions Overview (Active: [accent]{active}[/accent]):[/success]\n")
+        if not sessions:
+            console.print("  [dim]No saved disk sessions found in `sessions/`.[/dim]\n")
+        else:
+            for s in sessions:
+                mark = "[accent]*[/accent]" if s["name"] == sm.active_session_name else " "
+                console.print(f"  {mark} [label]{s['name']}[/label] ({s['messages_count']} msgs, Mode: {s['mode']}, Model: {s['model']}) — [dim]{s['saved_at']}[/dim]")
+            console.print()
+        console.print("Usage: [warning]/session save [<name>][/warning] | [warning]/session load <name>[/warning] | [warning]/session list[/warning] | [warning]/session delete <name>[/warning]\n")
+        return
+
+    sub = args[0].lower()
+
+    if sub == "save":
+        target_name = args[1] if len(args) >= 2 else None
+        success, msg = sm.save_session(target_name)
+        console.print(f"[{'success' if success else 'error'}]{msg}[/{'success' if success else 'error'}]")
+
+    elif sub in ("load", "restore"):
+        if len(args) < 2:
+            console.print("[error]Usage: /session load <session_name>[/error]")
+            return
+        target_name = args[1]
+        success, msg = sm.load_session(target_name)
+        console.print(f"[{'success' if success else 'error'}]{msg}[/{'success' if success else 'error'}]")
+
+    elif sub == "list":
+        await cmd_session(engine, [])
+
+    elif sub == "delete":
+        if len(args) < 2:
+            console.print("[error]Usage: /session delete <session_name>[/error]")
+            return
+        target_name = args[1]
+        success, msg = sm.delete_session(target_name)
+        console.print(f"[{'success' if success else 'error'}]{msg}[/{'success' if success else 'error'}]")
+
+    else:
+        console.print("[error]Usage: /session [save|load|list|delete] [<args>][/error]")
+
+
 async def cmd_cd(engine: Any, args: List[str]):
     if not args:
         console.print(f"Current Working Directory: [accent]{os.getcwd()}[/accent]\nUsage: [warning]/cd <path>[/warning]\n")
@@ -35,14 +123,11 @@ async def cmd_cd(engine: Any, args: List[str]):
         os.chdir(resolved_path)
         new_cwd = str(resolved_path)
 
-        # Update allowed_dirs: remove old CWD, add new CWD
         if old_cwd in engine.permission_manager.allowed_dirs:
             engine.permission_manager.allowed_dirs.remove(old_cwd)
         engine.permission_manager.add_dir(new_cwd)
 
         console.print(f"[success]✔ Changed CWD to:[/success] [accent]{new_cwd}[/accent]")
-
-        # Reload workspace project context, AST symbols, and Repo Map
         engine.reload_project_context()
 
     except Exception as e:
@@ -587,3 +672,5 @@ def register_session_commands(engine: Any):
     engine.cmd_registry.register("checkpoint", "Save, fork, restore, or list session checkpoints: /checkpoint [save|fork|restore|list] <args>", lambda args: cmd_checkpoint(engine, args), category="Session & System")
     engine.cmd_registry.register("diff", "Display unified file diff or revert last edit: /diff | /diff undo", lambda args: cmd_diff(engine, args), category="Workspace & Developer Tools")
     engine.cmd_registry.register("git", "Run native Git commands: /git [status|diff|commit|push|branch]", lambda args: cmd_git(engine, args), category="Workspace & Developer Tools")
+    engine.cmd_registry.register("session", "Save, load, list, or delete disk session states: /session [save|load|list|delete] [<name>]", lambda args: cmd_session(engine, args), category="Session & System")
+    engine.cmd_registry.register("log", "View or configure Markdown session logging: /log [on|off|status|<filepath>]", lambda args: cmd_log(engine, args), category="Session & System")
