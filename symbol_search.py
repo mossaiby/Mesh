@@ -1,13 +1,8 @@
 import ast
+import importlib
 import os
 from typing import Dict, Any, List, Optional, Tuple
 from theme import console
-
-try:
-    import tree_sitter_languages
-    TREE_SITTER_AVAILABLE = True
-except ImportError:
-    TREE_SITTER_AVAILABLE = False
 
 
 LANGUAGE_EXTENSIONS: Dict[str, str] = {
@@ -30,11 +25,67 @@ LANGUAGE_EXTENSIONS: Dict[str, str] = {
     ".rb": "ruby"
 }
 
+LANGUAGE_MODULE_NAMES: Dict[str, str] = {
+    "python": "tree_sitter_python",
+    "javascript": "tree_sitter_javascript",
+    "typescript": "tree_sitter_typescript",
+    "rust": "tree_sitter_rust",
+    "go": "tree_sitter_go",
+    "cpp": "tree_sitter_cpp",
+    "c": "tree_sitter_c",
+    "java": "tree_sitter_java",
+    "c_sharp": "tree_sitter_c_sharp",
+    "php": "tree_sitter_php",
+    "ruby": "tree_sitter_ruby"
+}
+
+PARSER_CACHE: Dict[str, Any] = {}
+
+
+def get_tree_sitter_parser(lang_name: str) -> Optional[Any]:
+    """
+    Dynamically loads and returns a Tree-sitter Parser for the specified language.
+    Supports modern official `tree-sitter-<lang>` PyPI packages (Python 3.10-3.14+)
+    and falls back to legacy `tree-sitter-languages` if present.
+    """
+    if lang_name in PARSER_CACHE:
+        return PARSER_CACHE[lang_name]
+
+    # 1. Try modern individual tree-sitter language packages (e.g. tree_sitter_python)
+    mod_name = LANGUAGE_MODULE_NAMES.get(lang_name)
+    if mod_name:
+        try:
+            mod = importlib.import_module(mod_name)
+            from tree_sitter import Language, Parser
+            lang_obj = Language(mod.language())
+            try:
+                parser = Parser(lang_obj)
+            except Exception:
+                parser = Parser()
+                parser.language = lang_obj
+            PARSER_CACHE[lang_name] = parser
+            return parser
+        except Exception:
+            pass
+
+    # 2. Legacy fallback to tree_sitter_languages if installed
+    try:
+        import tree_sitter_languages
+        parser = tree_sitter_languages.get_parser(lang_name)
+        PARSER_CACHE[lang_name] = parser
+        return parser
+    except Exception:
+        pass
+
+    PARSER_CACHE[lang_name] = None
+    return None
+
 
 class SymbolIndexer:
     """
     Parses AST of codebase files across workspace directories using Tree-sitter,
-    building an in-memory index of classes, functions, interfaces, methods, and docstrings.
+    building an in-memory index of classes, functions, interfaces, methods, and docstrings
+    for Python, JavaScript, TypeScript, Rust, Go, C/C++, Java, C#, PHP, and Ruby.
     """
     def __init__(self):
         self.symbol_index: List[Dict[str, Any]] = []
@@ -63,11 +114,11 @@ class SymbolIndexer:
 
     def _parse_file_with_treesitter(self, filepath: str, lang: str) -> bool:
         """Parses source file using Tree-sitter polyglot AST nodes."""
-        if not TREE_SITTER_AVAILABLE:
+        parser = get_tree_sitter_parser(lang)
+        if not parser:
             return False
 
         try:
-            parser = tree_sitter_languages.get_parser(lang)
             with open(filepath, "rb") as f:
                 code_bytes = f.read()
 
@@ -84,11 +135,17 @@ class SymbolIndexer:
         node_type = node.type
 
         if node_type in (
-            "function_declaration", "function_definition", "method_definition",
+            "function_declaration", "function_definition", "method_definition", "method_declaration",
             "class_declaration", "class_definition", "interface_declaration",
-            "struct_item", "impl_item", "type_alias_declaration"
+            "struct_item", "impl_item", "type_alias_declaration", "function_item", "type_declaration"
         ):
             name_node = node.child_by_field_name("name")
+            if not name_node:
+                for child in node.children:
+                    if child.type in ("identifier", "type_identifier", "property_identifier", "field_identifier", "name"):
+                        name_node = child
+                        break
+
             if name_node:
                 symbol_name = code_bytes[name_node.start_byte:name_node.end_byte].decode("utf-8", errors="replace")
                 line_no = node.start_point[0] + 1
@@ -96,7 +153,7 @@ class SymbolIndexer:
                 first_line = code_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="replace").splitlines()[0]
 
                 kind = "function"
-                if "class" in node_type or "struct" in node_type or "interface" in node_type:
+                if "class" in node_type or "struct" in node_type or "interface" in node_type or "type" in node_type:
                     kind = "class"
                 elif "method" in node_type:
                     kind = "method"

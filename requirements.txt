@@ -4,5 +4,15 @@ rich>=13.0.0
 pydantic>=2.0.0
 httpx[socks]>=0.25.0
 prompt_toolkit>=3.0.0
-tree-sitter>=0.21.0
-tree-sitter-languages>=1.10.0
+tree-sitter>=0.22.0
+tree-sitter-python
+tree-sitter-javascript
+tree-sitter-typescript
+tree-sitter-rust
+tree-sitter-go
+tree-sitter-cpp
+tree-sitter-c
+tree-sitter-java
+tree-sitter-c-sharp
+tree-sitter-php
+tree-sitter-ruby
