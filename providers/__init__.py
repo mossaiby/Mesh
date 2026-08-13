@@ -24,14 +24,14 @@ def get_provider(
     return OpenAIProvider(model_config, provider_config, config_mgr)
 
 
-async def fetch_models_details(provider_config: ProviderConfig) -> Tuple[bool, List[Dict[str, Any]], str]:
+async def fetch_models_details(provider_config: ProviderConfig, timeout: float = 12.0) -> Tuple[bool, List[Dict[str, Any]], str]:
     """Factory helper executing model discovery across provider types."""
     p_name = (provider_config.name or "").lower()
     base_url = (provider_config.base_url or "").lower()
     
     if "anthropic" in p_name or "api.anthropic.com" in base_url:
-        return await AnthropicProvider.fetch_available_models_details(provider_config)
-    return await OpenAIProvider.fetch_available_models_details(provider_config)
+        return await AnthropicProvider.fetch_available_models_details(provider_config, timeout=timeout)
+    return await OpenAIProvider.fetch_available_models_details(provider_config, timeout=timeout)
 
 
 __all__ = ["OpenAIProvider", "AnthropicProvider", "get_provider", "fetch_models_details"]
