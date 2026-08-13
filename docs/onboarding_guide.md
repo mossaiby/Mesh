@@ -30,7 +30,7 @@ This guide takes you from zero to productive: installation, first run, core conc
 **Mesh is:**
 - A terminal-based AI agent loop, similar in spirit to Claude Code or Aider, but provider-agnostic.
 - Built around a tool-calling loop: you type a prompt, the model responds and optionally calls tools (read/write files, run shell commands, search the web, etc.), Mesh executes them, and feeds results back until the model produces a final answer.
-- Configurable at the model, provider, tool, and safety level via `models.json`, `mcps.json`, `skills.json`, and in-session slash commands.
+- Configurable at the model, provider, tool, and safety level via `config.json`, `mcps.json`, `skills.json`, and in-session slash commands.
 
 **Mesh is not:**
 - A GUI application — everything happens in your terminal.
@@ -86,7 +86,7 @@ export OLLAMA_API_KEY="dummy"
 export LOCAL_API_KEY="dummy"
 ```
 
-> API keys can also be embedded per-provider in `models.json` via `api_key_env`, which just names the environment variable Mesh should read — no secrets are stored in the config file itself by default.
+> API keys can also be embedded per-provider in `config.json` via `api_key_env`, which just names the environment variable Mesh should read — no secrets are stored in the config file itself by default.
 
 ### Optional: network proxy
 
@@ -314,7 +314,7 @@ After `write_file`, `edit_file`, or `hash_edit`, Mesh runs any linter it can fin
 
 ## 9. Configuration Files
 
-### `models.json` — providers, models, and global settings
+### `config.json` — providers, models, and global settings
 
 ```json
 {
@@ -441,7 +441,7 @@ When you're happy with the plan, `/mode build` and ask it to implement.
 ```
 
 **Keep long sessions from blowing the context window:**
-Leave `auto_compact: true` (default) in `models.json`, or trigger manually with `/compact` — Mesh preserves the system prompt and summarizes older turns without breaking tool-call/result pairing.
+Leave `auto_compact: true` (default) in `config.json`, or trigger manually with `/compact` — Mesh preserves the system prompt and summarizes older turns without breaking tool-call/result pairing.
 
 ---
 
@@ -457,7 +457,7 @@ Mesh includes five higher-level agent workflows layered on top of the base turn 
 | `delegate <task>` | Hands the task to a fully autonomous sub-agent with its own tool loop; reports back a summary | Well-scoped side tasks you don't want cluttering the main conversation |
 | `advisor <question>` | One-shot second opinion from a separate model | Quick sanity checks without switching your active model |
 
-`delegate` recursion depth (how many levels a sub-agent can itself delegate) is capped by `max_delegation_depth` in `models.json`, adjustable with `/agent delegate depth <n>`.
+`delegate` recursion depth (how many levels a sub-agent can itself delegate) is capped by `max_delegation_depth` in `config.json`, adjustable with `/agent delegate depth <n>`.
 
 ---
 
@@ -480,7 +480,7 @@ Run `/dream` at the end of a long, productive session to capture anything worth 
 ## 13. Troubleshooting
 
 **"Configuration Error" / can't reach the model**
-- Check the relevant API key is exported (`echo $ANTHROPIC_API_KEY`, etc.) and matches `api_key_env` in `models.json`.
+- Check the relevant API key is exported (`echo $ANTHROPIC_API_KEY`, etc.) and matches `api_key_env` in `config.json`.
 - For local providers (LM Studio, Ollama), confirm the server is actually running and `base_url` points at the right port.
 - Check `/status` for the currently resolved provider and proxy settings.
 
@@ -496,7 +496,7 @@ Run `/dream` at the end of a long, productive session to capture anything worth 
 - Read the file with `show_hashes: true` and use `hash_edit` instead of `edit_file` for precise, drift-safe line-range replacement.
 
 **Context window filling up too fast**
-- Confirm `auto_compact` is enabled in `models.json`, or trigger `/compact` manually. Lower `auto_compact_threshold` (e.g. from `0.75` to `0.6`) to compact earlier.
+- Confirm `auto_compact` is enabled in `config.json`, or trigger `/compact` manually. Lower `auto_compact_threshold` (e.g. from `0.75` to `0.6`) to compact earlier.
 
 **A background job seems stuck**
 - `/jobs` to list, `/jobs log <id>` to inspect output, `/jobs stop <id>` to kill it.
