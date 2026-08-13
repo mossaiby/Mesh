@@ -258,7 +258,7 @@ Switch modes with `/mode <name>`. Any tool that mutates state (file writes, shel
 Independent of mode, tools flagged `requires_guard=True` can be routed through a lightweight risk-assessment LLM call before they execute:
 
 ```
-/guard on               # enable
+/guard on                # enable
 /guard off               # disable — guarded calls run unchecked
 /guard mode supervised   # ask before risky actions
 /guard mode autonomous   # block only genuinely high-risk actions, no prompts
