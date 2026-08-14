@@ -21,6 +21,10 @@ class RepoMapGenerator:
         """
         symbols = symbol_search.symbol_indexer.symbol_index
         if not symbols:
+            symbol_search.symbol_indexer.load_cache(".")
+            symbols = symbol_search.symbol_indexer.symbol_index
+
+        if not symbols:
             symbol_search.symbol_indexer.index_directory(".")
             symbols = symbol_search.symbol_indexer.symbol_index
 
@@ -78,6 +82,10 @@ class RepoMapGenerator:
         ranked by architectural importance.
         """
         symbols = symbol_search.symbol_indexer.symbol_index
+        if not symbols:
+            symbol_search.symbol_indexer.load_cache(root_dir)
+            symbols = symbol_search.symbol_indexer.symbol_index
+
         if not symbols:
             symbol_search.symbol_indexer.index_directory(root_dir)
             symbols = symbol_search.symbol_indexer.symbol_index

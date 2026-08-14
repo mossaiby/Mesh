@@ -70,3 +70,6 @@ Thumbs.db
 
 # MCP server SQLite database
 data.db
+
+# Mesh internal cache & storage
+.mesh/

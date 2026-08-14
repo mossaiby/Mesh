@@ -32,6 +32,11 @@ class SearchSymbolsTool(BaseTool):
 
     async def execute(self, query: str, kind: Optional[str] = None) -> Dict[str, Any]:
         if not symbol_search.symbol_indexer.symbol_index:
+            symbol_search.symbol_indexer.load_cache(".")
+
+        if symbol_search.symbol_indexer.is_indexing:
+            await symbol_search.symbol_indexer.wait_for_indexing()
+        elif not symbol_search.symbol_indexer.symbol_index:
             symbol_search.symbol_indexer.index_directory(".")
         
         limit_val = self._config_mgr.config.budgets.symbol if self._config_mgr else 30

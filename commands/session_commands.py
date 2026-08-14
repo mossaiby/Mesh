@@ -14,6 +14,7 @@ import project_rules
 import repo_map
 import reflexion
 import git_workflow
+import symbol_search
 from file_history import file_history_tracker
 from python_executor import python_executor
 from theme import console
@@ -52,7 +53,6 @@ async def cmd_log(engine: Any, args: List[str]):
         await cmd_log(engine, [])
 
     else:
-        # Treat as custom filepath: /log session_2.md
         logger.enable(sub)
         cfg.enabled = True
         cfg.filepath = sub
@@ -610,11 +610,11 @@ async def cmd_project(engine: Any, args: List[str]):
 
     filename, content = project_rules.find_and_read_project_rules(".")
     if args and args[0].lower() == "reload":
-        engine.update_system_message()
+        engine.reload_project_context()
         if filename:
-            console.print(f"[success]Reloaded project rules from '{filename}'.[/success]")
+            console.print(f"[success]Reloaded project rules from '{filename}' and triggered symbol reindexing.[/success]")
         else:
-            console.print("[dim]No project rules file (PROJECT.md, MESH.md, AGENTS.md) found in workspace.[/dim]")
+            console.print("[success]Triggered background symbol reindexing and reloaded workspace context.[/success]")
         return
 
     if filename and content:

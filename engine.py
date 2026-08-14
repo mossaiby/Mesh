@@ -116,8 +116,8 @@ class MeshEngine:
         self.update_system_message(self.config_mgr.config.system_prompt)
 
     def reload_project_context(self):
-        """Re-indexes codebase symbols, reloads project rules, and regenerates Repo Map for CWD."""
-        symbol_search.symbol_indexer.index_directory(".")
+        """Re-indexes codebase symbols in background, reloads project rules, and regenerates Repo Map for CWD."""
+        symbol_search.symbol_indexer.start_background_indexing(".", force=True, on_complete=lambda count: self.update_system_message())
         tool_synthesis.load_all_custom_tools(self.tool_registry)
         self.update_system_message()
 
@@ -188,7 +188,8 @@ class MeshEngine:
         self.tool_registry.register(SearchSymbolsTool(self.config_mgr))
         
         tool_synthesis.load_all_custom_tools(self.tool_registry)
-        symbol_search.symbol_indexer.index_directory(".")
+        # Fast load symbol cache synchronously on startup
+        symbol_search.symbol_indexer.load_cache(".")
 
         # 2. Register Skills
         self.skill_registry.register(PythonCodingSkill(self.config_mgr))
@@ -276,6 +277,12 @@ class MeshEngine:
 
         console.print("[dim]Initializing MCP servers...[/dim]")
         await self.mcp_manager.initialize_all(self.tool_registry)
+
+        # Start non-blocking background symbol indexing
+        symbol_search.symbol_indexer.start_background_indexing(
+            ".",
+            on_complete=lambda count: self.update_system_message()
+        )
 
         if script_file:
             await self.run_script_file(script_file)

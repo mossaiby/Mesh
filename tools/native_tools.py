@@ -10,6 +10,7 @@ from tools.base import BaseTool
 from tools.permissions import PermissionManager, default_permission_manager
 from file_history import file_history_tracker
 from hooks import hook_manager
+import symbol_search
 
 
 def compute_line_hash(line: str) -> str:
@@ -160,6 +161,12 @@ class WriteFileTool(BaseTool):
             with open(path, "w", encoding="utf-8") as f:
                 f.write(content)
 
+            # Hot update symbol index for modified file
+            try:
+                symbol_search.symbol_indexer.index_file(path)
+            except Exception:
+                pass
+
             res = {
                 "status": "success",
                 "message": f"Wrote {len(content)} characters to '{path}'.",
@@ -244,6 +251,12 @@ class EditFileTool(BaseTool):
 
             with open(path, "w", encoding="utf-8") as f:
                 f.write(updated_content)
+
+            # Hot update symbol index for modified file
+            try:
+                symbol_search.symbol_indexer.index_file(path)
+            except Exception:
+                pass
 
             res = {
                 "status": "success",
@@ -342,6 +355,12 @@ class HashEditTool(BaseTool):
 
             with open(path, "w", encoding="utf-8") as f:
                 f.write(updated_content)
+
+            # Hot update symbol index for modified file
+            try:
+                symbol_search.symbol_indexer.index_file(path)
+            except Exception:
+                pass
 
             res = {
                 "status": "success",
