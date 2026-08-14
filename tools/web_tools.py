@@ -45,6 +45,11 @@ class WebSearchTool(BaseTool):
         }
         data = {"q": query}
 
+        try:
+            max_results = int(max_results)
+        except (ValueError, TypeError):
+            max_results = 4
+
         # Limit result count strictly between 1 and 5
         limit = min(max(1, max_results), 5)
         req_timeout = self._config_mgr.config.timeouts.web if self._config_mgr else 15.0
@@ -145,6 +150,12 @@ class WebFetchTool(BaseTool):
     async def execute(self, url: str, max_chars: Optional[int] = None) -> Dict[str, Any]:
         headers = {"User-Agent": USER_AGENT}
         req_timeout = self._config_mgr.config.timeouts.web if self._config_mgr else 15.0
+
+        try:
+            max_chars = int(max_chars) if max_chars is not None else None
+        except (ValueError, TypeError):
+            max_chars = None
+
         char_limit = max_chars if max_chars is not None else (self._config_mgr.config.budgets.web if self._config_mgr else 8000)
 
         try:

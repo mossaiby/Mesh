@@ -92,8 +92,19 @@ class ReadFileTool(BaseTool):
                 lines = f.readlines()
 
             total_lines = len(lines)
-            s_idx = (start_line - 1) if start_line and start_line > 0 else 0
-            e_idx = end_line if end_line and end_line > 0 else total_lines
+            
+            try:
+                start_line_int = int(start_line) if start_line is not None else None
+            except (ValueError, TypeError):
+                start_line_int = None
+
+            try:
+                end_line_int = int(end_line) if end_line is not None else None
+            except (ValueError, TypeError):
+                end_line_int = None
+
+            s_idx = (start_line_int - 1) if start_line_int and start_line_int > 0 else 0
+            e_idx = end_line_int if end_line_int and end_line_int > 0 else total_lines
 
             selected_lines = lines[s_idx:e_idx]
 
@@ -215,7 +226,7 @@ class EditFileTool(BaseTool):
                 if found:
                     match_method = f"fuzzy ({int(ratio * 100)}% similarity at lines {start_idx + 1}-{end_idx})"
                     new_lines_str = new_str
-                    if not new_lines_str.endswith("\n") and end_idx == len(content_lines) and content.endswith("\n"):
+                    if end_idx > 0 and content_lines[end_idx - 1].endswith("\n") and not new_lines_str.endswith("\n"):
                         new_lines_str += "\n"
                     updated_lines = content_lines[:start_idx] + [new_lines_str] + content_lines[end_idx:]
                     updated_content = "".join(updated_lines)
@@ -287,6 +298,12 @@ class HashEditTool(BaseTool):
             return {"error": f"File '{path}' does not exist."}
 
         try:
+            start_line = int(start_line)
+            end_line = int(end_line)
+        except (ValueError, TypeError):
+            return {"error": "start_line and end_line must be valid integers."}
+
+        try:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
                 content = f.read()
 
@@ -315,7 +332,7 @@ class HashEditTool(BaseTool):
                 }
 
             new_lines_str = new_str
-            if not new_lines_str.endswith("\n") and end_line == total_lines and content.endswith("\n"):
+            if lines[end_line - 1].endswith("\n") and not new_lines_str.endswith("\n"):
                 new_lines_str += "\n"
 
             updated_lines = lines[:start_line - 1] + [new_lines_str] + lines[end_line:]

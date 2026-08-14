@@ -27,6 +27,10 @@ async def get_advice(
         return {"status": "error", "error": "A question is required."}
 
     model_key = advisor_model or config_mgr.config.advisor_model or config_mgr.config.active_model
+    if model_key == "auto":
+        model_key = config_mgr.config.router_model
+        if not model_key:
+            return {"status": "error", "error": "Active model is 'auto' but router_model is not configured in config.json."}
 
     try:
         model_cfg, provider_cfg = config_mgr.get_model_and_provider(model_key)

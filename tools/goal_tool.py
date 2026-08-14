@@ -146,6 +146,11 @@ class GoalTool(BaseTool):
         elif action_lower == "complete_criterion":
             if not self._goal:
                 return {"error": "No goal is currently set."}
+            try:
+                criterion_index = int(criterion_index)
+            except (ValueError, TypeError):
+                return {"error": f"Invalid criterion_index '{criterion_index}'. Must be an integer."}
+
             if criterion_index <= 0 or criterion_index > len(self._criteria):
                 return {"error": f"Invalid criterion_index {criterion_index}. Current criteria count: {len(self._criteria)}"}
             self._criteria[criterion_index - 1]["done"] = True

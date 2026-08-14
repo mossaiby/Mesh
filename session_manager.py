@@ -70,7 +70,7 @@ class SessionManager:
             return False, f"Failed to save session: {e}"
 
     def load_session(self, name: str) -> Tuple[bool, str]:
-        clean_name = name.rstrip(".json")
+        clean_name = name.removesuffix(".json")
         filepath = os.path.join(SESSIONS_DIR, f"{clean_name}.json")
 
         if not os.path.exists(filepath):
@@ -163,7 +163,7 @@ class SessionManager:
         return sessions[0]["name"] if sessions else None
 
     def delete_session(self, name: str) -> Tuple[bool, str]:
-        clean_name = name.rstrip(".json")
+        clean_name = name.removesuffix(".json")
         filepath = os.path.join(SESSIONS_DIR, f"{clean_name}.json")
         if not os.path.exists(filepath):
             return False, f"Session file '{filepath}' not found."

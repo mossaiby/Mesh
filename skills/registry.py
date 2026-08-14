@@ -22,20 +22,28 @@ class SkillRegistry:
 
             skill_configs = data.get("skills", {})
             for name, cfg in skill_configs.items():
+                is_enabled = cfg.get("enabled", True)
                 if name in self._skills:
                     # Update existing skill properties from file
-                    self._skills[name].enabled = cfg.get("enabled", True)
+                    self._skills[name].enabled = is_enabled
                     if "description" in cfg:
                         self._skills[name].description = cfg["description"]
                     if "system_instruction" in cfg:
                         self._skills[name].system_instruction = cfg["system_instruction"]
+
+                    # Ensure tools in tool_registry match enabled state
+                    for tool in self._skills[name].get_tools():
+                        if is_enabled:
+                            self.tool_registry.register(tool)
+                        else:
+                            self.tool_registry.unregister(tool.name)
                 else:
                     # Instantiate dynamic declarative skill
                     decl_skill = DeclarativeSkill(
                         name=name,
                         description=cfg.get("description", "No description"),
                         system_instruction=cfg.get("system_instruction", None),
-                        enabled=cfg.get("enabled", True)
+                        enabled=is_enabled
                     )
                     self.register(decl_skill)
         except Exception as e:

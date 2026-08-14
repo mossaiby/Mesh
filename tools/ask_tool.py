@@ -20,6 +20,8 @@ def _read_single_key() -> str:
                 return "down"
         elif ch in (b'\r', b'\n'):
             return "enter"
+        elif ch == b'\x1b':
+            return "escape"
         elif ch == b'\x03':
             raise KeyboardInterrupt()
         return ch.decode('utf-8', errors='ignore')

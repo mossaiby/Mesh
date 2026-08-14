@@ -2,7 +2,7 @@ import asyncio
 import json
 from typing import Dict, Any, List, Optional
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 from render.stream_renderer import StreamRenderer
 import delegation
 from theme import console
@@ -64,7 +64,7 @@ async def generate_dynamic_strategies(
 
     try:
         model_cfg, provider_cfg = config_mgr.get_active_model_and_provider()
-        provider = OpenAIProvider(model_cfg, provider_cfg)
+        provider = get_provider(model_cfg, provider_cfg, config_mgr)
         renderer = StreamRenderer()
 
         raw_text, _ = await renderer.render_stream(provider.stream_chat(prompt))
@@ -145,7 +145,7 @@ async def explore_branches(
 
     try:
         model_cfg, provider_cfg = config_mgr.get_active_model_and_provider()
-        provider = OpenAIProvider(model_cfg, provider_cfg)
+        provider = get_provider(model_cfg, provider_cfg, config_mgr)
         renderer = StreamRenderer()
 
         synthesis_text, _ = await renderer.render_stream(provider.stream_chat(messages))

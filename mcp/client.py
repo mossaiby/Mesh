@@ -78,7 +78,7 @@ class MCPClientSession:
         self._reader_task: Optional[asyncio.Task] = None
         self._stderr_task: Optional[asyncio.Task] = None
 
-    async def connect() -> bool:
+    async def connect(self) -> bool:
         if not self.config.command:
             self.error_message = "Only stdio transport ('command') is currently configured."
             return False

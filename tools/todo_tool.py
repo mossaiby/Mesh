@@ -108,6 +108,12 @@ class TodoTool(BaseTool):
             if not task:
                 return {"error": "Task description is required for 'add'."}
 
+            if depends_on:
+                try:
+                    depends_on = [int(d) for d in depends_on]
+                except (ValueError, TypeError):
+                    return {"error": "depends_on must be a list of integer task IDs."}
+
             existing_ids = {t["id"] for t in self._todos}
             missing = [dep_id for dep_id in depends_on if dep_id not in existing_ids]
             if missing:
@@ -145,6 +151,11 @@ class TodoTool(BaseTool):
             return {"status": "ok", "ready_tasks": ready}
 
         elif action_lower == "complete":
+            try:
+                task_id = int(task_id)
+            except (ValueError, TypeError):
+                return {"error": f"Invalid task_id '{task_id}'. Must be a valid integer."}
+
             if task_id <= 0 or task_id > len(self._todos):
                 return {"error": f"Invalid task_id {task_id}. Current TODO count: {len(self._todos)}"}
 

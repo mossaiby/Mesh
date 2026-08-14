@@ -31,8 +31,9 @@ async def run_iterative_test_loop(
         exit_code = exec_res.get("exit_code", 1)
         stdout = exec_res.get("stdout", "")
         stderr = exec_res.get("stderr", "")
+        err_msg = exec_res.get("error", "")
 
-        if exit_code == 0:
+        if exit_code == 0 and not err_msg:
             console.print(f"\n[success]🎉 All tests passed green on iteration {iteration}![/success]\n")
             return {
                 "status": "success",
@@ -41,7 +42,7 @@ async def run_iterative_test_loop(
                 "output": stdout or stderr
             }
 
-        error_output = (stdout + "\n" + stderr).strip()
+        error_output = (stdout + "\n" + stderr).strip() or err_msg
         console.print(f"[warning]⚠️ Tests failed on iteration {iteration} (Exit Code: {exit_code}).[/warning] Spawning repair sub-agent...")
 
         repair_task = (

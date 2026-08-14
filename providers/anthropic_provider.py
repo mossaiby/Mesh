@@ -99,9 +99,10 @@ class AnthropicProvider:
 
             elif role == "user":
                 content = msg.get("content") or ""
-                blocks = [{"type": "text", "text": content}] if content else []
+                blocks = [{"type": "text", "text": content}] if content else [{"type": "text", "text": " "}]
                 if anthropic_msgs and anthropic_msgs[-1]["role"] == "user":
-                    anthropic_msgs[-1]["content"].extend(blocks)
+                    if content:
+                        anthropic_msgs[-1]["content"].append({"type": "text", "text": content})
                 else:
                     anthropic_msgs.append({"role": "user", "content": blocks})
 
@@ -127,7 +128,7 @@ class AnthropicProvider:
                     })
 
                 if not blocks:
-                    blocks = [{"type": "text", "text": ""}]
+                    blocks = [{"type": "text", "text": " "}]
 
                 if anthropic_msgs and anthropic_msgs[-1]["role"] == "assistant":
                     anthropic_msgs[-1]["content"].extend(blocks)

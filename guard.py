@@ -81,6 +81,11 @@ class SafetyGuard:
 
     async def assess(self, tool_name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
         model_key = self.config_mgr.config.guard_model or self.config_mgr.config.active_model
+        if model_key == "auto":
+            model_key = self.config_mgr.config.router_model
+            if not model_key:
+                return {"risk": "unknown", "verdict": "ask", "reason": "Guard model unavailable (router_model not configured); asking to be safe."}
+
         try:
             model_cfg, provider_cfg = self.config_mgr.get_model_and_provider(model_key)
         except Exception as e:

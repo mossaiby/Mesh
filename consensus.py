@@ -26,7 +26,15 @@ async def get_consensus(
     auditor_model: Optional[str] = None
 ) -> Dict[str, Any]:
     p_model = proposer_model or config_mgr.config.active_model
+    if p_model == "auto":
+        p_model = config_mgr.config.router_model
+
     a_model = auditor_model or config_mgr.config.advisor_model or config_mgr.config.active_model
+    if a_model == "auto":
+        a_model = config_mgr.config.router_model
+
+    if not p_model or not a_model:
+        return {"status": "error", "error": "Model resolution failed for consensus workflow."}
 
     console.print(f"\n[brand]⚖️  Multi-Model Consensus Loop:[/brand] Auditing proposal using [accent]{a_model}[/accent]...")
 

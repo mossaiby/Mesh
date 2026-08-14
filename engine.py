@@ -207,7 +207,15 @@ class MeshEngine:
 
         try:
             with open(filepath, "r", encoding="utf-8") as f:
-                lines = [line.strip() for line in f if line.strip() and not line.strip().startswith("#")]
+                lines = []
+                for raw_line in f:
+                    stripped = raw_line.strip()
+                    if not stripped:
+                        continue
+                    # Ignore pure comments starting with // or # followed by whitespace
+                    if stripped.startswith("//") or stripped.startswith("# "):
+                        continue
+                    lines.append(stripped)
         except Exception as e:
             console.print(f"[error]Failed to read script file '{filepath}': {e}[/error]")
             return
@@ -482,9 +490,12 @@ class MeshEngine:
                 if response_text:
                     assistant_msg["content"] = response_text
 
+                # Filter out empty placeholder tool call slots from streaming gaps
+                active_calls = [tc for tc in tool_calls_to_run if tc.get("name")]
+
                 formatted_tool_calls = []
-                if tool_calls_to_run and self.tools_enabled:
-                    for i, tool_call in enumerate(tool_calls_to_run):
+                if active_calls and self.tools_enabled:
+                    for i, tool_call in enumerate(active_calls):
                         tool_call_id = tool_call["id"] or f"call_{i+1}"
                         tool_call["id"] = tool_call_id
                         
@@ -500,10 +511,10 @@ class MeshEngine:
 
                 self.messages.append(assistant_msg)
 
-                if not tool_calls_to_run or not self.tools_enabled:
+                if not active_calls or not self.tools_enabled:
                     break
 
-                for tool_call in tool_calls_to_run:
+                for tool_call in active_calls:
                     if self.debug_mode:
                         console.print(f"[brand]🔧 DEBUG - Tool Request:[/brand] [tool]{tool_call['name']}[/tool]([dim]{tool_call['args']}[/dim])")
                     else:

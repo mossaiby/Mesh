@@ -3,7 +3,7 @@ from typing import Dict, Any
 from rich.markdown import Markdown
 from rich.styled import Styled
 from config import ConfigManager
-from providers.openai_provider import OpenAIProvider
+from providers import get_provider
 from theme import console
 
 
@@ -62,7 +62,7 @@ class SubAgentDistiller:
 
         try:
             model_cfg, provider_cfg = self.config_mgr.get_active_model_and_provider()
-            provider = OpenAIProvider(model_cfg, provider_cfg)
+            provider = get_provider(model_cfg, provider_cfg, self.config_mgr)
 
             distilled = ""
             sub_reasoning = ""
