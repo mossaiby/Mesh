@@ -108,7 +108,7 @@ class SymbolIndexer:
         self.is_indexing: bool = False
         self.last_indexed_at: Optional[float] = None
         self._indexing_task: Optional[asyncio.Task] = None
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
     def get_cache_path(self, root_dir: str = ".") -> str:
         """Returns the full path to .mesh/symbols.cache.json for the given root directory."""
@@ -298,7 +298,8 @@ class SymbolIndexer:
                         stat = os.stat(filepath)
                         mtime = stat.st_mtime
                         size = stat.st_size
-                        cached = self.file_cache.get(rel_path)
+                        with self._lock:
+                            cached = self.file_cache.get(rel_path)
 
                         # Cache hit: file mtime and size match
                         if not force and cached and cached.get("mtime") == mtime and cached.get("size") == size:
@@ -369,12 +370,16 @@ class SymbolIndexer:
     def remove_file(self, filepath: str, root_dir: str = ".") -> bool:
         """Removes a deleted file from the index and cache."""
         rel_path = os.path.relpath(filepath, root_dir).replace("\\", "/")
+        removed = False
         with self._lock:
             if rel_path in self.file_cache:
                 del self.file_cache[rel_path]
                 self._rebuild_index_locked()
-                self.save_cache(root_dir)
-                return True
+                removed = True
+
+        if removed:
+            self.save_cache(root_dir)
+            return True
         return False
 
     def start_background_indexing(
