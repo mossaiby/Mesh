@@ -400,4 +400,4 @@ def register_agent_commands(engine: Any):
     engine.cmd_registry.register("loop", "Run iterative auto-test and repair loop: /loop <test_or_build_command>", lambda args: cmd_loop(engine, args), category="Agents & Workflows")
     engine.cmd_registry.register("jobs", "View or manage background job processes: /jobs [log|stop|clear] [<job_id>]", lambda args: cmd_jobs(engine, args), category="Agents & Workflows")
     engine.cmd_registry.register("guard", "View or configure safety guard settings: /guard [on|off|mode|model|trust] <args>", lambda args: cmd_guard(engine, args), category="Models & Settings")
-    engine.cmd_registry.register("mode", "View or switch operating mode: /mode [plan|build|review|yolo]", lambda args: cmd_mode(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("mode", "View or switch operating mode: /mode [plan|build|review|chat|yolo]", lambda args: cmd_mode(engine, args), category="Models & Settings")

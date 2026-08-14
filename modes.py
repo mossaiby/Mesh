@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import Set, Dict
+from typing import Set, Dict, Optional
 
 
 @dataclass(frozen=True)
@@ -8,6 +8,9 @@ class ModeDef:
     label: str
     description: str
     system_note: str
+    # If allowed_tools is specified, only those tools are permitted in this mode.
+    # All other registered tools will be blocked.
+    allowed_tools: Optional[frozenset] = None
     # If True, every tool with requires_guard=True (write_file, edit_file,
     # shell, every MCP tool) is blocked, plus delegate_task -
     # this is what makes a mode "read-only": it reuses the exact same
@@ -62,6 +65,26 @@ MODES: Dict[str, ModeDef] = {
         ),
         blocks_mutating_tools=True,
     ),
+    "chat": ModeDef(
+        name="chat",
+        label="Chat",
+        description="Conversational Q&A, brainstorming, and research. Limited to web search, fetching, calculations, advisor, and memory.",
+        system_note=(
+            "You are in Chat Mode: focused on direct, thoughtful conversation, answering "
+            "questions, brainstorming, and explaining concepts. You do not have access to "
+            "local workspace files, code editing, shell execution, or task orchestration "
+            "tools. You may use web search (web_search, web_fetch) for current facts or "
+            "documentation, calculator for exact calculations, consult_advisor for second "
+            "opinions, and memory to recall user preferences."
+        ),
+        allowed_tools=frozenset({
+            "calculator",
+            "web_search",
+            "web_fetch",
+            "consult_advisor",
+            "memory",
+        }),
+    ),
     "yolo": ModeDef(
         name="yolo",
         label="YOLO",
@@ -87,6 +110,11 @@ def blocked_tools_for_mode(mode_key: str, tool_registry) -> Set[str]:
     newly-connected MCP tools are automatically covered by Plan/Review mode
     without this module needing to know about them."""
     mode = MODES.get(mode_key, MODES[DEFAULT_MODE])
+
+    # If the mode defines an explicit allowed_tools allow-list, block all others
+    if mode.allowed_tools is not None:
+        all_registered_tools = set(tool_registry._tools.keys())
+        return all_registered_tools - set(mode.allowed_tools)
 
     blocked: Set[str] = set(mode.extra_blocked_tools)
     if mode.blocks_mutating_tools:
