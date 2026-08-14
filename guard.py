@@ -126,11 +126,11 @@ class SafetyGuard:
             return True, assessment
 
         if verdict == "deny":
-            console.print(f"[error]🛡️   Safety Guard BLOCKED '{tool_name}':[/error] {reason}")
+            console.print(f"[error]🛡️   Safety Guard BLOCKED tool '[tool]{tool_name}[/tool]':[/error] {reason}")
             return False, assessment
 
         if self.config_mgr.config.guard_autonomy == "autonomous":
-            console.print(f"[warning]🛡️   Safety Guard auto-approved '{tool_name}' (autonomous mode):[/warning] {reason}")
+            console.print(f"[warning]🛡️   Safety Guard auto-approved tool '[tool]{tool_name}[/tool]' (autonomous mode):[/warning] {reason}")
             return True, {**assessment, "resolution": "auto_approved"}
 
         async with self._prompt_lock:
@@ -151,12 +151,12 @@ class SafetyGuard:
             choice = res.get("user_response", "Deny")
 
         if choice == "Allow Once":
-            console.print(f"[warning]Allowed '{tool_name}' once.[/warning]")
+            console.print(f"[warning]Allowed tool '[tool]{tool_name}[/tool]' once.[/warning]")
             return True, {**assessment, "resolution": "allowed_once"}
         elif choice.startswith("Always Allow"):
             self.trust_tool_for_session(tool_name)
-            console.print(f"[success]'{tool_name}' will no longer be guard-checked for the rest of this session.[/success]")
+            console.print(f"[success]Tool '[tool]{tool_name}[/tool]' will no longer be guard-checked for the rest of this session.[/success]")
             return True, {**assessment, "resolution": "always_allowed"}
         else:
-            console.print(f"[error]Denied '{tool_name}'.[/error]")
+            console.print(f"[error]Denied tool '[tool]{tool_name}[/tool]'.[/error]")
             return False, {**assessment, "resolution": "user_denied"}

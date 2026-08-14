@@ -493,16 +493,16 @@ class MeshEngine:
 
                 for tool_call in tool_calls_to_run:
                     if self.debug_mode:
-                        console.print(f"[brand]🔧 DEBUG - Tool Execution Request:[/brand] {tool_call['name']}({tool_call['args']})")
+                        console.print(f"[brand]🔧 DEBUG - Tool Request:[/brand] [tool]{tool_call['name']}[/tool]([dim]{tool_call['args']}[/dim])")
                     else:
-                        console.print(f"[accent]⚡ Tool Execution Request: {tool_call['name']}({tool_call['args']})[/accent]")
+                        console.print(f"[accent]⚡ Tool Request:[/accent] [tool]{tool_call['name']}[/tool]([dim]{tool_call['args']}[/dim])")
 
                     tool_result = await self.tool_registry.execute(tool_call["name"], tool_call["args"])
 
                     self.session_logger.log_tool_call(tool_call["name"], tool_call["args"], tool_result)
 
                     if self.debug_mode:
-                        console.print(f"[brand]🔧 DEBUG - Tool Execution Result:[/brand]\n{tool_result}")
+                        console.print(f"[brand]🔧 DEBUG - Tool Result ([tool]{tool_call['name']}[/tool]):[/brand]\n{tool_result}")
 
                     if isinstance(tool_result, str) and '"error":' in tool_result:
                         reflexion.record_reflexion_event(

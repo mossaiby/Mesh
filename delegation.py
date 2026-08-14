@@ -177,7 +177,7 @@ async def run_delegated_task(
 
             if verbose:
                 for tc in active_calls:
-                    console.print(f"  [dim]↳ {depth_tag}sub-agent tool call: {tc['name']}({tc['args']})[/dim]")
+                    console.print(f"  [dim]↳ {depth_tag}sub-agent tool call:[/dim] [tool]{tc['name']}[/tool]([dim]{tc['args']}[/dim])")
 
             result_strs = await _execute_turn_tool_calls(tool_registry, active_calls)
 

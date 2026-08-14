@@ -67,13 +67,12 @@ class SessionLogger:
         if not args_formatted:
             args_formatted = "{}"
 
-        # Truncate extremely long outputs for log cleanliness if needed
         res_display = result_str.strip()
         if len(res_display) > 10000:
             res_display = res_display[:10000] + "\n... (truncated log output)"
 
         entry = (
-            f"### ⚡ Tool Execution: `{tool_name}` (`{timestamp}`)\n\n"
+            f"### ⚡ Tool Execution: **`{tool_name}`** (`{timestamp}`)\n\n"
             f"**Arguments**:\n```json\n{args_formatted}\n```\n\n"
             f"**Result**:\n```json\n{res_display}\n```"
         )

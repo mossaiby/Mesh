@@ -1,4 +1,9 @@
 {
-  "events": [],
+  "events": [
+    {
+      "type": "tool_failure",
+      "details": "Tool 'shell' failed with args {\"command\":\"date\"}: {\"error\": \"Command execution timed out after 30.0 seconds.\", \"_guard\": {\"risk\": \"low\", \"verdict\": \"allow\", \"reason\": \"routine, reversible, read-mostly.\"}}"
+    }
+  ],
   "lessons": []
 }

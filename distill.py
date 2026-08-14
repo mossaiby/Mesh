@@ -14,7 +14,7 @@ class SubAgentDistiller:
     """
     def __init__(self, config_mgr: ConfigManager):
         self.config_mgr = config_mgr
-        self.enabled: bool = False  # Disabled by default so _intent is omitted until /config distill on
+        self.enabled: bool = False
         self.debug_mode: bool = False
 
     async def distill_tool_result(
@@ -29,17 +29,15 @@ class SubAgentDistiller:
         """
         raw_str = str(raw_result)
 
-        # Unescape escaped newlines to accurately count lines in JSON payloads
         raw_unwrapped = raw_str.replace("\\n", "\n")
         line_count = len(raw_unwrapped.strip().splitlines())
         char_count = len(raw_str)
 
-        # Bypass distillation only if BOTH line count AND character count are very small, or intent is missing
         if not intent or (line_count <= 4 and char_count < 300):
             return raw_str if (raw_str.startswith("{") or raw_str.startswith("[")) else json.dumps({"raw_output": raw_str})
 
         if self.debug_mode:
-            console.print(f"\n[brand]🤖 [SUB-AGENT DISTILLER] Distilling '{tool_name}' output for intent:[/brand] [italic]{intent}[/italic]")
+            console.print(f"\n[brand]🤖 [SUB-AGENT DISTILLER] Distilling [/brand][tool]{tool_name}[/tool][brand] output for intent:[/brand] [italic]{intent}[/italic]")
 
         messages = [
             {
@@ -68,27 +66,23 @@ class SubAgentDistiller:
 
             distilled = ""
             sub_reasoning = ""
-            printed_reasoning_header = False
 
             async for chunk in provider.stream_chat(messages):
                 ctype = chunk["type"]
                 cval = chunk["value"]
 
-                # 1. Sub-agent Reasoning / Chain of Thought tokens
                 if ctype == "reasoning":
                     sub_reasoning += cval
 
-                # 2. Sub-agent Content tokens
                 elif ctype == "content":
-                    if sub_reasoning and self.debug_mode and not printed_reasoning_header:
-                        console.print("\n[brand]🧠 [SUB-AGENT REASONING]:[/brand]")
-                        console.print(Styled(Markdown(sub_reasoning), "dim"))
-                        console.print()  # Blank line separator
-                        printed_reasoning_header = True
-
                     distilled += cval
                     if self.debug_mode:
                         console.print(f"[brand]{cval}[/brand]", end="")
+
+            if sub_reasoning and self.debug_mode:
+                console.print("\n[brand]🧠 [SUB-AGENT REASONING]:[/brand]")
+                console.print(Styled(Markdown(sub_reasoning), "dim"))
+                console.print()
 
             if self.debug_mode:
                 console.print("\n[brand]🤖 [SUB-AGENT DISTILLER] Distillation Complete.[/brand]\n")

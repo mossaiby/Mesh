@@ -3,10 +3,7 @@ Mesh unified color theme.
 
 Every part of the application prints through the single shared `console`
 instance defined here instead of instantiating its own `rich.console.Console()`.
-This guarantees one consistent, semantic color palette across the entire CLI
-(status output, tool execution logs, sub-agent debug traces, permission
-prompts, interactive menus, etc.) rather than ad hoc color names sprinkled
-throughout individual modules.
+This guarantees one consistent, semantic color palette across the entire CLI.
 
 Semantic styles:
     brand    - Mesh branding / startup & shutdown banners
@@ -18,6 +15,7 @@ Semantic styles:
     info     - informational headers (e.g. the assistant reply header)
     text     - plain emphasized text
     muted    - de-emphasized/secondary text (maps to rich's built-in "dim")
+    tool     - highlighted tool names during tool call dispatch and result display
 """
 from rich.console import Console
 from rich.theme import Theme
@@ -33,9 +31,9 @@ MESH_THEME = Theme(
         "info": "bold blue",
         "text": "bold white",
         "muted": "dim",
+        "tool": "bold yellow",
     }
 )
 
-# Single shared console instance - import this everywhere instead of
-# creating a new `Console()` so the whole app renders with one palette.
+# Single shared console instance
 console = Console(theme=MESH_THEME)
