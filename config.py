@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Optional, Tuple, List, Any
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -19,71 +19,71 @@ def apply_network_proxy(proxy_url: Optional[str]) -> None:
 class TimeoutsConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    web: float = 15.0
-    shell: float = 30.0
-    mcp: float = 60.0
-    linter: float = 10.0
-    python: float = 10.0
-    api: float = 12.0
+    web: float = Field(default=15.0, description="Web search and fetch HTTP timeout in seconds.")
+    shell: float = Field(default=30.0, description="Native shell command execution timeout in seconds.")
+    mcp: float = Field(default=60.0, description="Model Context Protocol (MCP) client request timeout in seconds.")
+    linter: float = Field(default=10.0, description="Post-edit linter hook execution timeout in seconds.")
+    python: float = Field(default=10.0, description="Direct Python snippet execution tool timeout in seconds.")
+    api: float = Field(default=12.0, description="Provider model discovery API call timeout in seconds.")
 
 
 class BudgetsConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    web: int = 8000
-    repo_map: int = Field(default=500, alias="repo-map")
-    dream: int = 12000
-    git_diff: int = Field(default=4000, alias="git-diff")
-    symbol: int = 30
+    web: int = Field(default=8000, description="Maximum character budget for fetched web pages.")
+    repo_map: int = Field(default=500, alias="repo-map", description="Token budget for repository architecture map generation.")
+    dream: int = Field(default=12000, description="Maximum character budget for conversation transcript during /dream.")
+    git_diff: int = Field(default=4000, alias="git-diff", description="Character budget for Git diff during commit message synthesis.")
+    symbol: int = Field(default=30, description="Maximum symbol search matches returned by search_symbols.")
 
 
 class TurnsConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    agent: int = 6
-    engine: int = 10
-    loop: int = 5
-    depth: int = 2
-    branches: int = 3
+    agent: int = Field(default=6, description="Default maximum tool turns per autonomous sub-agent.")
+    engine: int = Field(default=10, description="Maximum assistant turn loops per prompt turn.")
+    loop: int = Field(default=5, description="Maximum test/fix iterations for /loop.")
+    depth: int = Field(default=2, description="Maximum delegation recursion depth.")
+    branches: int = Field(default=3, description="Default parallel exploration strategy branches for /agent explore.")
 
 
 class RepairConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    retries: int = 2
-    delay: float = 0.75
+    retries: int = Field(default=2, description="Mechanical retries for transient tool errors.")
+    delay: float = Field(default=0.75, description="Mechanical retry delay in seconds.")
 
 
 class RetryConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    retries: int = 3
-    initial_delay: float = Field(default=1.0, alias="initial-delay")
-    max_delay: float = Field(default=30.0, alias="max-delay")
-    backoff_factor: float = Field(default=2.0, alias="backoff-factor")
-    jitter: bool = True
+    retries: int = Field(default=3, description="Maximum provider API request retry attempts for rate limits and transient errors.")
+    initial_delay: float = Field(default=1.0, alias="initial-delay", description="Initial retry delay in seconds.")
+    max_delay: float = Field(default=30.0, alias="max-delay", description="Maximum backoff delay ceiling in seconds.")
+    backoff_factor: float = Field(default=2.0, alias="backoff-factor", description="Exponential backoff multiplier factor.")
+    jitter: bool = Field(default=True, description="Apply randomized jitter to retry backoff delay to prevent thundering herd.")
 
 
 class CompactionSettings(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    minkeep: int = 2
+    minkeep: int = Field(default=2, description="Minimum recent messages to keep uncompacted during context compaction.")
 
 
 class LoggingConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    enabled: bool = False
-    filepath: str = "session.md"
+    enabled: bool = Field(default=False, description="Whether Markdown session logging is enabled.")
+    filepath: str = Field(default="session.md", description="Filepath for Markdown session log file.")
 
 
 class ProviderConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    name: str
-    base_url: str
-    api_key_env: str = "OPENAI_API_KEY"
-    default_headers: Optional[Dict[str, str]] = None
+    name: str = Field(description="Display name of the model provider.")
+    base_url: str = Field(description="REST API base URL endpoint (e.g. https://api.openai.com/v1).")
+    api_key_env: str = Field(default="OPENAI_API_KEY", description="Environment variable name storing the provider API key.")
+    default_headers: Optional[Dict[str, str]] = Field(default=None, description="Optional custom HTTP headers sent with every request.")
 
     @property
     def api_key(self) -> str:
@@ -93,50 +93,118 @@ class ProviderConfig(BaseModel):
 class ModelConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
-    name: str
-    provider: str
-    model_id: str
-    context_window: int = 8192
-    tags: List[str] = Field(default_factory=list)
-    description: Optional[str] = None
+    name: str = Field(description="Human-readable display name for the model.")
+    provider: str = Field(description="Provider key matching a configured provider in providers.")
+    model_id: str = Field(description="Exact provider model identifier (e.g. gpt-4o, claude-3-7-sonnet-20250219).")
+    context_window: int = Field(default=8192, description="Maximum token context window size for the model.")
+    tags: List[str] = Field(default_factory=list, description="Categorization tags (e.g. reasoning, coding, fast, free, router, guard).")
+    description: Optional[str] = Field(default=None, description="Detailed description of model capabilities and intended use cases.")
 
 
 class MeshConfig(BaseModel):
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, extra="allow")
 
-    active_model: str
-    system_prompt: str = "You are a helpful text-based AI assistant running inside Mesh, an interactive terminal CLI."
-    auto_compact: bool = True
-    auto_compact_threshold: float = 0.75
-    # How many levels deep delegate_task may recurse
-    max_delegation_depth: int = 2
-    # Optional dedicated models for reasoning advisor, safety guard, and model router
-    advisor_model: Optional[str] = None
-    guard_enabled: bool = True
-    guard_model: Optional[str] = None
-    guard_autonomy: str = "supervised"
-    router_model: Optional[str] = None
-    # Global network proxy URL
-    network_proxy: Optional[str] = None
-    # Extended thinking / reasoning controls
-    thinking: bool = True
-    effort: str = "medium"
-    # Metrics display toggles
-    show_tokens: bool = True
-    show_cost: bool = True
-    show_statistics: bool = True
+    schema_url: Optional[str] = Field(
+        default="./config.schema.json",
+        alias="$schema",
+        description="JSON Schema URI for IDE validation and autocompletion in config.json."
+    )
+    active_model: str = Field(
+        description="Active model key (e.g. anthropic:claude-3-7-sonnet-20250219) or 'auto' for dynamic prompt auto-routing."
+    )
+    system_prompt: str = Field(
+        default="You are a helpful text-based AI assistant running inside Mesh, an interactive terminal CLI.",
+        description="Base system instructions injected at the start of conversation turns."
+    )
+    auto_compact: bool = Field(
+        default=True,
+        description="Automatically summarize older conversation history when context window threshold is reached."
+    )
+    auto_compact_threshold: float = Field(
+        default=0.75,
+        description="Context window usage ratio (0.01 to 1.0) that triggers automatic context compaction."
+    )
+    max_delegation_depth: int = Field(
+        default=2,
+        description="Maximum recursion depth for autonomous sub-agent task delegation."
+    )
+    advisor_model: Optional[str] = Field(
+        default=None,
+        description="Dedicated model key to consult for second opinions during /agent advisor (defaults to active model)."
+    )
+    guard_enabled: bool = Field(
+        default=True,
+        description="Whether the Safety Guard risk assessment is enabled for mutating tool calls."
+    )
+    guard_model: Optional[str] = Field(
+        default=None,
+        description="Dedicated model key used for Safety Guard risk assessment."
+    )
+    guard_autonomy: str = Field(
+        default="supervised",
+        description="Autonomy mode for Safety Guard: 'supervised' (interactive approval) or 'autonomous' (auto-approve low/medium risk)."
+    )
+    router_model: Optional[str] = Field(
+        default=None,
+        description="Dedicated model key used for prompt auto-routing when active_model is set to 'auto'."
+    )
+    network_proxy: Optional[str] = Field(
+        default=None,
+        description="Global network HTTP/HTTPS/SOCKS proxy URL (e.g. socks5h://localhost:1080)."
+    )
+    thinking: bool = Field(
+        default=True,
+        description="Whether extended thinking/reasoning mode is enabled for supported models."
+    )
+    effort: str = Field(
+        default="medium",
+        description="Reasoning effort level for extended thinking models ('low', 'medium', 'high')."
+    )
+    show_tokens: bool = Field(
+        default=True,
+        description="Display turn and cached token count metrics in CLI response footers."
+    )
+    show_cost: bool = Field(
+        default=True,
+        description="Display turn and session USD cost metrics in CLI response footers."
+    )
+    show_statistics: bool = Field(
+        default=True,
+        description="Display TTFT (time to first token) and tok/s performance statistics in CLI response footers."
+    )
 
-    # Categorized system parameters
-    timeouts: TimeoutsConfig = Field(default_factory=TimeoutsConfig)
-    budgets: BudgetsConfig = Field(default_factory=BudgetsConfig)
-    turns: TurnsConfig = Field(default_factory=TurnsConfig)
-    repair_settings: RepairConfig = Field(default_factory=RepairConfig)
-    retry_settings: RetryConfig = Field(default_factory=RetryConfig)
-    compaction_settings: CompactionSettings = Field(default_factory=CompactionSettings)
-    logging: LoggingConfig = Field(default_factory=LoggingConfig)
+    timeouts: TimeoutsConfig = Field(default_factory=TimeoutsConfig, description="HTTP and subprocess execution timeouts.")
+    budgets: BudgetsConfig = Field(default_factory=BudgetsConfig, description="Token and character output budgets for tools.")
+    turns: TurnsConfig = Field(default_factory=TurnsConfig, description="Maximum turn limits for agents, engine loops, and exploration.")
+    repair_settings: RepairConfig = Field(default_factory=RepairConfig, description="Tool repair and transient retry settings.")
+    retry_settings: RetryConfig = Field(default_factory=RetryConfig, description="Provider API exponential backoff and retry settings.")
+    compaction_settings: CompactionSettings = Field(default_factory=CompactionSettings, description="Context compaction retention parameters.")
+    logging: LoggingConfig = Field(default_factory=LoggingConfig, description="Markdown session logging configuration.")
 
-    providers: Dict[str, ProviderConfig] = Field(default_factory=dict)
-    models: Dict[str, ModelConfig] = Field(default_factory=dict)
+    providers: Dict[str, ProviderConfig] = Field(default_factory=dict, description="Configured LLM providers and endpoints.")
+    models: Dict[str, ModelConfig] = Field(default_factory=dict, description="Configured model registry with context windows and provider bindings.")
+
+
+def generate_config_schema(filepath: str = "config.schema.json") -> Dict[str, Any]:
+    """
+    Generates a full JSON Schema Draft 2020-12 from the MeshConfig Pydantic model
+    and saves it to filepath for IDE validation and autocompletion.
+    """
+    schema = MeshConfig.model_json_schema()
+    schema["$schema"] = "https://json-schema.org/draft/2020-12/schema"
+    schema["title"] = "Mesh Configuration Schema"
+    schema["description"] = "JSON Schema for Mesh AI CLI harness configuration (config.json). Provides autocomplete and validation in VS Code, Cursor, and other IDEs."
+
+    try:
+        dir_name = os.path.dirname(filepath)
+        if dir_name:
+            os.makedirs(dir_name, exist_ok=True)
+        with open(filepath, "w", encoding="utf-8") as f:
+            json.dump(schema, f, indent=2)
+    except Exception:
+        pass
+
+    return schema
 
 
 class ConfigManager:
@@ -155,13 +223,25 @@ class ConfigManager:
         if cfg.turns.depth != cfg.max_delegation_depth:
             cfg.turns.depth = cfg.max_delegation_depth
         apply_network_proxy(cfg.network_proxy)
+
+        # Auto-generate or update config.schema.json alongside config.json
+        schema_path = os.path.join(os.path.dirname(self.filepath) or ".", "config.schema.json")
+        if not os.path.exists(schema_path):
+            generate_config_schema(schema_path)
+
         return cfg
 
     def save(self) -> None:
         self.config.max_delegation_depth = self.config.turns.depth
         apply_network_proxy(self.config.network_proxy)
+        if not getattr(self.config, "schema_url", None):
+            self.config.schema_url = "./config.schema.json"
+
         with open(self.filepath, "w", encoding="utf-8") as f:
             f.write(self.config.model_dump_json(indent=2, by_alias=True))
+
+        schema_path = os.path.join(os.path.dirname(self.filepath) or ".", "config.schema.json")
+        generate_config_schema(schema_path)
 
     def get_model_and_provider(self, key: str) -> Tuple[ModelConfig, ProviderConfig]:
         if key == "auto":

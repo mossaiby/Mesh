@@ -3,7 +3,7 @@ import time
 from typing import Optional, List, Dict, Any
 from providers import get_provider
 from pricing import pricing_manager
-from compaction import maybe_auto_compact, estimate_tokens
+from compaction import maybe_auto_compact, estimate_tokens, count_text_tokens
 import router
 from theme import console
 
@@ -149,10 +149,11 @@ class InferenceCoordinator:
                 if response_text:
                     self.session_logger.log_assistant_response(response_text, model_name=model_cfg.name)
 
+                # Use tiktoken BPE tokenizer with character-count fallback
                 if turn_prompt_tokens == 0:
-                    turn_prompt_tokens = estimate_tokens(self.engine.messages)
+                    turn_prompt_tokens = estimate_tokens(self.engine.messages, model_name=model_cfg.model_id)
                 if turn_completion_tokens == 0 and response_text:
-                    turn_completion_tokens = max(1, len(response_text) // 4)
+                    turn_completion_tokens = count_text_tokens(response_text, model_name=model_cfg.model_id)
 
                 turn_model_key = chosen_key if self.config_mgr.config.active_model == "auto" else self.config_mgr.config.active_model
                 _, _, turn_cost = pricing_manager.get_token_cost(

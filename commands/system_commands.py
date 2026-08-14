@@ -333,9 +333,10 @@ async def cmd_config(engine: Any, args: List[str]):
         console.print(f"  • [label]tokens[/label]: {tokens_s}")
         console.print(f"  • [label]cost[/label]: {cost_s}")
         console.print(f"  • [label]statistics[/label]: {stats_s}")
+        console.print("  • [label]schema[/label]: Generate or update config.schema.json for IDE autocompletion")
         console.print("  • [label]set[/label]: Fine-tune timeouts, budgets, turns, repair, retry, & compaction parameters")
         console.print("    [dim](Usage: /config set <category> <param> <value>, e.g. /config set timeout web 120 or /config set retry retries 5)[/dim]\n")
-        console.print("Usage: [warning]/config distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|set [args][/warning]\n")
+        console.print("Usage: [warning]/config distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|schema|set [args][/warning]\n")
         return
 
     sub = args[0].lower()
@@ -343,6 +344,12 @@ async def cmd_config(engine: Any, args: List[str]):
 
     if sub == "set":
         await _handle_config_set(engine, sub_args)
+
+    elif sub == "schema":
+        target_path = sub_args[0] if sub_args else "config.schema.json"
+        from config import generate_config_schema
+        generate_config_schema(target_path)
+        console.print(f"[success]✔ Generated IDE JSON Schema for Mesh config -> `{target_path}`[/success]")
 
     elif sub == "distill":
         if not sub_args:
@@ -494,7 +501,7 @@ async def cmd_config(engine: Any, args: List[str]):
             console.print("[warning]Token statistics display DISABLED.[/warning]")
 
     else:
-        console.print("[error]Usage: /config [distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|set] <args>[/error]")
+        console.print("[error]Usage: /config [distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|schema|set] <args>[/error]")
 
 
 async def cmd_context(engine: Any, args: List[str]):
@@ -630,7 +637,7 @@ async def cmd_exit(engine: Any, args: List[str]):
 def register_system_commands(engine: Any):
     engine.cmd_registry.register("help", "Display available slash commands and usage help: /help [<command>]", lambda args: cmd_help(engine, args), category="Session & System")
     engine.cmd_registry.register("status", "Display Mesh system status and configuration overview: /status", lambda args: cmd_status(engine, args), category="Models & Settings")
-    engine.cmd_registry.register("config", "View or configure system settings and parameters: /config [distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|set] <args>", lambda args: cmd_config(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("config", "View or configure system settings and parameters: /config [distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|schema|set] <args>", lambda args: cmd_config(engine, args), category="Models & Settings")
     engine.cmd_registry.register("context", "Display conversation context window, active tools, and MCP server states: /context", lambda args: cmd_context(engine, args), category="Context & Integration")
     engine.cmd_registry.register("system", "View or update the system prompt: /system [<text>] | /system clear", lambda args: cmd_system(engine, args), category="Context & Integration")
     engine.cmd_registry.register("tools", "List registered tools and schemas, or toggle tool execution: /tools [on|off]", lambda args: cmd_tools(engine, args), category="Context & Integration")

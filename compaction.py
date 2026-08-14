@@ -2,11 +2,99 @@ from typing import List, Dict, Any, Tuple, Optional
 from config import ConfigManager
 from providers import get_provider
 
+try:
+    import tiktoken
+    TIKTOKEN_AVAILABLE = True
+except ImportError:
+    TIKTOKEN_AVAILABLE = False
 
 CHARS_PER_TOKEN = 4
+_ENCODER_CACHE: Dict[str, Any] = {}
 
 
-def estimate_tokens(messages: List[Dict[str, Any]]) -> int:
+def get_encoder(model_name: Optional[str] = None):
+    """
+    Retrieves and caches a tiktoken encoding for the target model name,
+    falling back to 'cl100k_base' for OpenAI/Anthropic-style tokenization.
+    """
+    if not TIKTOKEN_AVAILABLE:
+        return None
+
+    cache_key = model_name or "cl100k_base"
+    if cache_key in _ENCODER_CACHE:
+        return _ENCODER_CACHE[cache_key]
+
+    encoder = None
+    if model_name:
+        clean_model = model_name.split(":")[-1].split("/")[-1].lower()
+        try:
+            encoder = tiktoken.encoding_for_model(clean_model)
+        except Exception:
+            try:
+                encoder = tiktoken.encoding_for_model(model_name)
+            except Exception:
+                pass
+
+    if encoder is None:
+        try:
+            encoder = tiktoken.get_encoding("cl100k_base")
+        except Exception:
+            encoder = None
+
+    _ENCODER_CACHE[cache_key] = encoder
+    return encoder
+
+
+def count_text_tokens(text: str, model_name: Optional[str] = None) -> int:
+    """
+    Counts tokens for raw text string using tiktoken if available,
+    falling back to character count heuristic (CHARS_PER_TOKEN = 4).
+    """
+    if not text:
+        return 0
+
+    encoder = get_encoder(model_name)
+    if encoder is not None:
+        try:
+            return len(encoder.encode(text, disallowed_special=()))
+        except Exception:
+            pass
+
+    return max(1, len(text) // CHARS_PER_TOKEN)
+
+
+def estimate_tokens(messages: List[Dict[str, Any]], model_name: Optional[str] = None) -> int:
+    """
+    Estimates token count for message list using tiktoken BPE tokenizer when available,
+    falling back to character count heuristic (CHARS_PER_TOKEN = 4).
+    """
+    if not messages:
+        return 0
+
+    encoder = get_encoder(model_name)
+    if encoder is not None:
+        try:
+            total_tokens = 0
+            for msg in messages:
+                total_tokens += 3  # Per-message framing overhead (<|im_start|>role ... <|im_end|>)
+                role = msg.get("role") or ""
+                if role:
+                    total_tokens += len(encoder.encode(role, disallowed_special=()))
+
+                content = msg.get("content") or ""
+                if content:
+                    total_tokens += len(encoder.encode(content, disallowed_special=()))
+
+                tool_calls = msg.get("tool_calls")
+                if tool_calls:
+                    total_tokens += len(encoder.encode(str(tool_calls), disallowed_special=()))
+
+            total_tokens += 3  # Priming tokens
+            return max(1, total_tokens)
+        except Exception:
+            pass
+
+    # Fallback to character-count heuristic
     total_chars = 0
     for msg in messages:
         content = msg.get("content") or ""
@@ -137,7 +225,8 @@ async def maybe_auto_compact(
     threshold = min(max(cfg.auto_compact_threshold, 0.0), 1.0)
     trigger_at = int(context_window * threshold)
 
-    estimated = estimate_tokens(messages)
+    model_id = model_cfg.model_id if model_cfg else None
+    estimated = estimate_tokens(messages, model_name=model_id)
     if estimated < trigger_at:
         return messages, False, ""
 

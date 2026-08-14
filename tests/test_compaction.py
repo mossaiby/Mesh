@@ -1,4 +1,4 @@
-from compaction import estimate_tokens, find_safe_split_index
+from compaction import estimate_tokens, find_safe_split_index, count_text_tokens
 
 
 def test_estimate_tokens():
@@ -8,6 +8,11 @@ def test_estimate_tokens():
     ]
     tokens = estimate_tokens(messages)
     assert tokens >= 4
+
+
+def test_count_text_tokens():
+    assert count_text_tokens("hello world") >= 2
+    assert count_text_tokens("") == 0
 
 
 def test_find_safe_split_index():

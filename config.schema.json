@@ -1,0 +1,487 @@
+{
+  "$defs": {
+    "BudgetsConfig": {
+      "properties": {
+        "web": {
+          "default": 8000,
+          "description": "Maximum character budget for fetched web pages.",
+          "title": "Web",
+          "type": "integer"
+        },
+        "repo-map": {
+          "default": 500,
+          "description": "Token budget for repository architecture map generation.",
+          "title": "Repo-Map",
+          "type": "integer"
+        },
+        "dream": {
+          "default": 12000,
+          "description": "Maximum character budget for conversation transcript during /dream.",
+          "title": "Dream",
+          "type": "integer"
+        },
+        "git-diff": {
+          "default": 4000,
+          "description": "Character budget for Git diff during commit message synthesis.",
+          "title": "Git-Diff",
+          "type": "integer"
+        },
+        "symbol": {
+          "default": 30,
+          "description": "Maximum symbol search matches returned by search_symbols.",
+          "title": "Symbol",
+          "type": "integer"
+        }
+      },
+      "title": "BudgetsConfig",
+      "type": "object"
+    },
+    "CompactionSettings": {
+      "properties": {
+        "minkeep": {
+          "default": 2,
+          "description": "Minimum recent messages to keep uncompacted during context compaction.",
+          "title": "Minkeep",
+          "type": "integer"
+        }
+      },
+      "title": "CompactionSettings",
+      "type": "object"
+    },
+    "LoggingConfig": {
+      "properties": {
+        "enabled": {
+          "default": false,
+          "description": "Whether Markdown session logging is enabled.",
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "filepath": {
+          "default": "session.md",
+          "description": "Filepath for Markdown session log file.",
+          "title": "Filepath",
+          "type": "string"
+        }
+      },
+      "title": "LoggingConfig",
+      "type": "object"
+    },
+    "ModelConfig": {
+      "properties": {
+        "name": {
+          "description": "Human-readable display name for the model.",
+          "title": "Name",
+          "type": "string"
+        },
+        "provider": {
+          "description": "Provider key matching a configured provider in providers.",
+          "title": "Provider",
+          "type": "string"
+        },
+        "model_id": {
+          "description": "Exact provider model identifier (e.g. gpt-4o, claude-3-7-sonnet-20250219).",
+          "title": "Model Id",
+          "type": "string"
+        },
+        "context_window": {
+          "default": 8192,
+          "description": "Maximum token context window size for the model.",
+          "title": "Context Window",
+          "type": "integer"
+        },
+        "tags": {
+          "description": "Categorization tags (e.g. reasoning, coding, fast, free, router, guard).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Tags",
+          "type": "array"
+        },
+        "description": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Detailed description of model capabilities and intended use cases.",
+          "title": "Description"
+        }
+      },
+      "required": [
+        "name",
+        "provider",
+        "model_id"
+      ],
+      "title": "ModelConfig",
+      "type": "object"
+    },
+    "ProviderConfig": {
+      "properties": {
+        "name": {
+          "description": "Display name of the model provider.",
+          "title": "Name",
+          "type": "string"
+        },
+        "base_url": {
+          "description": "REST API base URL endpoint (e.g. https://api.openai.com/v1).",
+          "title": "Base Url",
+          "type": "string"
+        },
+        "api_key_env": {
+          "default": "OPENAI_API_KEY",
+          "description": "Environment variable name storing the provider API key.",
+          "title": "Api Key Env",
+          "type": "string"
+        },
+        "default_headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional custom HTTP headers sent with every request.",
+          "title": "Default Headers"
+        }
+      },
+      "required": [
+        "name",
+        "base_url"
+      ],
+      "title": "ProviderConfig",
+      "type": "object"
+    },
+    "RepairConfig": {
+      "properties": {
+        "retries": {
+          "default": 2,
+          "description": "Mechanical retries for transient tool errors.",
+          "title": "Retries",
+          "type": "integer"
+        },
+        "delay": {
+          "default": 0.75,
+          "description": "Mechanical retry delay in seconds.",
+          "title": "Delay",
+          "type": "number"
+        }
+      },
+      "title": "RepairConfig",
+      "type": "object"
+    },
+    "RetryConfig": {
+      "properties": {
+        "retries": {
+          "default": 3,
+          "description": "Maximum provider API request retry attempts for rate limits and transient errors.",
+          "title": "Retries",
+          "type": "integer"
+        },
+        "initial-delay": {
+          "default": 1.0,
+          "description": "Initial retry delay in seconds.",
+          "title": "Initial-Delay",
+          "type": "number"
+        },
+        "max-delay": {
+          "default": 30.0,
+          "description": "Maximum backoff delay ceiling in seconds.",
+          "title": "Max-Delay",
+          "type": "number"
+        },
+        "backoff-factor": {
+          "default": 2.0,
+          "description": "Exponential backoff multiplier factor.",
+          "title": "Backoff-Factor",
+          "type": "number"
+        },
+        "jitter": {
+          "default": true,
+          "description": "Apply randomized jitter to retry backoff delay to prevent thundering herd.",
+          "title": "Jitter",
+          "type": "boolean"
+        }
+      },
+      "title": "RetryConfig",
+      "type": "object"
+    },
+    "TimeoutsConfig": {
+      "properties": {
+        "web": {
+          "default": 15.0,
+          "description": "Web search and fetch HTTP timeout in seconds.",
+          "title": "Web",
+          "type": "number"
+        },
+        "shell": {
+          "default": 30.0,
+          "description": "Native shell command execution timeout in seconds.",
+          "title": "Shell",
+          "type": "number"
+        },
+        "mcp": {
+          "default": 60.0,
+          "description": "Model Context Protocol (MCP) client request timeout in seconds.",
+          "title": "Mcp",
+          "type": "number"
+        },
+        "linter": {
+          "default": 10.0,
+          "description": "Post-edit linter hook execution timeout in seconds.",
+          "title": "Linter",
+          "type": "number"
+        },
+        "python": {
+          "default": 10.0,
+          "description": "Direct Python snippet execution tool timeout in seconds.",
+          "title": "Python",
+          "type": "number"
+        },
+        "api": {
+          "default": 12.0,
+          "description": "Provider model discovery API call timeout in seconds.",
+          "title": "Api",
+          "type": "number"
+        }
+      },
+      "title": "TimeoutsConfig",
+      "type": "object"
+    },
+    "TurnsConfig": {
+      "properties": {
+        "agent": {
+          "default": 6,
+          "description": "Default maximum tool turns per autonomous sub-agent.",
+          "title": "Agent",
+          "type": "integer"
+        },
+        "engine": {
+          "default": 10,
+          "description": "Maximum assistant turn loops per prompt turn.",
+          "title": "Engine",
+          "type": "integer"
+        },
+        "loop": {
+          "default": 5,
+          "description": "Maximum test/fix iterations for /loop.",
+          "title": "Loop",
+          "type": "integer"
+        },
+        "depth": {
+          "default": 2,
+          "description": "Maximum delegation recursion depth.",
+          "title": "Depth",
+          "type": "integer"
+        },
+        "branches": {
+          "default": 3,
+          "description": "Default parallel exploration strategy branches for /agent explore.",
+          "title": "Branches",
+          "type": "integer"
+        }
+      },
+      "title": "TurnsConfig",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "$schema": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": "./config.schema.json",
+      "description": "JSON Schema URI for IDE validation and autocompletion in config.json.",
+      "title": "$Schema"
+    },
+    "active_model": {
+      "description": "Active model key (e.g. anthropic:claude-3-7-sonnet-20250219) or 'auto' for dynamic prompt auto-routing.",
+      "title": "Active Model",
+      "type": "string"
+    },
+    "system_prompt": {
+      "default": "You are a helpful text-based AI assistant running inside Mesh, an interactive terminal CLI.",
+      "description": "Base system instructions injected at the start of conversation turns.",
+      "title": "System Prompt",
+      "type": "string"
+    },
+    "auto_compact": {
+      "default": true,
+      "description": "Automatically summarize older conversation history when context window threshold is reached.",
+      "title": "Auto Compact",
+      "type": "boolean"
+    },
+    "auto_compact_threshold": {
+      "default": 0.75,
+      "description": "Context window usage ratio (0.01 to 1.0) that triggers automatic context compaction.",
+      "title": "Auto Compact Threshold",
+      "type": "number"
+    },
+    "max_delegation_depth": {
+      "default": 2,
+      "description": "Maximum recursion depth for autonomous sub-agent task delegation.",
+      "title": "Max Delegation Depth",
+      "type": "integer"
+    },
+    "advisor_model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Dedicated model key to consult for second opinions during /agent advisor (defaults to active model).",
+      "title": "Advisor Model"
+    },
+    "guard_enabled": {
+      "default": true,
+      "description": "Whether the Safety Guard risk assessment is enabled for mutating tool calls.",
+      "title": "Guard Enabled",
+      "type": "boolean"
+    },
+    "guard_model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Dedicated model key used for Safety Guard risk assessment.",
+      "title": "Guard Model"
+    },
+    "guard_autonomy": {
+      "default": "supervised",
+      "description": "Autonomy mode for Safety Guard: 'supervised' (interactive approval) or 'autonomous' (auto-approve low/medium risk).",
+      "title": "Guard Autonomy",
+      "type": "string"
+    },
+    "router_model": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Dedicated model key used for prompt auto-routing when active_model is set to 'auto'.",
+      "title": "Router Model"
+    },
+    "network_proxy": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Global network HTTP/HTTPS/SOCKS proxy URL (e.g. socks5h://localhost:1080).",
+      "title": "Network Proxy"
+    },
+    "thinking": {
+      "default": true,
+      "description": "Whether extended thinking/reasoning mode is enabled for supported models.",
+      "title": "Thinking",
+      "type": "boolean"
+    },
+    "effort": {
+      "default": "medium",
+      "description": "Reasoning effort level for extended thinking models ('low', 'medium', 'high').",
+      "title": "Effort",
+      "type": "string"
+    },
+    "show_tokens": {
+      "default": true,
+      "description": "Display turn and cached token count metrics in CLI response footers.",
+      "title": "Show Tokens",
+      "type": "boolean"
+    },
+    "show_cost": {
+      "default": true,
+      "description": "Display turn and session USD cost metrics in CLI response footers.",
+      "title": "Show Cost",
+      "type": "boolean"
+    },
+    "show_statistics": {
+      "default": true,
+      "description": "Display TTFT (time to first token) and tok/s performance statistics in CLI response footers.",
+      "title": "Show Statistics",
+      "type": "boolean"
+    },
+    "timeouts": {
+      "$ref": "#/$defs/TimeoutsConfig",
+      "description": "HTTP and subprocess execution timeouts."
+    },
+    "budgets": {
+      "$ref": "#/$defs/BudgetsConfig",
+      "description": "Token and character output budgets for tools."
+    },
+    "turns": {
+      "$ref": "#/$defs/TurnsConfig",
+      "description": "Maximum turn limits for agents, engine loops, and exploration."
+    },
+    "repair_settings": {
+      "$ref": "#/$defs/RepairConfig",
+      "description": "Tool repair and transient retry settings."
+    },
+    "retry_settings": {
+      "$ref": "#/$defs/RetryConfig",
+      "description": "Provider API exponential backoff and retry settings."
+    },
+    "compaction_settings": {
+      "$ref": "#/$defs/CompactionSettings",
+      "description": "Context compaction retention parameters."
+    },
+    "logging": {
+      "$ref": "#/$defs/LoggingConfig",
+      "description": "Markdown session logging configuration."
+    },
+    "providers": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ProviderConfig"
+      },
+      "description": "Configured LLM providers and endpoints.",
+      "title": "Providers",
+      "type": "object"
+    },
+    "models": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ModelConfig"
+      },
+      "description": "Configured model registry with context windows and provider bindings.",
+      "title": "Models",
+      "type": "object"
+    }
+  },
+  "required": [
+    "active_model"
+  ],
+  "title": "Mesh Configuration Schema",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "JSON Schema for Mesh AI CLI harness configuration (config.json). Provides autocomplete and validation in VS Code, Cursor, and other IDEs."
+}
