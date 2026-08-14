@@ -116,6 +116,13 @@ class MockMeshConfig:
         self.repair_settings.retries = 2
         self.repair_settings.delay = 0.1
 
+        self.retry_settings = Obj()
+        self.retry_settings.retries = 3
+        self.retry_settings.initial_delay = 1.0
+        self.retry_settings.max_delay = 30.0
+        self.retry_settings.backoff_factor = 2.0
+        self.retry_settings.jitter = True
+
         self.compaction_settings = Obj()
         self.compaction_settings.minkeep = 2
 

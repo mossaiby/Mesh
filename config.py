@@ -54,6 +54,16 @@ class RepairConfig(BaseModel):
     delay: float = 0.75
 
 
+class RetryConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    retries: int = 3
+    initial_delay: float = Field(default=1.0, alias="initial-delay")
+    max_delay: float = Field(default=30.0, alias="max-delay")
+    backoff_factor: float = Field(default=2.0, alias="backoff-factor")
+    jitter: bool = True
+
+
 class CompactionSettings(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -121,6 +131,7 @@ class MeshConfig(BaseModel):
     budgets: BudgetsConfig = Field(default_factory=BudgetsConfig)
     turns: TurnsConfig = Field(default_factory=TurnsConfig)
     repair_settings: RepairConfig = Field(default_factory=RepairConfig)
+    retry_settings: RetryConfig = Field(default_factory=RetryConfig)
     compaction_settings: CompactionSettings = Field(default_factory=CompactionSettings)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
 

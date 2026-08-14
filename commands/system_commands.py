@@ -39,6 +39,13 @@ CONFIG_SET_MAP = {
         "retries": ("repair_settings", "retries", int, "Mechanical retries for transient tool errors"),
         "delay": ("repair_settings", "delay", float, "Mechanical retry delay in seconds"),
     },
+    "retry": {
+        "retries": ("retry_settings", "retries", int, "Maximum provider API request retry attempts"),
+        "initial-delay": ("retry_settings", "initial_delay", float, "Initial retry delay in seconds"),
+        "max-delay": ("retry_settings", "max_delay", float, "Maximum backoff delay ceiling in seconds"),
+        "backoff-factor": ("retry_settings", "backoff_factor", float, "Exponential backoff multiplier factor"),
+        "jitter": ("retry_settings", "jitter", bool, "Apply randomized jitter to retry backoff delay (true/false)"),
+    },
     "compact": {
         "threshold": ("auto_compact_threshold", None, float, "Auto-compaction context threshold ratio (0.01-1.0 or 1-100%)"),
         "minkeep": ("compaction_settings", "minkeep", int, "Minimum recent messages to keep uncompacted"),
@@ -195,7 +202,7 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
                         curr_val = f"{int(curr_val * 100)}%"
                 console.print(f"  • [label]{cat} {p_name}[/label]: [accent]{curr_val}[/accent] — [dim]{desc}[/dim]")
             console.print()
-        console.print("Usage: [warning]/config set <category> <param> <value>[/warning] (e.g. [warning]/config set timeout web 120[/warning])\n")
+        console.print("Usage: [warning]/config set <category> <param> <value>[/warning] (e.g. [warning]/config set timeout web 120[/warning] or [warning]/config set retry retries 5[/warning])\n")
         return
 
     category = set_args[0].lower()
@@ -260,6 +267,14 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
             elif typed_val <= 0:
                 console.print("[error]Value must be greater than zero.[/error]")
                 return
+        elif val_type == bool:
+            if raw_val.lower() in ("true", "1", "yes", "on"):
+                typed_val = True
+            elif raw_val.lower() in ("false", "0", "no", "off"):
+                typed_val = False
+            else:
+                console.print("[error]Value must be 'true' or 'false'.[/error]")
+                return
         else:
             typed_val = raw_val
     except ValueError:
@@ -282,7 +297,13 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
 
     engine.config_mgr.save()
 
-    display_val = f"{int(typed_val * 100)}%" if param == "threshold" else f"{typed_val}"
+    if param == "threshold":
+        display_val = f"{int(typed_val * 100)}%"
+    elif isinstance(typed_val, bool):
+        display_val = "true" if typed_val else "false"
+    else:
+        display_val = f"{typed_val}"
+
     console.print(f"[success]✔ Successfully set [label]{category} {param}[/label] to [accent]{display_val}[/accent].[/success]")
 
 
@@ -312,8 +333,8 @@ async def cmd_config(engine: Any, args: List[str]):
         console.print(f"  • [label]tokens[/label]: {tokens_s}")
         console.print(f"  • [label]cost[/label]: {cost_s}")
         console.print(f"  • [label]statistics[/label]: {stats_s}")
-        console.print("  • [label]set[/label]: Fine-tune timeouts, budgets, turns, repair, & compaction parameters")
-        console.print("    [dim](Usage: /config set <category> <param> <value>, e.g. /config set timeout web 120)[/dim]\n")
+        console.print("  • [label]set[/label]: Fine-tune timeouts, budgets, turns, repair, retry, & compaction parameters")
+        console.print("    [dim](Usage: /config set <category> <param> <value>, e.g. /config set timeout web 120 or /config set retry retries 5)[/dim]\n")
         console.print("Usage: [warning]/config distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|set [args][/warning]\n")
         return
 
