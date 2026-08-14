@@ -53,6 +53,9 @@ class TodoTool(BaseTool):
     def __init__(self):
         self._todos: List[Dict[str, Any]] = []
 
+    def is_read_only(self, action: str = "", **kwargs) -> bool:
+        return str(action).lower() in ("list", "next")
+
     def _is_ready(self, item: Dict[str, Any]) -> bool:
         """A task is ready when it isn't done yet and every task it depends on is."""
         if item["completed"]:

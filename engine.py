@@ -2,7 +2,7 @@ import asyncio
 import os
 import sys
 import time
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 from config import ConfigManager
 from providers import get_provider
 from render.stream_renderer import StreamRenderer
@@ -514,30 +514,56 @@ class MeshEngine:
                 if not active_calls or not self.tools_enabled:
                     break
 
+                # Partition active_calls into contiguous batches:
+                # Contiguous read-only calls execute concurrently via asyncio.gather.
+                # Mutating and interactive calls execute sequentially.
+                batches: List[Tuple[bool, List[Dict[str, str]]]] = []
+                current_readonly_batch: List[Dict[str, str]] = []
+
                 for tool_call in active_calls:
-                    if self.debug_mode:
-                        console.print(f"[brand]🔧 DEBUG - Tool Request:[/brand] [tool]{tool_call['name']}[/tool]([dim]{tool_call['args']}[/dim])")
+                    if self.tool_registry.is_read_only(tool_call["name"], tool_call["args"]):
+                        current_readonly_batch.append(tool_call)
                     else:
-                        console.print(f"[accent]⚡ Tool Request:[/accent] [tool]{tool_call['name']}[/tool]([dim]{tool_call['args']}[/dim])")
+                        if current_readonly_batch:
+                            batches.append((True, current_readonly_batch))
+                            current_readonly_batch = []
+                        batches.append((False, [tool_call]))
 
-                    tool_result = await self.tool_registry.execute(tool_call["name"], tool_call["args"])
+                if current_readonly_batch:
+                    batches.append((True, current_readonly_batch))
 
-                    self.session_logger.log_tool_call(tool_call["name"], tool_call["args"], tool_result)
+                for is_readonly, call_batch in batches:
+                    # Print tool request headers
+                    for tool_call in call_batch:
+                        if self.debug_mode:
+                            console.print(f"[brand]🔧 DEBUG - Tool Request:[/brand] [tool]{tool_call['name']}[/tool]([dim]{tool_call['args']}[/dim])")
+                        else:
+                            console.print(f"[accent]⚡ Tool Request:[/accent] [tool]{tool_call['name']}[/tool]([dim]{tool_call['args']}[/dim])")
 
-                    if self.debug_mode:
-                        console.print(f"[brand]🔧 DEBUG - Tool Result ([tool]{tool_call['name']}[/tool]):[/brand]\n{tool_result}")
+                    # Execute concurrently if batch has multiple read-only calls; otherwise sequentially
+                    if is_readonly and len(call_batch) > 1:
+                        results = await asyncio.gather(*(self.tool_registry.execute(tc["name"], tc["args"]) for tc in call_batch))
+                    else:
+                        results = [await self.tool_registry.execute(call_batch[0]["name"], call_batch[0]["args"])]
 
-                    if isinstance(tool_result, str) and '"error":' in tool_result:
-                        reflexion.record_reflexion_event(
-                            event_type="tool_failure",
-                            details=f"Tool '{tool_call['name']}' failed with args {tool_call['args']}: {tool_result[:300]}"
-                        )
+                    # Process results in original sequence
+                    for tool_call, tool_result in zip(call_batch, results):
+                        self.session_logger.log_tool_call(tool_call["name"], tool_call["args"], tool_result)
 
-                    self.messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call["id"],
-                        "content": tool_result
-                    })
+                        if self.debug_mode:
+                            console.print(f"[brand]🔧 DEBUG - Tool Result ([tool]{tool_call['name']}[/tool]):[/brand]\n{tool_result}")
+
+                        if isinstance(tool_result, str) and '"error":' in tool_result:
+                            reflexion.record_reflexion_event(
+                                event_type="tool_failure",
+                                details=f"Tool '{tool_call['name']}' failed with args {tool_call['args']}: {tool_result[:300]}"
+                            )
+
+                        self.messages.append({
+                            "role": "tool",
+                            "tool_call_id": tool_call["id"],
+                            "content": tool_result
+                        })
 
         except (KeyboardInterrupt, asyncio.CancelledError):
             console.print("\n[warning]⛔ Turn cancelled by user.[/warning]\n")

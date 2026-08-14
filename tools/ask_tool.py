@@ -74,6 +74,9 @@ class AskUserTool(BaseTool):
         "required": ["question"]
     }
 
+    def is_read_only(self, **kwargs) -> bool:
+        return False
+
     async def execute(self, question: str, options: Optional[List[str]] = None, allow_custom: bool = True) -> Dict[str, Any]:
         console.print(f"\n[label]❓ AI Decision Prompt:[/label] {question}")
 

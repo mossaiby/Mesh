@@ -47,6 +47,39 @@ class ToolRegistry:
         """Public accessor for registered tools requiring risk assessment."""
         return {name for name, tool in self._tools.items() if getattr(tool, "requires_guard", False)}
 
+    def is_read_only(self, tool_name: str, arguments: Any = None) -> bool:
+        """
+        Determines whether a tool call with the given arguments is read-only
+        and safe for concurrent execution.
+        """
+        resolved_name = tool_name
+        if resolved_name not in self._tools:
+            close = difflib.get_close_matches(tool_name, list(self._tools.keys()), n=1, cutoff=0.72)
+            if close:
+                resolved_name = close[0]
+            else:
+                return False
+
+        tool = self._tools[resolved_name]
+
+        kwargs = {}
+        if isinstance(arguments, str):
+            if arguments.strip():
+                try:
+                    kwargs = json.loads(arguments)
+                except Exception:
+                    kwargs = {}
+        elif isinstance(arguments, dict):
+            kwargs = arguments
+
+        if hasattr(tool, "is_read_only") and callable(tool.is_read_only):
+            try:
+                return bool(tool.is_read_only(**kwargs))
+            except Exception:
+                return not getattr(tool, "requires_guard", False)
+
+        return not getattr(tool, "requires_guard", False)
+
     def get_schemas(self, inject_intent: bool = True) -> List[Dict[str, Any]]:
         use_intent = inject_intent and (
             self.subagent_distiller is not None and self.subagent_distiller.enabled

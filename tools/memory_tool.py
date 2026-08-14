@@ -61,6 +61,9 @@ class MemoryTool(BaseTool):
         # an embedding/cosine-similarity index.
         self._config_mgr = config_mgr
 
+    def is_read_only(self, action: str = "", **kwargs) -> bool:
+        return str(action).lower() in ("get", "list", "search")
+
     async def execute(self, action: str, key: str = "", value: str = "", query: str = "") -> Dict[str, Any]:
         mem = _load_memory()
         action_lower = action.lower()

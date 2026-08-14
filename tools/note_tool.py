@@ -47,6 +47,9 @@ class NoteTool(BaseTool):
         "required": ["action"]
     }
 
+    def is_read_only(self, action: str = "", **kwargs) -> bool:
+        return str(action).lower() == "read"
+
     async def execute(self, action: str, content: str = "") -> Dict[str, Any]:
         action_lower = action.lower()
 

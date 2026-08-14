@@ -50,6 +50,9 @@ class DelegateTaskTool(BaseTool):
         self._tool_registry = tool_registry
         self._config_mgr = config_mgr
 
+    def is_read_only(self, **kwargs) -> bool:
+        return False
+
     async def execute(self, task: str, max_turns: int = 6) -> Dict[str, Any]:
         try:
             max_turns = int(max_turns)

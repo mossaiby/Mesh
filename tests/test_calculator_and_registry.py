@@ -48,3 +48,24 @@ async def test_tool_registry_mode_blocking_and_fuzzy_matching():
     res_blocked = await registry.execute("mutating_tool", "{}")
     assert "error" in res_blocked
     assert "not available in the current mode" in res_blocked
+
+
+def test_tool_registry_is_read_only():
+    from tools.native_tools import ReadFileTool, WriteFileTool
+    from tools.memory_tool import MemoryTool
+    from tools.ask_tool import AskUserTool
+
+    registry = ToolRegistry()
+    registry.register(CalculatorTool())
+    registry.register(ReadFileTool())
+    registry.register(WriteFileTool())
+    registry.register(MemoryTool())
+    registry.register(AskUserTool())
+
+    assert registry.is_read_only("calculator", '{"expression": "2+2"}') is True
+    assert registry.is_read_only("read_file", '{"path": "foo.py"}') is True
+    assert registry.is_read_only("write_file", '{"path": "foo.py", "content": "x"}') is False
+    assert registry.is_read_only("memory", '{"action": "get", "key": "k"}') is True
+    assert registry.is_read_only("memory", '{"action": "search", "query": "q"}') is True
+    assert registry.is_read_only("memory", '{"action": "save", "key": "k", "value": "v"}') is False
+    assert registry.is_read_only("ask_user", '{"question": "Proceed?"}') is False

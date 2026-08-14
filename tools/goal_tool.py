@@ -63,6 +63,9 @@ class GoalTool(BaseTool):
         self._goal: Optional[str] = None
         self._criteria: List[Dict[str, Any]] = []
 
+    def is_read_only(self, action: str = "", **kwargs) -> bool:
+        return str(action).lower() == "get"
+
     def has_goal(self) -> bool:
         return self._goal is not None
 

@@ -20,6 +20,15 @@ class BaseTool(ABC):
     def is_proxied(self, value: bool) -> None:
         self.is_distilled = value
 
+    def is_read_only(self, **kwargs) -> bool:
+        """
+        Returns True if the tool invocation is read-only (side-effect free)
+        and safe to execute concurrently with other read-only tool calls.
+        Subclasses with action parameters (e.g. MemoryTool, NoteTool) override
+        this method to inspect the specific action being performed.
+        """
+        return not self.requires_guard
+
     @abstractmethod
     async def execute(self, **kwargs) -> Any:
         """Execute tool logic and return result as serializable dict/str."""

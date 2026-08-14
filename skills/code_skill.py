@@ -22,6 +22,9 @@ class PythonExecutionTool(BaseTool):
     def __init__(self, config_mgr: Optional[Any] = None):
         self._config_mgr = config_mgr
 
+    def is_read_only(self, **kwargs) -> bool:
+        return False
+
     async def execute(self, code: str) -> Dict[str, Any]:
         timeout_val = self._config_mgr.config.timeouts.python if self._config_mgr else 10.0
         try:
