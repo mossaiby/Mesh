@@ -2,13 +2,18 @@
 
 *Developed by* **Farshid Mossaiby**
 
-A modern, modular and hackable AI CLI harness written in Python. Mesh connects to any OpenAI- or Anthropic-compatible model provider and wraps it with a full agentic toolset: file editing, shell access, web search, MCP servers, sub-agent delegation, persistent memory, session save/resume, Markdown logging, a comprehensive test suite, and a safety layer that gates risky tool calls — all driven from a single terminal chat loop.
+A modern, modular and hackable AI CLI harness written in Python. Mesh connects to any OpenAI- or Anthropic-compatible model provider and wraps it with a full agentic toolset: file editing, shell access, web search, MCP servers, sub-agent delegation, persistent memory, session save/resume, Markdown logging, automated test-and-repair loops, a comprehensive test suite, and a safety layer that gates risky tool calls — all driven from a single terminal chat loop.
 
 ---
 
 ## 🌟 Key Features
 
-- **Multi-Provider Support** — Talk to OpenAI, Anthropic, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint, all configured in `config.json`. Switch models live with `/switch`, or let a router model auto-select per turn with `/switch auto`.
+- **Multi-Provider Support with Exponential Backoff & Retry** — Talk to OpenAI, Anthropic, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint, all configured in `config.json`. Includes customizable exponential backoff with randomized jitter (`/config set retry`) for resilient API communication.
+- **Concurrent Read-Only Tool Execution** — When a model requests multiple tool calls in a turn, contiguous read-only operations (`read_file`, `glob_files`, `web_search`, `web_fetch`, `search_symbols`, `calculator`, `git_status`, `git_diff`, memory queries) run in parallel via `asyncio.gather()`, while mutating actions execute sequentially with strict state safety.
+- **Background Symbol Indexing with Persistent Disk Cache (`.mesh/symbols.cache.json`)** — Polyglot Tree-sitter AST symbol indexing across 11 languages (Python, JS/TS, Rust, Go, C/C++, Java, C#, PHP, Ruby). Caches parsed symbols, line numbers, and docstrings to disk in `.mesh/symbols.cache.json` with `mtime`/size validation and runs incremental directory scans asynchronously in a background thread pool without blocking REPL interactions.
+- **Accurate Token Accounting with `tiktoken`** — BPE tokenization for OpenAI/Anthropic/OpenRouter models with LRU encoding caching and graceful character-count fallback (`CHARS_PER_TOKEN = 4`) for precise context threshold triggers and compaction.
+- **IDE Config Auto-Completion & JSON Schema (`$schema`)** — Native Draft 2020-12 JSON Schema generation (`config.schema.json` and `/config schema`) provides instant autocomplete, parameter descriptions, and type validation in VS Code, Cursor, JetBrains, and Neovim.
+- **Modular Core Architecture** — Clean separation of concerns between `InferenceCoordinator` (turn loops, streaming, auto-routing, metrics) and `ToolOrchestrator` (batching, concurrent execution, logging, reflexion).
 - **Disk-Backed Session Save & Resume (`/session`)** — Save full conversation state, goals, todo graph, notes, memory, active mode, metrics, and checkpoints to disk under `sessions/<name>.json`. Resume anytime with `/session load <name>`, `python main.py --session <name>`, or `python main.py --resume`.
 - **Markdown Session Logging (`/log`)** — Stream clean, structured Markdown transcripts of user prompts, assistant responses, and tool executions to a log file (`session.md` or custom path) via CLI `--log` or `/log on <path>`.
 - **Operating Modes (`/mode`)** — `build` (full access, default), `plan` and `review` (read-only workspace inspection, no writes/shell/delegation/MCP), `chat` (conversational Q&A, brainstorming, and research with web search, fetch, calculator, advisor, and memory), and `yolo` (full access, no confirmation prompts for ambiguous-risk actions — high-risk actions are still always blocked).
@@ -19,10 +24,10 @@ A modern, modular and hackable AI CLI harness written in Python. Mesh connects t
 - **Autonomous Test/Fix Loop (`/loop`)** — Runs a test or build command, and on failure automatically delegates a repair sub-agent to fix the code and retries, up to a configurable number of iterations.
 - **Declarative Skills (`/skills`)** — Package specialized system prompts and tools into reusable skills, loaded from `skills.json` or custom Python classes (see `skills/code_skill.py`).
 - **Persistent Memory & Notes** — A key-value `memory` store with semantic search (`/memory`), a running Markdown `notes.md` (`/note`), pinned session goals with completion criteria (`/goal`), and multi-step task tracking (`todo`).
-- **Context Engineering** — Semantic context compaction (`/compact`) that summarizes older turns without breaking active tool-call pairs, a Sub-Agent Proxy that distills large tool outputs before they hit the main model's context, and repository maps (`/project map`) built from a tree-sitter symbol index.
+- **Context Engineering** — Semantic context compaction (`/compact`) that summarizes older turns without breaking active tool-call pairs, a Sub-Agent Distiller that summarizes large tool outputs before they hit context, and repository maps (`/project map`) built from PageRank symbol centrality.
 - **Session Continuity & Rollback** — Save and branch conversation state with checkpoints (`/checkpoint save|fork|restore|list`), file-edit history with undo (`/diff undo`), and reflexion (`/reflexion`) that distills cross-session error lessons.
 - **Native Tool Suite** — File ops (`read_file`, `write_file`, `edit_file`, `hash_edit`, `glob_files`), shell execution, key-less web search/fetch, Git tools, a calculator, and an `ask_user` tool for human-in-the-loop decisions.
-- **Test-Driven Reliability** — Comprehensive, automated `pytest` test suite verifying tool safety, dependency DAGs, file hash drift protection, permission isolation, and session roundtrip persistence.
+- **Test-Driven Reliability** — Automated `pytest` test suite verifying concurrency partitioning, tool safety, dependency DAGs, file hash drift protection, permission isolation, and session roundtrip persistence.
 - **Rich Terminal UI** — Real-time Markdown streaming with syntax highlighting, toggleable Chain-of-Thought display (`/debug`), and an interactive arrow-key model/menu switcher with context-aware tab completion.
 
 ---
@@ -36,15 +41,20 @@ A modern, modular and hackable AI CLI harness written in Python. Mesh connects t
                                                       │
                                         ┌─────────────▼───────────┐
                                         │ MeshEngine (engine.py)  │
-                                        └─────────────┬───────────┘
-                                                      │
-      ┌──────────────────┬─────────────┬──────────┬───┴────────┬──────────────────┬────────────────────┐
-      │                  │             │          │            │                  │                    │
-┌─────┴──────┐  ┌────────┴──────┐ ┌────┴───┐ ┌────┴───┐ ┌──────┴──────┐ ┌─────────┴────────┐ ┌─────────┴───────┐
-│ Providers  │  │ Tool Registry │ │ Safety │ │ Skills │ │    MCP      │ │ Sub-Agents       │ │ Memory / Notes  │
-│ (OpenAI/   │  │ & Permissions │ │ Guard  │ │        │ │   Client    │ │ (delegate /      │ │ / Checkpoints / │
-│ Anthropic) │  │               │ │        │ │        │ │ (mcps.json) │ │ squad / etc.)    │ │ Reflexion       │
-└────────────┘  └───────────────┘ └────────┘ └────────┘ └─────────────┘ └──────────────────┘ └─────────────────┘
+                                        └───┬─────────────────┬───┘
+                                            │                 │
+                      ┌─────────────────────▼─┐             ┌─▼─────────────────────┐
+                      │ InferenceCoordinator  │             │   ToolOrchestrator    │
+                      │(inference_coordinator)│             │  (tool_orchestrator)  │
+                      └─────────────┬─────────┘             └─┬───────────────────┬─┘
+                                    │                         │                   │
+      ┌──────────────────┬──────────┴──┬──────────┬───────────┴────┐        ┌─────▼──────────────┐
+      │                  │             │          │                │        │ SymbolIndexer      │
+┌─────┴──────┐  ┌────────┴──────┐ ┌────┴───┐ ┌────┴───┐ ┌──────────┴───┐    │ (.mesh disk cache) │
+│ Providers  │  │ Tool Registry │ │ Safety │ │ Skills │ │ MCP Client   │    └────────────────────┘
+│ (Retry &   │  │ & Permissions │ │ Guard  │ │        │ │ (mcps.json)  │
+│ Backoff)   │  │               │ │        │ │        │ │              │
+└────────────┘  └───────────────┘ └────────┘ └────────┘ └──────────────┘
 ```
 
 ---
@@ -62,8 +72,8 @@ A modern, modular and hackable AI CLI harness written in Python. Mesh connects t
 ```bash
 git clone https://github.com/mossaiby/Mesh.git
 cd Mesh
-pip install -r requirements.txt
-pip install pytest pytest-asyncio
+./bootstrap                         # create `.venv`, update `pip` and install dependencies
+pip install pytest pytest-asyncio   # optional, if you want to run test suite
 ```
 
 ### 3. Configure API Keys
@@ -86,19 +96,19 @@ export LOCAL_API_KEY="dummy"
 
 ```bash
 # Start an interactive CLI session
-python main.py
+./mesh
 
 # Enable session Markdown logging on launch
-python main.py --log session.md
+./mesh --log session.md
 
 # Resume the most recently saved disk session
-python main.py --resume
+./mesh --resume
 
 # Load or create a specific named disk session
-python main.py --session my-feature
+./mesh --session my-feature
 
 # Run a script file non-interactively
-python main.py path/to/script.txt --non-interactive
+./mesh path/to/script.txt --non-interactive
 ```
 
 ### 5. Run the Test Suite
@@ -109,27 +119,29 @@ pytest tests/ -v
 
 # Run specific test modules
 pytest tests/test_native_tools.py -v
-pytest tests/test_session_manager.py -v
+pytest tests/test_symbol_indexer.py -v
+pytest tests/test_provider_retry.py -v
 ```
 
 ---
 
 ## 🧪 Testing & Validation
 
-Mesh includes a comprehensive test suite in the `tests/` directory to ensure reliability, drift-free file operations, safe dependency resolution, and state persistence:
-
 | Test Module | Coverage & Verification |
 |---|---|
-| `tests/test_native_tools.py` | `read_file`, `write_file`, exact/fuzzy `edit_file`, line-hash verification in `hash_edit`, directory creation, `glob_files`, `shell`, and line-splice integrity |
+| `tests/test_calculator_and_registry.py` | Arithmetic evaluation, AST injection safety, tool registry execution, mode blocking, and `is_read_only` classification |
+| `tests/test_symbol_indexer.py` | `.mesh/symbols.cache.json` disk cache creation, incremental validation, single-file hot updates, deletions, and background async workers |
+| `tests/test_provider_retry.py` | Exponential backoff delay calculation, jitter bounds, transient status error filtering (`429`, `5xx`), and config integration |
+| `tests/test_config_schema.py` | Draft 2020-12 JSON Schema generation, `$defs` integrity, and `$schema` roundtrip persistence in `config.json` |
+| `tests/test_native_tools.py` | `read_file`, `write_file`, exact/fuzzy `edit_file`, line-hash verification in `hash_edit`, directory creation, `glob_files`, and `shell` |
 | `tests/test_todo_tool.py` | Task creation, 1-based indexing, dependency DAG resolution, blocker prevention in `complete`, `next` unblocked task queries, and argument type coercion |
 | `tests/test_goal_tool.py` | Pinned session goals, success criteria completion, system prompt Markdown section generation, and callback notifications |
 | `tests/test_memory_and_notes.py` | Persistent key-value memory CRUD (`memory.json`), Markdown notes append/write/clear (`notes.md`), and file serialization |
 | `tests/test_permissions.py` | Allowed directory containment, path canonicalization, symlink traversal prevention, and YOLO mode auto-approval |
-| `tests/test_calculator_and_registry.py` | Arithmetic evaluation, AST injection safety, tool registration/unregistration, mode blocking, and fuzzy tool name typo correction |
 | `tests/test_session_manager.py` | Disk session serialization, `.removesuffix(".json")` filename handling, session list/delete, metric restoration, and state reconstruction |
 | `tests/test_checkpoint.py` | State snapshots, branching, deep-copy integrity, and conversation rollback |
 | `tests/test_file_history.py` | Edit recording, unified diff generation, undo stack operations, and automatic deletion of newly created files upon undo |
-| `tests/test_compaction.py` | Token estimation heuristics and safe split index calculation preserving tool call pairs |
+| `tests/test_compaction.py` | `tiktoken` BPE token estimation, character-count fallback, and safe split index calculation preserving tool call pairs |
 | `tests/test_modes.py` | Mode definitions, mutating tool blocks (`plan`, `review`), and allowlist enforcement (`chat` mode) |
 
 ---
@@ -140,7 +152,7 @@ Mesh includes a comprehensive test suite in the `tests/` directory to ensure rel
 | Command | Description |
 | --- | --- |
 | `/help` | Display available slash commands and usage help: `/help [<command>]` |
-| `/status` | Display Mesh system status and configuration overview: `/status` |
+| `/status` | Display Mesh system status, background indexing state, active model, and configuration overview: `/status` |
 | `/clear` | Clear conversation context window (preserves system prompt and skills): `/clear` |
 | `/retry` | Retry the last assistant turn: `/retry` |
 | `/debug [on\|off]` | View or toggle debug mode (CoT & tool execution traces): `/debug [on\|off]` |
@@ -154,7 +166,7 @@ Mesh includes a comprehensive test suite in the `tests/` directory to ensure rel
 | --- | --- |
 | `/models` | List, discover, or add models: `/models [discover\|add] [<provider>] [<pattern>]` |
 | `/switch [auto\|router\|<model_key>]` | Switch active model or mode: `/switch [auto\|router\|<model_key>]` |
-| `/config [distill\|proxy\|repair\|hooks\|compact\|thinking\|effort\|tokens\|cost\|statistics\|set] <args>` | View or configure system settings and parameters |
+| `/config [distill\|proxy\|repair\|hooks\|compact\|thinking\|effort\|tokens\|cost\|statistics\|schema\|set] <args>` | View or configure system settings, retry parameters, and JSON schemas |
 | `/guard [on\|off\|mode\|model\|trust] <args>` | View or configure safety guard settings |
 | `/mode [plan\|build\|review\|chat\|yolo]` | View or switch operating mode: `/mode [plan\|build\|review\|chat\|yolo]` |
 
@@ -200,12 +212,11 @@ Mesh includes a comprehensive test suite in the `tests/` directory to ensure rel
 
 ## ⚙️ Configuration File (`config.json`)
 
-System parameters, provider REST endpoints, and model configurations can be tuned directly or set via `/config set <category> <param> <value>`:
-
 ```json
 {
+  "$schema": "./config.schema.json",
   "active_model": "anthropic:claude-3-7-sonnet-20250219",
-  "system_prompt": "You are Mesh, a helpful AI assistant...",
+  "system_prompt": "You are Mesh, a helpful, precise, and efficient AI assistant...",
   "auto_compact": true,
   "auto_compact_threshold": 0.75,
   "max_delegation_depth": 2,
@@ -246,6 +257,13 @@ System parameters, provider REST endpoints, and model configurations can be tune
     "retries": 2,
     "delay": 0.75
   },
+  "retry_settings": {
+    "retries": 3,
+    "initial-delay": 1.0,
+    "max-delay": 30.0,
+    "backoff-factor": 2.0,
+    "jitter": true
+  },
   "compaction_settings": {
     "minkeep": 2
   },
@@ -263,9 +281,12 @@ System parameters, provider REST endpoints, and model configurations can be tune
 ```
 Mesh/
 ├── main.py                          # CLI entry point (argparse + asyncio.run)
-├── engine.py                        # MeshEngine: core orchestration loop
-├── config.py                        # ConfigManager and Pydantic config schemas
+├── engine.py                        # MeshEngine: central harness lifecycle & REPL loop
+├── inference_coordinator.py         # InferenceCoordinator: turn loop, streaming & routing
+├── tool_orchestrator.py             # ToolOrchestrator: batching & concurrent tool execution
+├── config.py                        # ConfigManager, Pydantic schemas, & schema generator
 ├── config.json                      # System parameters, provider endpoints, & models
+├── config.schema.json               # Auto-generated JSON Schema for IDE validation
 ├── session_logger.py                # Markdown session logger
 ├── session_manager.py               # Disk-backed session save/resume/list manager
 ├── version.py                       # Central version identifier
@@ -274,7 +295,7 @@ Mesh/
 ├── skills.json                      # Declarative skills configuration
 ├── requirements.txt                 # Python dependencies
 │
-├── compaction.py                    # Semantic context window compaction
+├── compaction.py                    # Semantic context compaction & tiktoken BPE counting
 ├── distill.py                       # Sub-agent proxy output distillation
 ├── delegation.py                    # Sub-agent task delegation primitives
 ├── squad.py                         # Multi-agent task squad pipeline
@@ -292,7 +313,7 @@ Mesh/
 ├── memory_search.py                 # Semantic search over persistent memory
 ├── project_rules.py                 # Workspace project-rules loader
 ├── repo_map.py                      # Tree-sitter-based repository map generator
-├── symbol_search.py                 # Symbol indexer used by repo_map
+├── symbol_search.py                 # Background SymbolIndexer & .mesh disk cache
 ├── context_mentions.py              # @-mention context resolution
 ├── git_workflow.py                  # Higher-level Git workflow helpers
 ├── jobs.py                          # Background job manager
@@ -304,8 +325,9 @@ Mesh/
 ├── terminal_ui.py                   # Interactive arrow-key menus & completer
 │
 ├── providers/
-│   ├── openai_provider.py           # Async OpenAI-compatible client wrapper
-│   └── anthropic_provider.py        # Async Anthropic client wrapper
+│   ├── retry.py                     # Exponential backoff, jitter, & transient error logic
+│   ├── openai_provider.py           # Async OpenAI-compatible client wrapper with retry
+│   └── anthropic_provider.py        # Async Anthropic client wrapper with retry
 │
 ├── render/
 │   └── stream_renderer.py           # Rich Markdown & CoT streaming renderer
@@ -314,8 +336,8 @@ Mesh/
 │   └── client.py                    # Native stdio/URL MCP client
 │
 ├── tools/
-│   ├── base.py                      # BaseTool class with dynamic schema injection
-│   ├── registry.py                  # Central tool execution & proxy dispatcher
+│   ├── base.py                      # BaseTool class with is_read_only & schema injection
+│   ├── registry.py                  # ToolRegistry & is_read_only dispatch
 │   ├── permissions.py               # PermissionManager & directory authorization
 │   ├── native_tools.py              # read_file, write_file, edit_file, hash_edit, glob_files, shell
 │   ├── web_tools.py                 # Key-less web_search (DDG) & web_fetch
@@ -352,15 +374,18 @@ Mesh/
     ├── __init__.py
     ├── conftest.py                  # Pytest fixtures, mock engine, & isolated workspace
     ├── test_native_tools.py         # File read/write/edit/hash_edit, diff, glob & shell tests
+    ├── test_symbol_indexer.py       # .mesh/symbols.cache.json cache, hot updates & async tasks
+    ├── test_provider_retry.py       # Exponential backoff, jitter, & status error filters
+    ├── test_config_schema.py        # Draft 2020-12 JSON Schema generation & validation
     ├── test_todo_tool.py            # Dependency DAG, next tasks, & completion blockers
     ├── test_goal_tool.py            # Session goals, criteria tracking, & prompt injection
     ├── test_memory_and_notes.py     # Persistent key-value memory & notes.md CRUD
     ├── test_permissions.py          # Working directory allowlist & YOLO auto-approval
-    ├── test_calculator_and_registry.py # Safe AST calculator & tool registry execution
+    ├── test_calculator_and_registry.py # Safe AST calculator, tool registry, & is_read_only
     ├── test_session_manager.py      # Session disk save/load/delete & state integrity
     ├── test_checkpoint.py           # State snapshots & session branching
     ├── test_file_history.py         # Edit history, unified diffs, & file undo stack
-    ├── test_compaction.py           # Context estimation & conversation compaction
+    ├── test_compaction.py           # tiktoken BPE token counting & context compaction
     └── test_modes.py                # Build, Plan, Review, Chat, & YOLO mode boundaries
 ```
 
