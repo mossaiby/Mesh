@@ -108,6 +108,7 @@ class MeshEngine:
         # Session metrics tracking
         self.session_prompt_tokens: int = 0
         self.session_completion_tokens: int = 0
+        self.session_cached_tokens: int = 0
         self.session_cost_usd: float = 0.0
 
         self.setup_defaults()
@@ -376,12 +377,13 @@ class MeshEngine:
                 tool_calls_to_run = []
                 turn_prompt_tokens = 0
                 turn_completion_tokens = 0
+                turn_cached_tokens = 0
 
                 t_start = time.perf_counter()
                 t_first_token = None
 
                 async def chunk_generator():
-                    nonlocal turn_prompt_tokens, turn_completion_tokens, t_first_token
+                    nonlocal turn_prompt_tokens, turn_completion_tokens, turn_cached_tokens, t_first_token
                     async for chunk in provider.stream_chat(self.messages, tools=schemas):
                         ctype = chunk["type"]
                         cval = chunk["value"]
@@ -392,6 +394,7 @@ class MeshEngine:
                         if ctype == "usage":
                             turn_prompt_tokens = cval.get("prompt_tokens", 0)
                             turn_completion_tokens = cval.get("completion_tokens", 0)
+                            turn_cached_tokens = cval.get("cached_tokens", 0)
                         elif ctype == "tool_calls" and self.tools_enabled:
                             for tc in cval:
                                 idx = tc.get("index", 0) if isinstance(tc, dict) else getattr(tc, "index", 0)
@@ -440,10 +443,16 @@ class MeshEngine:
                     turn_completion_tokens = max(1, len(response_text) // 4)
 
                 turn_model_key = chosen_key if self.config_mgr.config.active_model == "auto" else self.config_mgr.config.active_model
-                _, _, turn_cost = pricing_manager.get_token_cost(turn_model_key, turn_prompt_tokens, turn_completion_tokens)
+                _, _, turn_cost = pricing_manager.get_token_cost(
+                    turn_model_key, 
+                    turn_prompt_tokens, 
+                    turn_completion_tokens, 
+                    cached_tokens=turn_cached_tokens
+                )
 
                 self.session_prompt_tokens += turn_prompt_tokens
                 self.session_completion_tokens += turn_completion_tokens
+                self.session_cached_tokens += turn_cached_tokens
                 self.session_cost_usd += turn_cost
 
                 ttft_sec = (t_first_token - t_start) if t_first_token is not None else (t_end - t_start)
@@ -454,7 +463,10 @@ class MeshEngine:
                 metrics_parts = []
 
                 if cfg.show_tokens:
-                    metrics_parts.append(f"{turn_prompt_tokens} in, {turn_completion_tokens} out")
+                    if turn_cached_tokens > 0:
+                        metrics_parts.append(f"{turn_prompt_tokens} in ({turn_cached_tokens} cached), {turn_completion_tokens} out")
+                    else:
+                        metrics_parts.append(f"{turn_prompt_tokens} in, {turn_completion_tokens} out")
 
                 if cfg.show_cost:
                     metrics_parts.append(f"${turn_cost:.4f} turn, ${self.session_cost_usd:.4f} session")

@@ -158,8 +158,9 @@ async def cmd_status(engine: Any, args: List[str]):
         f"• [label]Context Window:[/label] {len(engine.messages)} messages, "
         f"~{est_tokens}/{window} est. tokens ({usage_pct}%)"
     )
+    cached_str = f" ({engine.session_cached_tokens} cached)" if getattr(engine, "session_cached_tokens", 0) > 0 else ""
     console.print(
-        f"• [label]Session Usage & Cost:[/label] {engine.session_prompt_tokens} in, {engine.session_completion_tokens} out "
+        f"• [label]Session Usage & Cost:[/label] {engine.session_prompt_tokens} in{cached_str}, {engine.session_completion_tokens} out "
         f"([accent]${engine.session_cost_usd:.4f} USD total[/accent])"
     )
     console.print(

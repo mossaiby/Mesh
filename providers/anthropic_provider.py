@@ -183,6 +183,8 @@ class AnthropicProvider:
 
         prompt_tokens = 0
         completion_tokens = 0
+        cache_read_tokens = 0
+        cache_creation_tokens = 0
 
         async with self.client.messages.stream(**kwargs) as stream:
             async for event in stream:
@@ -216,22 +218,30 @@ class AnthropicProvider:
 
                 elif event.type == "message_start":
                     if hasattr(event.message, "usage") and event.message.usage:
-                        prompt_tokens = getattr(event.message.usage, "input_tokens", 0)
+                        u = event.message.usage
+                        prompt_tokens = getattr(u, "input_tokens", 0) or 0
+                        cache_read_tokens = getattr(u, "cache_read_input_tokens", 0) or 0
+                        cache_creation_tokens = getattr(u, "cache_creation_input_tokens", 0) or 0
                         yield {
                             "type": "usage",
                             "value": {
                                 "prompt_tokens": prompt_tokens,
-                                "completion_tokens": completion_tokens
+                                "completion_tokens": completion_tokens,
+                                "cached_tokens": cache_read_tokens,
+                                "cache_creation_tokens": cache_creation_tokens
                             }
                         }
 
                 elif event.type == "message_delta":
                     if hasattr(event, "usage") and event.usage:
-                        completion_tokens = getattr(event.usage, "output_tokens", 0)
+                        u = event.usage
+                        completion_tokens = getattr(u, "output_tokens", 0) or 0
                         yield {
                             "type": "usage",
                             "value": {
                                 "prompt_tokens": prompt_tokens,
-                                "completion_tokens": completion_tokens
+                                "completion_tokens": completion_tokens,
+                                "cached_tokens": cache_read_tokens,
+                                "cache_creation_tokens": cache_creation_tokens
                             }
                         }

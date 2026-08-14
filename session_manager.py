@@ -49,6 +49,7 @@ class SessionManager:
             "session_metrics": {
                 "prompt_tokens": self.engine.session_prompt_tokens,
                 "completion_tokens": self.engine.session_completion_tokens,
+                "cached_tokens": getattr(self.engine, "session_cached_tokens", 0),
                 "cost_usd": self.engine.session_cost_usd,
             },
             "goal": copy.deepcopy(goal_snap),
@@ -120,6 +121,7 @@ class SessionManager:
             metrics = data.get("session_metrics", {})
             self.engine.session_prompt_tokens = metrics.get("prompt_tokens", 0)
             self.engine.session_completion_tokens = metrics.get("completion_tokens", 0)
+            self.engine.session_cached_tokens = metrics.get("cached_tokens", 0)
             self.engine.session_cost_usd = metrics.get("cost_usd", 0.0)
 
             self.engine.tool_registry.mode_blocked_tools = (

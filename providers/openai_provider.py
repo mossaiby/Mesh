@@ -63,18 +63,46 @@ class OpenAIProvider:
             
             models_details = []
             for m in response.data:
-                m_id = getattr(m, "id", None)
+                m_dict = {}
+                if hasattr(m, "model_dump"):
+                    try:
+                        m_dict = m.model_dump()
+                    except Exception:
+                        m_dict = {}
+                elif isinstance(m, dict):
+                    m_dict = m
+                elif hasattr(m, "__dict__"):
+                    m_dict = getattr(m, "__dict__", {})
+
+                m_id = getattr(m, "id", None) or m_dict.get("id")
                 if not m_id:
                     continue
-                
-                ctx = getattr(m, "context_length", None) or getattr(m, "context_window", None)
-                desc = getattr(m, "description", None)
-                name = getattr(m, "name", None)
+
+                ctx = None
+                for k in ("context_length", "context_window", "max_context_length", "max_input_tokens", "max_tokens"):
+                    if k in m_dict and m_dict[k]:
+                        try:
+                            ctx = int(m_dict[k])
+                            if ctx > 0:
+                                break
+                        except (ValueError, TypeError):
+                            pass
+
+                if not ctx and "top_provider" in m_dict and isinstance(m_dict["top_provider"], dict):
+                    tp_ctx = m_dict["top_provider"].get("context_length")
+                    if tp_ctx:
+                        try:
+                            ctx = int(tp_ctx)
+                        except (ValueError, TypeError):
+                            pass
+
+                desc = m_dict.get("description", "")
+                name = m_dict.get("name") or getattr(m, "name", None)
 
                 models_details.append({
                     "id": m_id,
                     "name": name or m_id.split("/")[-1].replace("-", " ").title(),
-                    "context_window": int(ctx) if ctx and str(ctx).isdigit() else None,
+                    "context_window": ctx,
                     "description": desc or ""
                 })
 
@@ -98,7 +126,6 @@ class OpenAIProvider:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = "auto"
 
-        # Apply reasoning effort controls ONLY for reasoning models
         cfg = self.config_mgr.config if self.config_mgr else None
         if cfg and cfg.thinking and self._is_reasoning_model():
             kwargs["reasoning_effort"] = cfg.effort.lower()
@@ -107,11 +134,24 @@ class OpenAIProvider:
 
         async for chunk in response_stream:
             if hasattr(chunk, "usage") and chunk.usage:
+                u = chunk.usage
+                prompt_tokens = getattr(u, "prompt_tokens", 0) or 0
+                completion_tokens = getattr(u, "completion_tokens", 0) or 0
+
+                cached_tokens = 0
+                ptd = getattr(u, "prompt_tokens_details", None)
+                if ptd:
+                    if isinstance(ptd, dict):
+                        cached_tokens = ptd.get("cached_tokens", 0) or 0
+                    else:
+                        cached_tokens = getattr(ptd, "cached_tokens", 0) or 0
+
                 yield {
                     "type": "usage",
                     "value": {
-                        "prompt_tokens": getattr(chunk.usage, "prompt_tokens", 0),
-                        "completion_tokens": getattr(chunk.usage, "completion_tokens", 0)
+                        "prompt_tokens": prompt_tokens,
+                        "completion_tokens": completion_tokens,
+                        "cached_tokens": cached_tokens
                     }
                 }
 

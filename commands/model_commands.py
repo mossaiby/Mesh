@@ -436,7 +436,7 @@ async def cmd_switch(engine: Any, args: List[str]):
             nonlocal current_idx
             with Live(render_switch_menu(current_idx), console=console, auto_refresh=False, vertical_overflow="visible") as live:
                 while True:
-                    live.update(render_switch_menu(current_idx), print=True)
+                    live.update(render_switch_menu(current_idx), refresh=True)
                     try:
                         key = _read_single_key()
                     except Exception:
