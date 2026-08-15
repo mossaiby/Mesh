@@ -69,10 +69,10 @@
       "api_key_env": "ANTHROPIC_API_KEY",
       "default_headers": null
     },
-    "groq": {
-      "name": "Groq Cloud",
-      "base_url": "https://api.groq.com/openai/v1",
-      "api_key_env": "GROQ_API_KEY",
+    "grok": {
+      "name": "Grok Cloud",
+      "base_url": "https://api.grok.com/openai/v1",
+      "api_key_env": "GROK_API_KEY",
       "default_headers": null
     },
     "openrouter": {

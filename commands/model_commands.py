@@ -357,7 +357,7 @@ async def cmd_models(engine: Any, args: List[str]):
             console.print(
                 "[error]Usage: /models add <provider> [<pattern>] [<context_window>][/error]\n"
                 f"Configured providers: [accent]{providers_str}[/accent]\n"
-                "Examples: [warning]/models add groq *[/warning] | "
+                "Examples: [warning]/models add grok *[/warning] | "
                 "[warning]/models add openrouter *free*[/warning] | "
                 "[warning]/models add lmstudio google/gemma-4-e4b 32768[/warning]\n"
             )

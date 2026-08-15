@@ -102,8 +102,10 @@ async def cmd_history(engine: Any, args: List[str]):
     if not entries:
         console.print("  [dim]Command history is empty (.mesh/history.txt).[/dim]\n")
     else:
-        for idx, item in enumerate(entries, 1):
-            console.print(f"  [dim]{idx:3d}.[/dim] {escape(item)}")
+        for idx, (timestamp, command) in enumerate(entries, 1):
+            if timestamp:
+                console.print(f"  [dim]{timestamp}[/dim]")
+            console.print(f"  [dim]{idx:3d}.[/dim] [text]{escape(command)}[/text]")
         console.print()
 
     console.print("Usage: [warning]/history[/warning] | [warning]/history <limit>[/warning] | [warning]/history clear[/warning]\n")

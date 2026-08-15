@@ -35,7 +35,7 @@ This guide takes you from zero to productive: installation, first run, core conc
 
 **Mesh is not:**
 - A GUI application — everything happens in your terminal.
-- Tied to one AI provider — it works with OpenAI, Anthropic, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any custom OpenAI-compatible REST endpoint.
+- Tied to one AI provider — it works with OpenAI, Anthropic, Grok, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any custom OpenAI-compatible REST endpoint.
 - A sandboxed environment — the shell, file, and Python execution tools operate directly on your real filesystem and processes. Read [Section 8](#8-operating-modes-safety-model) before turning off the Safety Guard.
 
 ---
@@ -74,7 +74,7 @@ Export whichever providers you plan to use:
 ```bash
 export OPENAI_API_KEY="sk-..."
 export ANTHROPIC_API_KEY="sk-ant-..."
-export GROQ_API_KEY="gsk_..."
+export GROK_API_KEY="gsk_..."
 export OPENROUTER_API_KEY="sk-or-..."
 ```
 

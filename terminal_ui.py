@@ -640,12 +640,15 @@ class MeshPromptSession:
     """
     Wraps prompt_toolkit.PromptSession for styled prompt input and tab completion,
     with persistent on-disk history (.mesh/history.txt) for cross-session arrow-key recall,
-    falling back cleanly to console.input() if prompt_toolkit is missing.
+    falling back cleanly to console.input() if prompt_toolkit is missing or running in headless/non-console environments.
     Uses 'bold ansiblue' to match Rich's [info] theme color identically.
     Uses prompt_async() to integrate safely with Mesh's active asyncio event loop.
     """
     def __init__(self, mesh_instance: Any):
         self.mesh = mesh_instance
+        self.history = None
+        self.session = None
+
         if PROMPT_TOOLKIT_AVAILABLE:
             self.completer = MeshCompleter(mesh_instance)
             self.style = Style.from_dict({
@@ -658,15 +661,16 @@ class MeshPromptSession:
             except Exception:
                 self.history = None
 
-            self.session = PromptSession(
-                completer=self.completer,
-                style=self.style,
-                history=self.history,
-                complete_while_typing=True
-            )
-        else:
-            self.history = None
-            self.session = None
+            try:
+                self.session = PromptSession(
+                    completer=self.completer,
+                    style=self.style,
+                    history=self.history,
+                    complete_while_typing=True
+                )
+            except Exception:
+                # Catch NoConsoleScreenBufferError on Windows in captured/pytest/headless environments
+                self.session = None
 
     def clear_history(self) -> Tuple[bool, str]:
         """Clears both disk history file and active in-memory history buffer."""
@@ -684,14 +688,50 @@ class MeshPromptSession:
         except Exception as e:
             return False, f"Failed to clear history: {e}"
 
-    def get_history_entries(self, limit: int = 50) -> List[str]:
-        """Returns the most recent `limit` history strings."""
+    def get_history_entries(self, limit: int = 50) -> List[Tuple[Optional[str], str]]:
+        """
+        Parses prompt_toolkit FileHistory format from .mesh/history.txt.
+        Returns list of (timestamp_str, command_str) tuples.
+        """
         if not os.path.exists(HISTORY_FILE):
             return []
         try:
             with open(HISTORY_FILE, "r", encoding="utf-8", errors="replace") as f:
-                lines = [line.strip() for line in f if line.strip()]
-            return lines[-limit:]
+                content = f.read()
+
+            entries: List[Tuple[Optional[str], str]] = []
+            current_timestamp: Optional[str] = None
+            current_command_lines: List[str] = []
+
+            for raw_line in content.splitlines():
+                line = raw_line.rstrip("\r\n")
+                if not line:
+                    continue
+
+                if line.startswith("#"):
+                    if current_command_lines:
+                        cmd_text = "\n".join(current_command_lines).strip()
+                        if cmd_text:
+                            entries.append((current_timestamp, cmd_text))
+                        current_command_lines = []
+
+                    ts_raw = line.lstrip("#").strip()
+                    if "." in ts_raw and len(ts_raw) >= 19:
+                        current_timestamp = ts_raw.split(".")[0]
+                    else:
+                        current_timestamp = ts_raw if ts_raw else None
+
+                elif line.startswith("+"):
+                    current_command_lines.append(line[1:])
+                else:
+                    current_command_lines.append(line)
+
+            if current_command_lines:
+                cmd_text = "\n".join(current_command_lines).strip()
+                if cmd_text:
+                    entries.append((current_timestamp, cmd_text))
+
+            return entries[-limit:]
         except Exception:
             return []
 
