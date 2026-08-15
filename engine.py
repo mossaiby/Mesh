@@ -289,8 +289,11 @@ class MeshEngine:
                 console.print("\n[warning]Script execution complete in non-interactive mode. Exiting...[/warning]")
                 if self.session_manager.active_session_name:
                     self.session_manager.save_session()
-                await jobs.job_manager.stop_all()
-                await asyncio.wait_for(self.mcp_manager.close_all(), timeout=3.0)
+                try:
+                    await jobs.job_manager.stop_all()
+                    await asyncio.wait_for(self.mcp_manager.close_all(), timeout=3.0)
+                except Exception:
+                    pass
                 return
 
         console.print("[brand]Ready.[/brand] Type [warning]/help[/warning] for commands or start chatting.\n")
@@ -335,11 +338,16 @@ class MeshEngine:
             except (KeyboardInterrupt, EOFError):
                 console.print("\n[warning]Exiting...[/warning]")
                 if self.session_manager.active_session_name:
-                    self.session_manager.save_session()
+                    try:
+                        self.session_manager.save_session()
+                    except Exception:
+                        pass
                 try:
                     await jobs.job_manager.stop_all()
                     await asyncio.wait_for(self.mcp_manager.close_all(), timeout=2.0)
                 except Exception:
+                    pass
+                except (KeyboardInterrupt, asyncio.CancelledError):
                     pass
                 self.is_running = False
                 break

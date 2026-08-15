@@ -18,15 +18,18 @@ def main():
     script_path = parsed_args.file or parsed_args.script
 
     engine = MeshEngine()
-    asyncio.run(
-        engine.run(
-            script_file=script_path,
-            non_interactive=parsed_args.non_interactive,
-            log_file=parsed_args.log,
-            session_name=parsed_args.session,
-            resume_latest=parsed_args.resume
+    try:
+        asyncio.run(
+            engine.run(
+                script_file=script_path,
+                non_interactive=parsed_args.non_interactive,
+                log_file=parsed_args.log,
+                session_name=parsed_args.session,
+                resume_latest=parsed_args.resume
+            )
         )
-    )
+    except (KeyboardInterrupt, EOFError):
+        pass
 
 
 if __name__ == "__main__":

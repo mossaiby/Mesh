@@ -125,21 +125,21 @@ async def cmd_status(engine: Any, args: List[str]):
 
     sys_idx = next((i for i, m in enumerate(engine.messages) if m.get("role") == "system"), None)
     sys_prompt = engine.messages[sys_idx]["content"] if sys_idx is not None else "None"
-    
+
     console.print(f"\n[success]=== MESH STATUS (v{__version__}) ===[/success]")
     console.print("[dim]Developed by Farshid Mossaiby | https://github.com/mossaiby/Mesh[/dim]\n")
     console.print(f"• [label]Active Model:[/label] {model_str}")
     console.print(f"  [dim]Provider: {p_str}[/dim]")
-    
+
     tools_state = "[success]ENABLED[/success]" if engine.tools_enabled else "[error]DISABLED[/error]"
     distill_state = "[success]ON[/success]" if engine.subagent_distiller.enabled else "[error]OFF[/error]"
     repair_state = "[success]ON[/success]" if engine.repair_engine.enabled else "[error]OFF[/error]"
     hooks_state = "[success]ON[/success]" if hooks.hook_manager.enabled else "[error]OFF[/error]"
     debug_state = "[success]ON[/success]" if engine.debug_mode else "[error]OFF[/error]"
-    
+
     schemas = engine.tool_registry.get_schemas()
     console.print(f"• [label]Tools:[/label] {tools_state} ({len(schemas)} active schemas)")
-    
+
     indexing_tag = " [accent](indexing in background...)[/accent]" if symbol_search.symbol_indexer.is_indexing else ""
     console.print(f"• [label]Indexed AST Symbols:[/label] {len(symbol_search.symbol_indexer.symbol_index)} codebase symbols (cache: .mesh/symbols.cache.json){indexing_tag}")
     console.print(f"• [label]Active Branch:[/label] [accent]{engine.checkpoint_mgr.active_branch}[/accent] ({len(engine.checkpoint_mgr.checkpoints)} saved checkpoints)")
@@ -176,16 +176,16 @@ async def cmd_status(engine: Any, args: List[str]):
 
     console.print(f"• [label]Mode:[/label] {__import__('modes').MODES[engine.current_mode].label}")
     console.print(f"• [label]Debug Mode:[/label] {debug_state}")
-    
+
     skills = engine.skill_registry.list_skills()
     active_skills_count = sum(1 for s in skills.values() if s.enabled)
     console.print(f"• [label]Skills:[/label] {active_skills_count}/{len(skills)} active")
-    
+
     mcp_info = engine.mcp_manager.get_server_info()
     connected_mcp_count = sum(1 for details in mcp_info.values() if details["connected"])
     global_mcp_state = "[success]ENABLED[/success]" if engine.mcp_manager.global_enabled else "[error]DISABLED[/error]"
     console.print(f"• [label]MCP Servers:[/label] {global_mcp_state} ({connected_mcp_count}/{len(mcp_info)} connected)")
-    
+
     console.print(f"• [label]Allowed Directories:[/label] {len(engine.permission_manager.allowed_dirs)} directories")
 
     est_tokens = estimate_tokens(engine.messages)
@@ -577,12 +577,179 @@ async def cmd_context(engine: Any, args: List[str]):
         for name, details in mcp_info.items():
             status = "[success]CONNECTED[/success]" if details["connected"] else "[error]DISCONNECTED[/error]"
             enabled_str = "[success]ENABLED[/success]" if details["enabled"] else "[error]DISABLED[/error]"
-            cmd_str = f"{details['command']} {' '.join(details['args'])}" if details['command'] else "N/A"
-            
-            console.print(f"• [label]{name}[/label] ({status}) ({enabled_str}) — [dim]{escape(cmd_str)}[/dim]")
-            
+            if details.get("url"):
+                target_str = f"SSE: {details['url']}"
+            elif details.get("command"):
+                target_str = f"stdio: {details['command']} {' '.join(details['args'])}"
+            else:
+                target_str = "N/A"
+
+            console.print(f"• [label]{name}[/label] ({status}) ({enabled_str}) — [dim]{escape(target_str)}[/dim]")
+
             if details["error"]:
                 console.print(f"  [error]Error: {details['error']}[/error]")
+
+            tools = details.get("tools", [])
+            if tools:
+                console.print("  [accent]Exposed Tools:[/accent]")
+                for t in tools:
+                    desc = t.get("description", "No description")
+                    properties = t.get("inputSchema", {}).get("properties", {})
+                    args_summary = ", ".join(properties.keys()) if properties else "none"
+                    console.print(f"    - [text]{t['name']}[/text]: {escape(desc)}")
+                    console.print(f"      [dim]Arguments: ({args_summary})[/dim]")
+            else:
+                console.print("  [dim]No tools exposed.[/dim]")
+            console.print()
+
+    console.print("Usage: [warning]/mcps on[/warning] | [warning]/mcps off[/warning] | [warning]/mcps enable <server_name>[/warning] | [warning]/mcps disable <server_name>[/warning]\n")
+
+
+async def cmd_system(engine: Any, args: List[str]):
+    if not args:
+        sys_idx = next((i for i, m in enumerate(engine.messages) if m.get("role") == "system"), None)
+        current_sys = engine.messages[sys_idx]["content"] if sys_idx is not None else "None"
+        console.print(f"\n[success]=== Current System Prompt ===[/success]\n")
+        console.print(Markdown(current_sys))
+        console.print("\nUsage: [warning]/system <new_system_prompt>[/warning] | [warning]/system clear[/warning]\n")
+        return
+
+    if args[0].lower() == "clear":
+        engine.update_system_message("You are a helpful text-based AI assistant.")
+        console.print("[warning]System prompt reset to default.[/warning]")
+    else:
+        new_prompt = " ".join(args).strip()
+        engine.config_mgr.config.system_prompt = new_prompt
+        engine.config_mgr.save()
+        engine.update_system_message(new_prompt)
+        console.print("[success]System prompt updated.[/success]")
+
+
+async def cmd_tools(engine: Any, args: List[str]):
+    if not args:
+        state_str = "[success]ENABLED[/success]" if engine.tools_enabled else "[error]DISABLED[/error]"
+        schemas = engine.tool_registry.get_schemas()
+        console.print(f"\nTools are currently {state_str} ({len(schemas)} schemas registered).\n")
+        for s in schemas:
+            fn = s.get("function", {})
+            name = fn.get("name", "unnamed")
+            desc = fn.get("description", "No description")
+            console.print(f"  • [label]{name}[/label]: {desc}")
+        console.print("\nUsage: [warning]/tools on[/warning] | [warning]/tools off[/warning]\n")
+        return
+
+    sub = args[0].lower()
+    if sub == "on":
+        engine.tools_enabled = True
+        console.print("[success]Tool calling ENABLED.[/success]")
+    elif sub == "off":
+        engine.tools_enabled = False
+        console.print("[warning]Tool calling DISABLED.[/warning]")
+    else:
+        console.print("[error]Usage: /tools on | /tools off[/error]")
+
+
+async def cmd_skills(engine: Any, args: List[str]):
+    skills = engine.skill_registry.list_skills()
+    if not args:
+        console.print(f"\n[success]Registered Skills ({len(skills)}):[/success]\n")
+        for name, skill in skills.items():
+            state_str = "[success]ENABLED[/success]" if skill.enabled else "[error]DISABLED[/error]"
+            console.print(f"  • [label]{name}[/label] ({state_str}): {skill.description}")
+        console.print("\nUsage: [warning]/skills enable <name>[/warning] | [warning]/skills disable <name>[/warning]\n")
+        return
+
+    if len(args) >= 2 and args[0].lower() in ("enable", "disable"):
+        action = args[0].lower()
+        target = args[1]
+        enable_flag = (action == "enable")
+        success = engine.skill_registry.set_skill_state(target, enable_flag)
+        if success:
+            engine.skill_registry.save_to_file()
+            engine.update_system_message()
+            state_str = "ENABLED" if enable_flag else "DISABLED"
+            console.print(f"[success]Skill '{target}' {state_str}.[/success]")
+        else:
+            console.print(f"[error]Skill '{target}' not found.[/error]")
+    else:
+        console.print("[error]Usage: /skills enable <name> | /skills disable <name>[/error]")
+
+
+async def cmd_dirs(engine: Any, args: List[str]):
+    pm = engine.permission_manager
+    if not args:
+        console.print(f"\n[success]Allowed Working Directories ({len(pm.allowed_dirs)}):[/success]\n")
+        for d in pm.allowed_dirs:
+            console.print(f"  • [accent]{d}[/accent]")
+        console.print("\nUsage: [warning]/dirs add <path>[/warning] | [warning]/dirs remove <path>[/warning] | [warning]/dirs clear[/warning]\n")
+        return
+
+    sub = args[0].lower()
+    if sub == "add" and len(args) >= 2:
+        path = " ".join(args[1:]).strip()
+        resolved = pm.add_dir(path)
+        console.print(f"[success]Added allowed directory: '{resolved}'[/success]")
+    elif sub == "remove" and len(args) >= 2:
+        path = " ".join(args[1:]).strip()
+        if pm.remove_dir(path):
+            console.print(f"[success]Removed directory: '{path}'[/success]")
+        else:
+            console.print(f"[error]Directory '{path}' was not in allowed list.[/error]")
+    elif sub == "clear":
+        from pathlib import Path
+        pm.allowed_dirs = [str(Path.cwd().resolve())]
+        console.print("[warning]Reset allowed directories to current working directory.[/warning]")
+    else:
+        console.print("[error]Usage: /dirs add <path> | /dirs remove <path> | /dirs clear[/error]")
+
+
+async def cmd_mcps(engine: Any, args: List[str]):
+    info = engine.mcp_manager.get_server_info()
+    if not info:
+        console.print("[dim]No MCP servers configured in mcps.json.[/dim]")
+        return
+
+    if args:
+        action = args[0].lower()
+        if action == "on":
+            engine.mcp_manager.set_global_state(True, engine.tool_registry)
+            console.print("[success]All MCP tools globally ENABLED.[/success]")
+            return
+        elif action == "off":
+            engine.mcp_manager.set_global_state(False, engine.tool_registry)
+            console.print("[warning]All MCP tools globally DISABLED.[/warning]")
+            return
+        elif action in ["enable", "disable"] and len(args) > 1:
+            target = args[1]
+            enable_flag = (action == "enable")
+            success = engine.mcp_manager.set_server_state(target, enable_flag, engine.tool_registry)
+            if success:
+                state_str = "enabled" if enable_flag else "disabled"
+                console.print(f"[success]MCP Server '{target}' tools {state_str}.[/success]")
+            else:
+                console.print(f"[error]MCP Server '{target}' not found.[/error]")
+            return
+        else:
+            console.print("[error]Usage: /mcps on | /mcps off | /mcps enable <server_name> | /mcps disable <server_name>[/error]")
+            return
+
+    global_str = "[success]ENABLED[/success]" if engine.mcp_manager.global_enabled else "[error]DISABLED[/error]"
+    console.print(f"\n[success]Configured MCP Servers (Global MCP Status: {global_str}):[/success]\n")
+
+    for name, details in info.items():
+        status = "[success]CONNECTED[/success]" if details["connected"] else "[error]DISCONNECTED[/error]"
+        enabled_str = "[success]ENABLED[/success]" if details["enabled"] else "[error]DISABLED[/error]"
+        if details.get("url"):
+            target_str = f"SSE: {details['url']}"
+        elif details.get("command"):
+            target_str = f"stdio: {details['command']} {' '.join(details['args'])}"
+        else:
+            target_str = "N/A"
+
+        console.print(f"• [label]{name}[/label] ({status}) ({enabled_str}) — [dim]{escape(target_str)}[/dim]")
+
+        if details["error"]:
+            console.print(f"  [error]Error: {details['error']}[/error]")
 
         tools = details.get("tools", [])
         if tools:
@@ -593,8 +760,8 @@ async def cmd_context(engine: Any, args: List[str]):
                 args_summary = ", ".join(properties.keys()) if properties else "none"
                 console.print(f"    - [text]{t['name']}[/text]: {escape(desc)}")
                 console.print(f"      [dim]Arguments: ({args_summary})[/dim]")
-        else:
-            console.print("  [dim]No tools exposed.[/dim]")
+            else:
+                console.print("  [dim]No tools exposed.[/dim]")
         console.print()
 
     console.print("Usage: [warning]/mcps on[/warning] | [warning]/mcps off[/warning] | [warning]/mcps enable <server_name>[/warning] | [warning]/mcps disable <server_name>[/warning]\n")
