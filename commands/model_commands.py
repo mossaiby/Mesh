@@ -348,6 +348,7 @@ async def cmd_providers(engine: Any, args: List[str]):
 
 
 async def cmd_models(engine: Any, args: List[str]):
+    cfg = engine.config_mgr.config
     sub = args[0].lower() if args else ""
 
     if sub == "add":
@@ -434,6 +435,27 @@ async def cmd_models(engine: Any, args: List[str]):
 
         return
 
+    elif sub in ("remove", "delete"):
+        if len(args) < 2:
+            models_list = ", ".join(cfg.models.keys())
+            console.print(f"[error]Usage: /models remove <model_key>\nConfigured models: {models_list}[/error]")
+            return
+
+        target_key = args[1].strip()
+        if target_key not in cfg.models:
+            console.print(f"[error]Model key '{target_key}' not found in configuration. See /models for valid keys.[/error]")
+            return
+
+        was_active = (cfg.active_model == target_key)
+        success = engine.config_mgr.remove_model(target_key)
+        if success:
+            console.print(f"[success]✔ Successfully removed model '[label]{target_key}[/label]' from config.json.[/success]")
+            if was_active:
+                console.print(f"[warning]Active model was reset to: [accent]{engine.config_mgr.config.active_model}[/accent][/warning]")
+        else:
+            console.print(f"[error]Failed to remove model '{target_key}'.[/error]")
+        return
+
     elif sub in ("discover", "fetch", "list-remote"):
         target_provider = args[1].lower() if len(args) > 1 else None
         providers_to_query = {}
@@ -483,7 +505,6 @@ async def cmd_models(engine: Any, args: List[str]):
         console.print("Tip: Run [warning]/models add <provider> [<pattern>][/warning] to add models (e.g. /models add openrouter *free*).\n")
         return
 
-    cfg = engine.config_mgr.config
     active = cfg.active_model
     console.print("[success]Configured Models:[/success]")
     for key, model_cfg in cfg.models.items():
@@ -517,7 +538,12 @@ async def cmd_models(engine: Any, args: List[str]):
     if active == "auto":
         console.print(f"\n[brand]🔀 Active Mode: AUTO-ROUTING[/brand] (using router model: [accent]{cfg.router_model or 'none'}[/accent])")
 
-    console.print("\nUsage: [warning]/models[/warning] | [warning]/models discover [<provider>][/warning] | [warning]/models add <provider> [<pattern>] [<context_window>][/warning]\n")
+    console.print(
+        "\nUsage: [warning]/models[/warning] | "
+        "[warning]/models discover [<provider>][/warning] | "
+        "[warning]/models add <provider> [<pattern>] [<context_window>][/warning] | "
+        "[warning]/models remove <model_key>[/warning]\n"
+    )
 
 
 async def cmd_switch(engine: Any, args: List[str]):
@@ -658,7 +684,7 @@ def register_model_commands(engine: Any):
     )
     engine.cmd_registry.register(
         "models",
-        "List, discover, or add models: /models [discover|add] [<provider>] [<pattern>] [<context_window>]",
+        "List, discover, add, or remove models: /models [discover|add|remove] <args>",
         lambda args: cmd_models(engine, args),
         category="Models & Settings"
     )

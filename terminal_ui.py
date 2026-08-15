@@ -238,7 +238,8 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
             if current_arg_index == 1:
                 subs = [
                     ("discover", "Query provider endpoints for offered models"),
-                    ("add", "Add models: /models add <provider> [<pattern>] [<context_window>]")
+                    ("add", "Add models: /models add <provider> [<pattern>] [<context_window>]"),
+                    ("remove", "Remove a configured model: /models remove <model_key>")
                 ]
                 for sub, meta in subs:
                     if sub.startswith(current_word.lower()):
@@ -250,6 +251,11 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                     for p in providers:
                         if p.lower().startswith(current_word.lower()):
                             yield Completion(p, start_position=-len(current_word))
+                elif word1 in ("remove", "delete"):
+                    models = list(self.mesh.config_mgr.config.models.keys())
+                    for m in models:
+                        if m.lower().startswith(current_word.lower()):
+                            yield Completion(m, start_position=-len(current_word))
             elif current_arg_index == 3:
                 word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
                 if word1 == "add":

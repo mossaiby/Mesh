@@ -42,7 +42,21 @@ def test_config_manager_add_and_remove_provider(temp_workspace):
     config_mgr.remove_provider_header("deepseek", "X-Custom-Header")
     assert config_mgr.config.providers["deepseek"].default_headers is None
 
-    # 3. Remove provider and verify associated model pruning
+    # 3. Remove model test
+    model_removed = config_mgr.remove_model("deepseek:deepseek-chat")
+    assert model_removed is True
+    assert "deepseek:deepseek-chat" not in config_mgr.config.models
+
+    # Re-add model to test provider removal cascading
+    config_mgr.add_model(
+        key="deepseek:deepseek-chat",
+        provider="deepseek",
+        model_id="deepseek-chat",
+        name="DeepSeek Chat",
+        context_window=65536
+    )
+
+    # 4. Remove provider and verify associated model pruning
     success, removed_models = config_mgr.remove_provider("deepseek", remove_associated_models=True)
     assert success is True
     assert "deepseek" not in config_mgr.config.providers

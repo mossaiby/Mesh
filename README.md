@@ -120,7 +120,7 @@ python main.py path/to/script.txt --non-interactive
 | Command | Description |
 | --- | --- |
 | `/providers [list\|add\|remove\|test\|header] <args>` | List, add, remove, test, or configure model providers live from the CLI |
-| `/models [discover\|add] [<provider>] [<pattern>]` | List configured models, discover endpoint models, or batch-add models |
+| `/models [discover\|add\|remove] [<args>]` | List, discover, add, or remove configured models |
 | `/switch [auto\|router\|<model_key>]` | Switch active model or mode: `/switch [auto\|router\|<model_key>]` |
 | `/config [distill\|proxy\|repair\|hooks\|compact\|thinking\|effort\|tokens\|cost\|statistics\|schema\|set] <args>` | View or configure system settings, retry parameters, and JSON schemas |
 | `/guard [on\|off\|mode\|model\|trust] <args>` | View or configure safety guard settings |

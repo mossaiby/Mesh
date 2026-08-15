@@ -365,3 +365,27 @@ class ConfigManager:
         )
         self.config.models[key] = model_cfg
         self.save()
+
+    def remove_model(self, key: str) -> bool:
+        """Removes a model from configuration and resets active/router/guard bindings if needed."""
+        if key not in self.config.models:
+            return False
+
+        del self.config.models[key]
+
+        # Reset active/router/guard/advisor model references if they pointed to the removed model
+        if self.config.active_model == key:
+            remaining_keys = list(self.config.models.keys())
+            self.config.active_model = remaining_keys[0] if remaining_keys else "auto"
+
+        if self.config.router_model == key:
+            self.config.router_model = None
+
+        if self.config.guard_model == key:
+            self.config.guard_model = None
+
+        if self.config.advisor_model == key:
+            self.config.advisor_model = None
+
+        self.save()
+        return True

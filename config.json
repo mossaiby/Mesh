@@ -389,34 +389,6 @@
       "context_window": 1000000,
       "tags": [],
       "description": "Agnes 2.5 Pro Alpha via Agnes AI"
-    },
-    "agnes:agnes-image-2.0-flash": {
-      "name": "Agnes Image 2.0 Flash",
-      "provider": "agnes",
-      "model_id": "agnes-image-2.0-flash",
-      "context_window": 1000000,
-      "tags": [
-        "fast"
-      ],
-      "description": "Agnes Image 2.0 Flash via Agnes AI"
-    },
-    "agnes:agnes-image-2.1-flash": {
-      "name": "Agnes Image 2.1 Flash",
-      "provider": "agnes",
-      "model_id": "agnes-image-2.1-flash",
-      "context_window": 524288,
-      "tags": [
-        "fast"
-      ],
-      "description": "Agnes Image 2.1 Flash via Agnes AI"
-    },
-    "agnes:agnes-video-v2.0": {
-      "name": "Agnes Video V2.0",
-      "provider": "agnes",
-      "model_id": "agnes-video-v2.0",
-      "context_window": 1000000,
-      "tags": [],
-      "description": "Agnes Video V2.0 via Agnes AI"
     }
   }
 }
