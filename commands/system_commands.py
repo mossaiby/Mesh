@@ -519,7 +519,7 @@ async def cmd_context(engine: Any, args: List[str]):
         console.print(header)
 
         if content:
-            console.print(f"  {content}")
+            console.print(Markdown(content))
         if tool_calls:
             console.print(f"  [dim italic]Tool Calls: {tool_calls}[/dim italic]")
         if not content and not tool_calls:
