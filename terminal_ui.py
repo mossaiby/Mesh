@@ -61,7 +61,7 @@ def get_path_completions(partial_path: str, prefix: str = "") -> List[Tuple[str,
 class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
     """
     Context-aware completion engine for Mesh: autocompletes slash commands,
-    positional subcommands, model keys, operating modes, background jobs,
+    positional subcommands, model keys, provider keys, operating modes, background jobs,
     memory keys, session names, config parameters, and local filesystem paths.
     """
     def __init__(self, mesh_instance: Any):
@@ -122,6 +122,34 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
         # -------------------------------------------------------------
         # 3. Context-Aware Subcommand & Argument Completions
         # -------------------------------------------------------------
+
+        # --- /providers ---
+        if cmd0 == "/providers":
+            if current_arg_index == 1:
+                subs = [
+                    ("list", "List all configured model providers"),
+                    ("add", "Add provider: /providers add <key> <base_url> [<name>] [<api_key_env>]"),
+                    ("remove", "Remove a configured provider and its models"),
+                    ("test", "Test connectivity to provider endpoint"),
+                    ("header", "Configure custom default headers for provider")
+                ]
+                for sub, meta in subs:
+                    if sub.startswith(current_word.lower()):
+                        yield Completion(sub, start_position=-len(current_word), display_meta=meta)
+            elif current_arg_index == 2:
+                word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
+                if word1 in ("remove", "delete", "test", "check", "header"):
+                    providers = list(self.mesh.config_mgr.config.providers.keys())
+                    for p in providers:
+                        if p.lower().startswith(current_word.lower()):
+                            yield Completion(p, start_position=-len(current_word))
+            elif current_arg_index == 3:
+                word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
+                if word1 == "header":
+                    for act in ("add", "remove", "clear"):
+                        if act.startswith(current_word.lower()):
+                            yield Completion(act, start_position=-len(current_word))
+            return
 
         # --- /log ---
         if cmd0 == "/log":
@@ -273,7 +301,8 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
         if cmd0 == "/config":
             if current_arg_index == 1:
                 subs = [
-                    ("set", "Set timeout, budget, turns, repair, & compaction parameters"),
+                    ("set", "Set timeout, budget, turns, repair, retry, & compaction parameters"),
+                    ("schema", "Generate or update config.schema.json for IDE autocompletion"),
                     ("distill", "Toggle sub-agent tool output distillation"),
                     ("proxy", "View or configure global network HTTP/HTTPS/SOCKS proxy"),
                     ("repair", "Toggle self-repair tool recovery"),

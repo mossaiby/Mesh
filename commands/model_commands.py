@@ -1,8 +1,9 @@
 import asyncio
 import fnmatch
+import os
 import re
 import sys
-from typing import List, Optional, Any
+from typing import List, Optional, Any, Dict
 from rich.live import Live
 from rich.text import Text
 from providers import fetch_models_details
@@ -167,6 +168,185 @@ async def infer_context_window(
     return 128000
 
 
+async def cmd_providers(engine: Any, args: List[str]):
+    cfg = engine.config_mgr.config
+    sub = args[0].lower() if args else ""
+
+    if not args or sub == "list":
+        console.print(f"\n[success]Configured Model Providers ({len(cfg.providers)}):[/success]\n")
+        if not cfg.providers:
+            console.print("  [dim]No providers configured in config.json.[/dim]\n")
+        else:
+            for p_key, p_cfg in cfg.providers.items():
+                env_val = os.getenv(p_cfg.api_key_env)
+                env_status = "[success]SET[/success]" if env_val else "[warning]NOT SET[/warning]"
+                
+                models_count = sum(1 for m in cfg.models.values() if m.provider == p_key)
+                headers_str = f" | [dim]Headers: {', '.join(p_cfg.default_headers.keys())}[/dim]" if p_cfg.default_headers else ""
+
+                console.print(
+                    f"• [label]{p_key}[/label] ([brand]{p_cfg.name}[/brand]) — [dim]{p_cfg.base_url}[/dim]\n"
+                    f"  API Key Env: [accent]{p_cfg.api_key_env}[/accent] ({env_status}) | Models: {models_count}{headers_str}"
+                )
+            console.print()
+
+        console.print(
+            "Usage: [warning]/providers[/warning] | "
+            "[warning]/providers add <key> <base_url> [<name>] [<api_key_env>][/warning] | "
+            "[warning]/providers remove <key>[/warning] | "
+            "[warning]/providers test <key>[/warning] | "
+            "[warning]/providers header <key> add|remove <header>[/warning]\n"
+        )
+        return
+
+    if sub == "add":
+        sub_args = args[1:]
+        
+        # Interactive addition if no positional arguments provided
+        if not sub_args:
+            def prompt_interactive() -> Dict[str, str]:
+                try:
+                    console.print("\n[label]Set up a New Provider:[/label]")
+                    key = input("Provider Key (e.g. deepseek, vllm, local) > ").strip().lower()
+                    if not key:
+                        return {}
+                    name = input(f"Display Name (default: '{key.title()}') > ").strip() or key.title()
+                    url = input("Base URL (e.g. https://api.deepseek.com/v1) > ").strip()
+                    if not url:
+                        return {}
+                    default_env = f"{key.upper().replace('-', '_')}_API_KEY"
+                    env_var = input(f"API Key Env Variable (default: '{default_env}') > ").strip() or default_env
+                    return {"key": key, "name": name, "url": url, "env": env_var}
+                except (KeyboardInterrupt, EOFError):
+                    return {}
+
+            loop = asyncio.get_running_loop()
+            details = await loop.run_in_executor(None, prompt_interactive)
+            if not details or not details.get("key") or not details.get("url"):
+                console.print("[warning]Provider setup cancelled.[/warning]")
+                return
+
+            p_key = details["key"]
+            p_name = details["name"]
+            p_url = details["url"]
+            p_env = details["env"]
+
+        else:
+            p_key = sub_args[0].lower().strip()
+            # Parse arguments flexibly: /providers add deepseek https://api.deepseek.com/v1 "DeepSeek" DEEPSEEK_API_KEY
+            if len(sub_args) >= 2:
+                arg1 = sub_args[1].strip()
+                if arg1.startswith("http://") or arg1.startswith("https://"):
+                    p_url = arg1
+                    if len(sub_args) == 2:
+                        p_name = p_key.replace("-", " ").replace("_", " ").title()
+                        p_env = f"{p_key.upper().replace('-', '_')}_API_KEY"
+                    elif len(sub_args) == 3:
+                        arg2 = sub_args[2].strip()
+                        if arg2.isupper() and ("KEY" in arg2 or "_" in arg2):
+                            p_name = p_key.replace("-", " ").replace("_", " ").title()
+                            p_env = arg2
+                        else:
+                            p_name = arg2
+                            p_env = f"{p_key.upper().replace('-', '_')}_API_KEY"
+                    else:
+                        p_name = sub_args[2].strip()
+                        p_env = sub_args[3].strip()
+                elif len(sub_args) >= 3 and (sub_args[2].startswith("http://") or sub_args[2].startswith("https://")):
+                    p_name = arg1
+                    p_url = sub_args[2].strip()
+                    p_env = sub_args[3].strip() if len(sub_args) >= 4 else f"{p_key.upper().replace('-', '_')}_API_KEY"
+                else:
+                    console.print("[error]Invalid URL. Provider base_url must start with http:// or https://[/error]")
+                    return
+            else:
+                console.print("[error]Usage: /providers add <key> <base_url> [<display_name>] [<api_key_env>][/error]")
+                return
+
+        engine.config_mgr.add_provider(
+            key=p_key,
+            name=p_name,
+            base_url=p_url,
+            api_key_env=p_env
+        )
+
+        console.print(f"\n[success]✔ Successfully added provider '[label]{p_key}[/label]' ({p_name}) -> `{p_url}`[/success]")
+        console.print(f"[dim]Tip: Discover or add models from this provider with:[/dim] [warning]/models discover {p_key}[/warning] [dim]or[/dim] [warning]/models add {p_key} *[/warning]\n")
+        return
+
+    if sub in ("remove", "delete"):
+        if len(args) < 2:
+            console.print("[error]Usage: /providers remove <key>[/error]")
+            return
+
+        target_key = args[1].lower().strip()
+        if target_key not in cfg.providers:
+            console.print(f"[error]Provider '{target_key}' not found in configuration.[/error]")
+            return
+
+        success, removed_models = engine.config_mgr.remove_provider(target_key, remove_associated_models=True)
+        if success:
+            console.print(f"[success]✔ Removed provider '[label]{target_key}[/label]'.[/success]")
+            if removed_models:
+                console.print(f"[dim]Also removed {len(removed_models)} model(s) bound to this provider: {', '.join(removed_models)}[/dim]\n")
+        else:
+            console.print(f"[error]Failed to remove provider '{target_key}'.[/error]")
+        return
+
+    if sub in ("test", "check"):
+        target_key = args[1].lower().strip() if len(args) > 1 else None
+        if not target_key or target_key not in cfg.providers:
+            providers_list = ", ".join(cfg.providers.keys())
+            console.print(f"[error]Usage: /providers test <key>. Configured providers: {providers_list}[/error]")
+            return
+
+        p_cfg = cfg.providers[target_key]
+        console.print(f"[brand]🔍 Testing connection to {p_cfg.name} ({p_cfg.base_url})...[/brand]")
+        success, models, err = await fetch_models_details(p_cfg, timeout=engine.config_mgr.config.timeouts.api, config_mgr=engine.config_mgr)
+
+        if success:
+            console.print(f"[success]✔ Connection successful! Provider responded and offered {len(models)} model(s).[/success]\n")
+        else:
+            console.print(f"[error]✖ Connection test failed:[/error] {err}\n")
+        return
+
+    if sub == "header":
+        if len(args) < 3:
+            console.print(
+                "[error]Usage: /providers header <provider_key> add <header_name> <header_val>\n"
+                "       /providers header <provider_key> remove <header_name>\n"
+                "       /providers header <provider_key> clear[/error]"
+            )
+            return
+
+        p_key = args[1].lower().strip()
+        if p_key not in cfg.providers:
+            console.print(f"[error]Provider '{p_key}' not found.[/error]")
+            return
+
+        action = args[2].lower()
+        p_cfg = cfg.providers[p_key]
+
+        if action == "add" and len(args) >= 5:
+            h_name = args[3]
+            h_val = " ".join(args[4:])
+            engine.config_mgr.set_provider_header(p_key, h_name, h_val)
+            console.print(f"[success]✔ Added header `{h_name}: {h_val}` to provider '[label]{p_key}[/label]'.[/success]")
+        elif action == "remove" and len(args) >= 4:
+            h_name = args[3]
+            engine.config_mgr.remove_provider_header(p_key, h_name)
+            console.print(f"[warning]Removed header `{h_name}` from provider '[label]{p_key}[/label]'.[/warning]")
+        elif action == "clear":
+            p_cfg.default_headers = None
+            engine.config_mgr.save()
+            console.print(f"[warning]Cleared custom headers for provider '[label]{p_key}[/label]'.[/warning]")
+        else:
+            console.print("[error]Usage: /providers header <provider_key> [add|remove|clear] <args>[/error]")
+        return
+
+    console.print("[error]Unknown subcommand. Usage: /providers [list|add|remove|test|header] <args>[/error]")
+
+
 async def cmd_models(engine: Any, args: List[str]):
     sub = args[0].lower() if args else ""
 
@@ -193,7 +373,7 @@ async def cmd_models(engine: Any, args: List[str]):
         p_cfg = engine.config_mgr.config.providers[p_key]
 
         console.print(f"[brand]🔍 Fetching model metadata from {p_cfg.name} matching pattern '{pattern}'...[/brand]")
-        success, model_details, err = await fetch_models_details(p_cfg, timeout=engine.config_mgr.config.timeouts.api)
+        success, model_details, err = await fetch_models_details(p_cfg, timeout=engine.config_mgr.config.timeouts.api, config_mgr=engine.config_mgr)
 
         if not success or not model_details:
             console.print(f"[error]Failed to discover models from {p_cfg.name}: {err}[/error]")
@@ -276,7 +456,7 @@ async def cmd_models(engine: Any, args: List[str]):
         configured_model_ids = {m.model_id for m in engine.config_mgr.config.models.values()}
 
         async def query_p(key: str, p_cfg):
-            success, model_details, err = await fetch_models_details(p_cfg, timeout=engine.config_mgr.config.timeouts.api)
+            success, model_details, err = await fetch_models_details(p_cfg, timeout=engine.config_mgr.config.timeouts.api, config_mgr=engine.config_mgr)
             return key, p_cfg, success, model_details, err
 
         results = await asyncio.gather(*(query_p(k, p) for k, p in providers_to_query.items()))
@@ -470,6 +650,12 @@ async def cmd_switch(engine: Any, args: List[str]):
 
 
 def register_model_commands(engine: Any):
+    engine.cmd_registry.register(
+        "providers",
+        "List, add, remove, test, or configure model providers: /providers [list|add|remove|test|header] <args>",
+        lambda args: cmd_providers(engine, args),
+        category="Models & Settings"
+    )
     engine.cmd_registry.register(
         "models",
         "List, discover, or add models: /models [discover|add] [<provider>] [<pattern>] [<context_window>]",

@@ -280,6 +280,67 @@ class ConfigManager:
         self.config.active_model = key
         self.save()
 
+    def add_provider(
+        self,
+        key: str,
+        name: str,
+        base_url: str,
+        api_key_env: str = "OPENAI_API_KEY",
+        default_headers: Optional[Dict[str, str]] = None
+    ) -> None:
+        """Adds or updates a provider endpoint configuration and persists to config.json."""
+        provider_cfg = ProviderConfig(
+            name=name,
+            base_url=base_url,
+            api_key_env=api_key_env,
+            default_headers=default_headers
+        )
+        self.config.providers[key] = provider_cfg
+        self.save()
+
+    def remove_provider(self, key: str, remove_associated_models: bool = True) -> Tuple[bool, List[str]]:
+        """Removes a provider endpoint and optionally prunes models associated with it."""
+        if key not in self.config.providers:
+            return False, []
+
+        del self.config.providers[key]
+
+        removed_models = []
+        if remove_associated_models:
+            models_to_remove = [
+                m_key for m_key, m_cfg in self.config.models.items()
+                if m_cfg.provider == key
+            ]
+            for m_key in models_to_remove:
+                del self.config.models[m_key]
+                removed_models.append(m_key)
+
+        self.save()
+        return True, removed_models
+
+    def set_provider_header(self, key: str, header_name: str, header_val: str) -> None:
+        """Sets a default HTTP header on the specified provider."""
+        if key not in self.config.providers:
+            raise KeyError(f"Provider '{key}' not found in configuration.")
+
+        p_cfg = self.config.providers[key]
+        if p_cfg.default_headers is None:
+            p_cfg.default_headers = {}
+        p_cfg.default_headers[header_name] = header_val
+        self.save()
+
+    def remove_provider_header(self, key: str, header_name: str) -> None:
+        """Removes a custom header from the specified provider."""
+        if key not in self.config.providers:
+            raise KeyError(f"Provider '{key}' not found in configuration.")
+
+        p_cfg = self.config.providers[key]
+        if p_cfg.default_headers and header_name in p_cfg.default_headers:
+            del p_cfg.default_headers[header_name]
+            if not p_cfg.default_headers:
+                p_cfg.default_headers = None
+            self.save()
+
     def add_model(
         self,
         key: str,

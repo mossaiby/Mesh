@@ -11,17 +11,18 @@ This guide takes you from zero to productive: installation, first run, core conc
 1. [What Mesh Is (and Isn't)](#1-what-mesh-is-and-isnt)
 2. [Installation](#2-installation)
 3. [First Run & API Keys](#3-first-run--api-keys)
-4. [Core Concepts](#4-core-concepts)
-5. [Talking to Mesh](#5-talking-to-mesh)
-6. [Command Reference](#6-command-reference)
-7. [Operating Modes (Safety Model)](#7-operating-modes-safety-model)
-8. [Tools & Concurrency Model](#8-tools--concurrency-model)
-9. [Configuration Files & IDE Setup](#9-configuration-files--ide-setup)
-10. [Common Workflows](#10-common-workflows)
-11. [Sub-Agent Workflows](#11-sub-agent-workflows)
-12. [Memory, Notes & Learning Over Time](#12-memory-notes--learning-over-time)
-13. [Troubleshooting](#13-troubleshooting)
-14. [Quick Reference Card](#14-quick-reference-card)
+4. [Managing Providers via CLI (`/providers`)](#4-managing-providers-via-cli-providers)
+5. [Core Concepts](#5-core-concepts)
+6. [Talking to Mesh](#6-talking-to-mesh)
+7. [Command Reference](#7-command-reference)
+8. [Operating Modes (Safety Model)](#8-operating-modes-safety-model)
+9. [Tools & Concurrency Model](#9-tools--concurrency-model)
+10. [Configuration Files & IDE Setup](#10-configuration-files--ide-setup)
+11. [Common Workflows](#11-common-workflows)
+12. [Sub-Agent Workflows](#12-sub-agent-workflows)
+13. [Memory, Notes & Learning Over Time](#13-memory-notes--learning-over-time)
+14. [Troubleshooting](#14-troubleshooting)
+15. [Quick Reference Card](#15-quick-reference-card)
 
 ---
 
@@ -29,13 +30,13 @@ This guide takes you from zero to productive: installation, first run, core conc
 
 **Mesh is:**
 - A terminal-based AI agent loop, similar in spirit to Claude Code or Aider, but provider-agnostic.
-- Built around a modular architecture: `InferenceCoordinator` handles streaming and metrics, `ToolOrchestrator` handles concurrent read execution and sequential state mutation, and `SymbolIndexer` manages persistent AST symbol caching in `.mesh/symbols.cache.json`.
-- Configurable at the model, provider, tool, retry, and safety level via `config.json`, `config.schema.json`, `mcps.json`, `skills.json`, and in-session slash commands.
+- Built around a modular architecture: `InferenceCoordinator` handles streaming, metrics, and retry backoff, `ToolOrchestrator` handles concurrent read execution and sequential state mutation, and `SymbolIndexer` manages persistent AST symbol caching in `.mesh/symbols.cache.json`.
+- Configurable at the model, provider, tool, retry, and safety level via `/providers`, `/models`, `/config`, `config.json`, `config.schema.json`, `mcps.json`, and `skills.json`.
 
 **Mesh is not:**
 - A GUI application — everything happens in your terminal.
-- Tied to one AI provider — it works with OpenAI, Anthropic, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint.
-- A sandboxed environment — the shell, file, and Python execution tools operate directly on your real filesystem and processes. Read [Section 7](#7-operating-modes-safety-model) before turning off the Safety Guard.
+- Tied to one AI provider — it works with OpenAI, Anthropic, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any custom OpenAI-compatible REST endpoint.
+- A sandboxed environment — the shell, file, and Python execution tools operate directly on your real filesystem and processes. Read [Section 8](#8-operating-modes-safety-model) before turning off the Safety Guard.
 
 ---
 
@@ -59,7 +60,7 @@ This guide takes you from zero to productive: installation, first run, core conc
 ```bash
 git clone https://github.com/mossaiby/Mesh.git
 cd Mesh
-./bootstrap
+pip install -r requirements.txt
 ```
 
 ---
@@ -84,22 +85,36 @@ export OLLAMA_API_KEY="dummy"
 export LOCAL_API_KEY="dummy"
 ```
 
-### Launch
+---
+
+## 4. Managing Providers via CLI (`/providers`)
+
+You can set up, list, test, and remove model providers live inside Mesh without touching `config.json`:
 
 ```bash
-# Interactive REPL
-./mesh
+# List all configured providers and API key environment status
+/providers list
 
-# Run a script file on startup, then drop into the REPL
-./mesh script.txt
+# Add a cloud provider (e.g. DeepSeek)
+/providers add deepseek https://api.deepseek.com/v1 "DeepSeek Cloud" DEEPSEEK_API_KEY
 
-# Run a script file headlessly and exit
-./mesh --file script.txt --non-interactive
+# Add a local provider (e.g. vLLM or local endpoint)
+/providers add vllm http://localhost:8000/v1
+
+# Test live connectivity to a provider endpoint
+/providers test deepseek
+
+# Add custom HTTP headers (e.g. for OpenRouter or custom gateways)
+/providers header openrouter add HTTP-Referer https://github.com/mossaiby/Mesh
+
+# Discover and add models from your newly added provider
+/models discover deepseek
+/models add deepseek *
 ```
 
 ---
 
-## 4. Core Concepts
+## 5. Core Concepts
 
 Understanding these ideas covers most of what you need to use Mesh effectively:
 
@@ -115,7 +130,7 @@ Understanding these ideas covers most of what you need to use Mesh effectively:
 
 ---
 
-## 5. Talking to Mesh
+## 6. Talking to Mesh
 
 Anything you type that doesn't start with `/`, `!`, or `#` is sent to the model as a normal chat message.
 
@@ -123,21 +138,22 @@ Anything you type that doesn't start with `/`, `!`, or `#` is sent to the model 
 
 | Prefix | Meaning |
 |---|---|
-| `/command args` | Runs a slash command directly — see [Section 6](#6-command-reference). |
+| `/command args` | Runs a slash command directly — see [Section 7](#7-command-reference). |
 | `!command` | Runs a shell command immediately, without going through the LLM. Equivalent to `/shell`. |
 | `#code` | Executes a line of Python in a persistent session namespace. Equivalent to `/python`. |
 | `@filename` | Inside a normal prompt, `@` mentions are expanded to inject file content directly into your message. |
 
 ---
 
-## 6. Command Reference
+## 7. Command Reference
 
 Type `/help` any time for a live categorized list, or `/help <command>` for detailed usage.
 
-### ⚙️ Models & Settings
+### ⚙️ Models & Providers
 
 | Command | Description |
 | --- | --- |
+| `/providers [list\|add\|remove\|test\|header] <args>` | Configure provider endpoints without manual editing of `config.json`. |
 | `/status` | Active model, router model, proxy, thinking mode, symbol count, disk cache state, git branch, metrics, context usage. |
 | `/models` | List configured models (`/models`), discover remote endpoints (`/models discover`), or batch-add models (`/models add openrouter *free*`). |
 | `/switch` | Switch model or enable routing: `/switch <key>`, `/switch auto`, `/switch router [<key>]`. |
@@ -149,11 +165,7 @@ Type `/help` any time for a live categorized list, or `/help <command>` for deta
 
 | Command | Description |
 | --- | --- |
-| `/agent explore [<n>] <task>` | Runs `n` (2–5) parallel speculative solution branches and synthesizes the best approach. |
-| `/agent squad <task>` | 4-stage pipeline: Architect → Coder → Tester → Auditor. |
-| `/agent consensus <question> \| <proposal>` | One model critiques, then a (possibly different) model produces a verified recommendation. |
-| `/agent delegate <task>` | Hands a task to an autonomous sub-agent that runs its own tool loop and reports back. |
-| `/agent advisor <question>` | Consults a second-opinion model without derailing the main conversation. |
+| `/agent [explore\|squad\|consensus\|delegate\|advisor] <args>` | Run sub-agent swarm and reasoning workflows |
 | `/loop <test_cmd>` | Iterative auto-fix loop: runs a test/build command, feeds failures back to the model, retries. |
 | `/jobs` | View/manage background async processes: `/jobs log <id>`, `/jobs stop <id>`, `/jobs clear`. |
 
@@ -200,174 +212,4 @@ Type `/help` any time for a live categorized list, or `/help <command>` for deta
 | `/log` | Toggle and configure Markdown session logging. |
 | `/checkpoint` | `save <tag>`, `fork <branch>`, `restore <tag>` — session state snapshots. |
 | `/clear` | Clear conversation history; keeps system prompt, goal, and skills. |
-| `/retry` | Re-run the last LLM turn. |
-| `/debug [on\|off]` | Show Chain-of-Thought reasoning and sub-agent execution traces. |
-| `/exit` | Gracefully stop background jobs, close MCP connections, and quit. |
-
----
-
-## 7. Operating Modes (Safety Model)
-
-Mesh has two independent safety layers: **mode** (what tools are allowed) and **Safety Guard** (risk assessment before execution).
-
-### Modes
-
-| Mode | Tool access | When to use it |
-|---|---|---|
-| **build** *(default)* | Full — reads and writes | Normal day-to-day work. |
-| **plan** | Read-only: `read_file`, `glob_files`, `web_search`, `web_fetch`, `consult_advisor` | Propose a plan without modifying state. |
-| **review** | Read-only, same tool set as `plan` | Critique existing code for bugs and security risks. |
-| **chat** | Conversation only (`calculator`, `web_search`, `web_fetch`, `advisor`, `memory`) | General Q&A and research. |
-| **yolo** | Full access, no confirmation prompts for ambiguous-risk actions | Fast iterative work. High-risk actions are still blocked. |
-
----
-
-## 8. Tools & Concurrency Model
-
-### Parallel Read-Only Execution
-When the model requests multiple tool calls in a single turn, `ToolOrchestrator` partitions them:
-- **Read-Only Batches** (`read_file`, `glob_files`, `web_search`, `web_fetch`, `search_symbols`, `calculator`, `git_status`, `git_diff`, `memory` read): execute concurrently via `asyncio.gather()`.
-- **Mutating Tools** (`write_file`, `edit_file`, `hash_edit`, `shell`, `job`, `git_commit`, `git_push`, MCP tools): execute sequentially in order.
-
-### Editing Strategies
-- **`hash_edit`**: Uses 4-character line hashes (`show_hashes: true` in `read_file`) to guarantee drift-free replacement.
-- **`edit_file`**: Exact string matching with fuzzy block fallback at ≥85% similarity.
-
----
-
-## 9. Configuration Files & IDE Setup
-
-### `config.json` & IDE Schema Auto-Completion
-`config.json` links directly to `config.schema.json`:
-
-```json
-{
-  "$schema": "./config.schema.json",
-  "active_model": "anthropic:claude-3-7-sonnet-20250219",
-  "retry_settings": {
-    "retries": 3,
-    "initial-delay": 1.0,
-    "max-delay": 30.0,
-    "backoff-factor": 2.0,
-    "jitter": true
-  }
-}
-```
-
-In VS Code, Cursor, or JetBrains, this provides instant autocomplete, hover documentation, and validation for all configuration keys. Use `/config schema` to regenerate the schema file at any time.
-
-### Fine-Tuning via `/config set`
-Fine-tune system settings live from the CLI:
-```
-/config set retry retries 5
-/config set retry initial-delay 0.5
-/config set timeout web 30
-/config set budget repo-map 1000
-```
-
----
-
-## 10. Common Workflows
-
-**Investigate before modifying:**
-```
-/mode plan
-> analyze the authentication middleware in auth.py
-/mode build
-> implement the recommended fix
-/diff
-/git commit
-```
-
-**Consult the second-opinion advisor:**
-```
-/agent advisor should we use Redis or SQLite for the background queue?
-```
-
-**Run autonomous test-and-repair:**
-```
-/loop pytest tests/
-```
-
-**Take a snapshot before refactoring:**
-```
-/checkpoint save before-refactor
-... edits ...
-/checkpoint restore before-refactor   # if needed
-```
-
----
-
-## 11. Sub-Agent Workflows
-
-| Workflow | What it does | Good for |
-|---|---|---|
-| `explore [<n>] <task>` | Runs `n` (2–5) speculative branches in parallel and synthesizes the winning solution | Ambiguous problems with multiple valid paths |
-| `squad <task>` | 4-stage pipeline: Architect → Coder → Tester → Auditor | Large, multi-faceted feature development |
-| `consensus <q> \| <proposal>` | Red-team auditor critiques, consensus referee verifies | High-stakes architectural choices |
-| `delegate <task>` | Autonomous sub-agent handles task with isolated tool loop | Well-scoped side tasks |
-| `advisor <question>` | Quick second opinion without switching models | Fast sanity checks |
-
----
-
-## 12. Memory, Notes & Learning Over Time
-
-| Mechanism | Command | Best for |
-|---|---|---|
-| **Memory** | `/memory` | Structured key-value facts with semantic natural-language recall |
-| **Notes** | `/note` | Free-form running Markdown notes (`notes.md`) |
-| **Goal** | `/goal` | Pinned objective and criteria preserved across compactions |
-| **Reflexion** | `/reflexion` | Cross-session lessons distilled from past tool errors |
-| **Dream** | `/dream` | Post-session extraction of reusable notes, memory facts, and skills |
-
----
-
-## 13. Troubleshooting
-
-**Rate limits / 429 Errors**
-- Mesh automatically retries with exponential backoff and jitter. Adjust via `/config set retry retries 5` or `/config set retry initial-delay 2.0`.
-
-**Symbol search or repo map seems outdated**
-- Run `/project reload` to force a background scan and update `.mesh/symbols.cache.json`.
-
-**Context window filling up**
-- Verify `auto_compact` is on (`/config compact on`). Lower threshold with `/config set compact threshold 60`.
-
----
-
-## 14. Quick Reference Card
-
-```
-LAUNCH
-  python main.py
-  python main.py --session <name>
-  python main.py --resume
-
-SHORTCUTS
-  <message>            normal chat turn
-  @file.py <message>   inject file content into prompt
-  !command             run shell command directly
-  #code                run Python snippet directly
-
-CONFIG & SETTINGS
-  /status
-  /switch <key> | /switch auto
-  /config set retry retries 5
-  /config schema
-
-SAFETY & MODES
-  /mode [build|plan|review|chat|yolo]
-  /guard [on|off|mode supervised|autonomous|trust <tool>]
-  /dirs
-
-DEV TOOLS
-  /git status|diff|commit|push|branch
-  /diff [undo]
-  /loop <test_cmd>
-  /project [map|reload]
-
-PERSISTENCE
-  /session save|load|list|delete
-  /checkpoint save|fork|restore <tag>
-  /memory | /note | /goal | /dream | /reflexion
-```
+| `/retry` | Re-run the last LLM turn.
