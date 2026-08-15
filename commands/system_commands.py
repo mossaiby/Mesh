@@ -82,6 +82,33 @@ async def cmd_help(engine: Any, args: List[str]):
     console.print("Type [warning]/help <command>[/warning] (e.g., [warning]/help git[/warning]) for detailed usage.\n")
 
 
+async def cmd_history(engine: Any, args: List[str]):
+    prompt_session = getattr(engine, "prompt_session", None)
+    if not prompt_session:
+        console.print("[error]Prompt session is unavailable.[/error]")
+        return
+
+    if args and args[0].lower() == "clear":
+        success, msg = prompt_session.clear_history()
+        console.print(f"[{'success' if success else 'error'}]{msg}[/{'success' if success else 'error'}]")
+        return
+
+    limit = 30
+    if args and args[0].isdigit():
+        limit = max(1, int(args[0]))
+
+    entries = prompt_session.get_history_entries(limit=limit)
+    console.print(f"\n[success]=== Command History (Last {len(entries)}) ===[/success]\n")
+    if not entries:
+        console.print("  [dim]Command history is empty (.mesh/history.txt).[/dim]\n")
+    else:
+        for idx, item in enumerate(entries, 1):
+            console.print(f"  [dim]{idx:3d}.[/dim] {escape(item)}")
+        console.print()
+
+    console.print("Usage: [warning]/history[/warning] | [warning]/history <limit>[/warning] | [warning]/history clear[/warning]\n")
+
+
 async def cmd_status(engine: Any, args: List[str]):
     cfg = engine.config_mgr.config
     active_key = cfg.active_model
@@ -637,6 +664,7 @@ async def cmd_exit(engine: Any, args: List[str]):
 def register_system_commands(engine: Any):
     engine.cmd_registry.register("help", "Display available slash commands and usage help: /help [<command>]", lambda args: cmd_help(engine, args), category="Session & System")
     engine.cmd_registry.register("status", "Display Mesh system status and configuration overview: /status", lambda args: cmd_status(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("history", "View or clear interactive command history: /history [<limit>] | /history clear", lambda args: cmd_history(engine, args), category="Session & System")
     engine.cmd_registry.register("config", "View or configure system settings and parameters: /config [distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|schema|set] <args>", lambda args: cmd_config(engine, args), category="Models & Settings")
     engine.cmd_registry.register("context", "Display conversation context window, active tools, and MCP server states: /context", lambda args: cmd_context(engine, args), category="Context & Integration")
     engine.cmd_registry.register("system", "View or update the system prompt: /system [<text>] | /system clear", lambda args: cmd_system(engine, args), category="Context & Integration")

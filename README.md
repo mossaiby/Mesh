@@ -9,6 +9,7 @@ A modern, modular and hackable AI CLI harness written in Python. Mesh connects t
 ## 🌟 Key Features
 
 - **Provider Management via CLI (`/providers`)** — Add, list, test, configure custom headers, or remove model providers directly from the terminal without manual editing of `config.json`.
+- **Persistent Command History (`/history`)** — Cross-session terminal history persisted on disk in `.mesh/history.txt` with `↑` / `↓` arrow-key recall and inspection/clearing commands.
 - **Multi-Provider Support with Exponential Backoff & Retry** — Talk to OpenAI, Anthropic, Groq, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint, all configured in `config.json`. Includes customizable exponential backoff with randomized jitter (`/config set retry`) for resilient API communication.
 - **Concurrent Read-Only Tool Execution** — When a model requests multiple tool calls in a turn, contiguous read-only operations (`read_file`, `glob_files`, `web_search`, `web_fetch`, `search_symbols`, `calculator`, `git_status`, `git_diff`, memory queries) run in parallel via `asyncio.gather()`, while mutating actions execute sequentially with strict state safety.
 - **Background Symbol Indexing with Persistent Disk Cache (`.mesh/symbols.cache.json`)** — Polyglot Tree-sitter AST symbol indexing across 11 languages (Python, JS/TS, Rust, Go, C/C++, Java, C#, PHP, Ruby). Caches parsed symbols, line numbers, and docstrings to disk in `.mesh/symbols.cache.json` with `mtime`/size validation and runs incremental directory scans asynchronously in a background thread pool without blocking REPL interactions.
@@ -131,6 +132,7 @@ python main.py path/to/script.txt --non-interactive
 | --- | --- |
 | `/help` | Display available slash commands and usage help: `/help [<command>]` |
 | `/status` | Display Mesh system status, background indexing state, active model, and configuration overview: `/status` |
+| `/history [<limit>\|clear]` | View or clear interactive command history (.mesh/history.txt) |
 | `/clear` | Clear conversation context window (preserves system prompt and skills): `/clear` |
 | `/retry` | Retry the last assistant turn: `/retry` |
 | `/debug [on\|off]` | View or toggle debug mode (CoT & tool execution traces): `/debug [on\|off]` |

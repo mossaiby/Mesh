@@ -640,12 +640,15 @@ class MeshPromptSession:
     """
     Wraps prompt_toolkit.PromptSession for styled prompt input and tab completion,
     with persistent on-disk history (.mesh/history.txt) for cross-session arrow-key recall,
-    falling back cleanly to console.input() if prompt_toolkit is missing.
+    falling back cleanly to console.input() if prompt_toolkit is missing or running in headless/non-console environments.
     Uses 'bold ansiblue' to match Rich's [info] theme color identically.
     Uses prompt_async() to integrate safely with Mesh's active asyncio event loop.
     """
     def __init__(self, mesh_instance: Any):
         self.mesh = mesh_instance
+        self.history = None
+        self.session = None
+
         if PROMPT_TOOLKIT_AVAILABLE:
             self.completer = MeshCompleter(mesh_instance)
             self.style = Style.from_dict({
@@ -658,15 +661,16 @@ class MeshPromptSession:
             except Exception:
                 self.history = None
 
-            self.session = PromptSession(
-                completer=self.completer,
-                style=self.style,
-                history=self.history,
-                complete_while_typing=True
-            )
-        else:
-            self.history = None
-            self.session = None
+            try:
+                self.session = PromptSession(
+                    completer=self.completer,
+                    style=self.style,
+                    history=self.history,
+                    complete_while_typing=True
+                )
+            except Exception:
+                # Catch NoConsoleScreenBufferError on Windows in captured/pytest/headless environments
+                self.session = None
 
     def clear_history(self) -> Tuple[bool, str]:
         """Clears both disk history file and active in-memory history buffer."""

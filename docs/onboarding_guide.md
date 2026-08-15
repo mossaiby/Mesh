@@ -124,6 +124,8 @@ Understanding these ideas covers most of what you need to use Mesh effectively:
 
 **Background Symbol Indexer & `.mesh/symbols.cache.json`.** Codebase AST symbols are indexed in the background on a worker thread pool. Parsed signatures, classes, functions, and docstrings are saved to disk in `.mesh/symbols.cache.json`, enabling instantaneous startup and cache invalidation based on file modification times (`mtime`) and byte sizes.
 
+**Persistent History (`.mesh/history.txt`).** Input history persists across CLI launches so you can navigate prior commands using the `↑` and `↓` arrow keys or manage entries via `/history`.
+
 **Provider Backoff & Retries.** Network hiccups and HTTP 429 rate limit spikes are handled automatically via configurable exponential backoff with randomized jitter (`/config set retry`).
 
 **Modes & Safety Guard.** Blanket tool policies (`build`, `plan`, `review`, `chat`, `yolo`) combine with the LLM-backed `SafetyGuard` to prevent accidental damage.
@@ -208,6 +210,7 @@ Type `/help` any time for a live categorized list, or `/help <command>` for deta
 | Command | Description |
 | --- | --- |
 | `/help [command]` | Command categories, or usage for one command. |
+| `/history [<limit>\|clear]` | View or clear interactive terminal command history (`.mesh/history.txt`). |
 | `/session` | Save, load, list, or delete disk session snapshots under `sessions/`. |
 | `/log` | Toggle and configure Markdown session logging. |
 | `/checkpoint` | `save <tag>`, `fork <branch>`, `restore <tag>` — session state snapshots. |
@@ -377,6 +380,7 @@ PROVIDERS & MODELS
 
 CONFIG & SETTINGS
   /status
+  /history [<limit>|clear]
   /config set retry retries 5
   /config schema
 
