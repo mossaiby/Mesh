@@ -572,9 +572,12 @@ class MCPManager:
         """Provides status and tool metadata for the /mcps command."""
         info = {}
         for name, session in self.sessions.items():
+            effective_enabled = self.global_enabled and self.enabled_servers.get(name, True)
             info[name] = {
                 "connected": session.is_connected,
-                "enabled": self.enabled_servers.get(name, True),
+                "enabled": effective_enabled,
+                "server_enabled": self.enabled_servers.get(name, True),
+                "global_enabled": self.global_enabled,
                 "error": session.error_message,
                 "transport": getattr(session, "transport_type", "stdio" if session.config.command else "sse"),
                 "url": session.config.url,

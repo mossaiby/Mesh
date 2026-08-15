@@ -590,17 +590,20 @@ async def cmd_context(engine: Any, args: List[str]):
                 console.print(f"  [error]Error: {details['error']}[/error]")
 
             tools = details.get("tools", [])
-            if tools:
+            if not details["enabled"]:
+                console.print("  [dim](Server disabled — tools are inactive and hidden from the model)[/dim]\n")
+            elif tools:
                 console.print("  [accent]Exposed Tools:[/accent]")
                 for t in tools:
-                    desc = t.get("description", "No description")
+                    desc = t.get("description", "No description").strip()
                     properties = t.get("inputSchema", {}).get("properties", {})
                     args_summary = ", ".join(properties.keys()) if properties else "none"
-                    console.print(f"    - [text]{t['name']}[/text]: {escape(desc)}")
-                    console.print(f"      [dim]Arguments: ({args_summary})[/dim]")
+                    console.print(f"\n    • [text]{t['name']}[/text] [dim](arguments: {args_summary})[/dim]:")
+                    if desc:
+                        console.print(Markdown(desc))
+                console.print()
             else:
-                console.print("  [dim]No tools exposed.[/dim]")
-            console.print()
+                console.print("  [dim]No tools exposed.[/dim]\n")
 
     console.print("Usage: [warning]/mcps on[/warning] | [warning]/mcps off[/warning] | [warning]/mcps enable <server_name>[/warning] | [warning]/mcps disable <server_name>[/warning]\n")
 
@@ -752,17 +755,20 @@ async def cmd_mcps(engine: Any, args: List[str]):
             console.print(f"  [error]Error: {details['error']}[/error]")
 
         tools = details.get("tools", [])
-        if tools:
+        if not details["enabled"]:
+            console.print("  [dim](Server disabled — tools are inactive and hidden from the model)[/dim]\n")
+        elif tools:
             console.print("  [accent]Exposed Tools:[/accent]")
             for t in tools:
-                desc = t.get("description", "No description")
+                desc = t.get("description", "No description").strip()
                 properties = t.get("inputSchema", {}).get("properties", {})
                 args_summary = ", ".join(properties.keys()) if properties else "none"
-                console.print(f"    - [text]{t['name']}[/text]: {escape(desc)}")
-                console.print(f"      [dim]Arguments: ({args_summary})[/dim]")
-            else:
-                console.print("  [dim]No tools exposed.[/dim]")
-        console.print()
+                console.print(f"\n    • [text]{t['name']}[/text] [dim](arguments: {args_summary})[/dim]:")
+                if desc:
+                    console.print(Markdown(desc))
+            console.print()
+        else:
+            console.print("  [dim]No tools exposed.[/dim]\n")
 
     console.print("Usage: [warning]/mcps on[/warning] | [warning]/mcps off[/warning] | [warning]/mcps enable <server_name>[/warning] | [warning]/mcps disable <server_name>[/warning]\n")
 
