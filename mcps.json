@@ -1,13 +1,2 @@
 {
-	"mcpServers": {
-		"blender": {
-			"command": ".venv\\Scripts\\uv",
-			"args": [
-				"--directory",
-				"C:\\Users\\Farshid Mossaiby\\source\\repos\\blender_mcp\\mcp",
-				"run",
-				"blender-mcp"
-			]
-		}
-	}
 }

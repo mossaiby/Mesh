@@ -3,6 +3,7 @@ import subprocess
 from typing import Dict, Any, List, Optional
 from tools.base import BaseTool
 from skills.base import BaseSkill
+from config import default_timeout
 
 
 class PythonExecutionTool(BaseTool):
@@ -26,7 +27,7 @@ class PythonExecutionTool(BaseTool):
         return False
 
     async def execute(self, code: str) -> Dict[str, Any]:
-        timeout_val = self._config_mgr.config.timeouts.python if self._config_mgr else 10.0
+        timeout_val = self._config_mgr.config.timeouts.python if self._config_mgr else default_timeout("python")
         try:
             res = subprocess.run(
                 [sys.executable, "-c", code],

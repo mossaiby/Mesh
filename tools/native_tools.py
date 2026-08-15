@@ -10,6 +10,7 @@ from tools.base import BaseTool
 from tools.permissions import PermissionManager, default_permission_manager
 from file_history import file_history_tracker
 from hooks import hook_manager
+from config import default_timeout
 import symbol_search
 
 
@@ -418,7 +419,7 @@ class ShellTool(BaseTool):
             "command": {"type": "string", "description": "Shell command to execute."},
             "timeout": {
                 "type": "number",
-                "description": "Optional timeout in seconds. Set to 0 or null for infinite timeout."
+                "description": "Optional timeout in seconds. Omit to use the configured default. Set to 0 for infinite timeout."
             },
             "shell_prefix": {
                 "type": "string",
@@ -432,12 +433,12 @@ class ShellTool(BaseTool):
         self.permission_manager = permission_manager or default_permission_manager
         self._config_mgr = config_mgr
 
-    async def execute(self, command: str, timeout: Optional[float] = 30.0, shell_prefix: Optional[str] = None) -> Dict[str, Any]:
+    async def execute(self, command: str, timeout: Optional[float] = None, shell_prefix: Optional[str] = None) -> Dict[str, Any]:
         if not await self.permission_manager.check_and_request_permission(self.name, os.getcwd()):
             return {"error": "Permission denied for command execution in current working directory."}
 
-        if (timeout == 30.0 or timeout is None) and self._config_mgr is not None:
-            timeout = self._config_mgr.config.timeouts.shell
+        if timeout is None:
+            timeout = self._config_mgr.config.timeouts.shell if self._config_mgr is not None else default_timeout("shell")
 
         full_command = f"{shell_prefix} {command}" if shell_prefix else command
 

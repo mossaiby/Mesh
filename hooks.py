@@ -3,6 +3,7 @@ import shutil
 import subprocess
 from typing import Dict, Any, Optional, List
 from theme import console
+from config import default_timeout
 
 
 class HookManager:
@@ -47,7 +48,7 @@ class HookManager:
         if not cmd:
             return None
 
-        timeout_val = self._config_mgr.config.timeouts.linter if self._config_mgr else 10.0
+        timeout_val = self._config_mgr.config.timeouts.linter if self._config_mgr else default_timeout("linter")
 
         try:
             res = subprocess.run(

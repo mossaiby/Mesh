@@ -1,5 +1,5 @@
 from typing import Optional, List, Dict, Any, Tuple
-from config import ModelConfig, ProviderConfig, ConfigManager
+from config import ModelConfig, ProviderConfig, ConfigManager, default_timeout
 from providers.openai_provider import OpenAIProvider
 from providers.anthropic_provider import AnthropicProvider
 from providers.retry import (
@@ -36,7 +36,7 @@ def get_provider(
 
 async def fetch_models_details(
     provider_config: ProviderConfig,
-    timeout: float = 12.0,
+    timeout: float = default_timeout("api"),
     config_mgr: Optional[ConfigManager] = None
 ) -> Tuple[bool, List[Dict[str, Any]], str]:
     """Factory helper executing model discovery across provider types."""

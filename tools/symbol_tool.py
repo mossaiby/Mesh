@@ -1,5 +1,6 @@
 from typing import Dict, Any, Optional
 from tools.base import BaseTool
+from config import default_budget
 import symbol_search
 
 
@@ -39,7 +40,7 @@ class SearchSymbolsTool(BaseTool):
         elif not symbol_search.symbol_indexer.symbol_index:
             symbol_search.symbol_indexer.index_directory(".")
         
-        limit_val = self._config_mgr.config.budgets.symbol if self._config_mgr else 30
+        limit_val = self._config_mgr.config.budgets.symbol if self._config_mgr else default_budget("symbol")
         matches = symbol_search.symbol_indexer.search_symbols(query, kind=kind, limit=limit_val)
         return {
             "query": query,

@@ -1,7 +1,7 @@
 import asyncio
 import json
 from typing import List, Dict, Any, Optional, AsyncGenerator, Tuple
-from config import ModelConfig, ProviderConfig, ConfigManager
+from config import ModelConfig, ProviderConfig, ConfigManager, default_timeout
 from providers.retry import get_retry_params, compute_backoff_delay, is_transient_error
 from theme import console
 
@@ -35,7 +35,7 @@ class AnthropicProvider:
     @staticmethod
     async def fetch_available_models_details(
         provider_config: ProviderConfig,
-        timeout: float = 12.0,
+        timeout: float = default_timeout("api"),
         config_mgr: Optional[ConfigManager] = None
     ) -> Tuple[bool, List[Dict[str, Any]], str]:
         if not ANTHROPIC_AVAILABLE:

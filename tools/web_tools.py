@@ -5,6 +5,7 @@ from typing import Dict, Any, List, Optional, Tuple
 import httpx
 from tools.base import BaseTool
 from theme import console
+from config import default_timeout, default_budget
 
 
 USER_AGENT = (
@@ -52,7 +53,7 @@ class WebSearchTool(BaseTool):
 
         # Limit result count strictly between 1 and 5
         limit = min(max(1, max_results), 5)
-        req_timeout = self._config_mgr.config.timeouts.web if self._config_mgr else 15.0
+        req_timeout = self._config_mgr.config.timeouts.web if self._config_mgr else default_timeout("web")
 
         try:
             async with httpx.AsyncClient(timeout=req_timeout, follow_redirects=True) as client:
@@ -149,14 +150,14 @@ class WebFetchTool(BaseTool):
 
     async def execute(self, url: str, max_chars: Optional[int] = None) -> Dict[str, Any]:
         headers = {"User-Agent": USER_AGENT}
-        req_timeout = self._config_mgr.config.timeouts.web if self._config_mgr else 15.0
+        req_timeout = self._config_mgr.config.timeouts.web if self._config_mgr else default_timeout("web")
 
         try:
             max_chars = int(max_chars) if max_chars is not None else None
         except (ValueError, TypeError):
             max_chars = None
 
-        char_limit = max_chars if max_chars is not None else (self._config_mgr.config.budgets.web if self._config_mgr else 8000)
+        char_limit = max_chars if max_chars is not None else (self._config_mgr.config.budgets.web if self._config_mgr else default_budget("web"))
 
         try:
             async with httpx.AsyncClient(timeout=req_timeout, follow_redirects=True) as client:

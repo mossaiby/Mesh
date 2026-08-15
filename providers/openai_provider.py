@@ -1,7 +1,7 @@
 import asyncio
 from typing import List, Dict, Any, Optional, AsyncGenerator, Tuple
 from openai import AsyncOpenAI
-from config import ModelConfig, ProviderConfig, ConfigManager
+from config import ModelConfig, ProviderConfig, ConfigManager, default_timeout
 from providers.retry import get_retry_params, compute_backoff_delay, is_transient_error
 from theme import console
 
@@ -34,7 +34,7 @@ class OpenAIProvider:
         return any(k in m_id or k in m_name for k in reasoning_keywords)
 
     @staticmethod
-    async def fetch_available_models(provider_config: ProviderConfig, timeout: float = 12.0) -> Tuple[bool, List[str], str]:
+    async def fetch_available_models(provider_config: ProviderConfig, timeout: float = default_timeout("api")) -> Tuple[bool, List[str], str]:
         try:
             client_kwargs: Dict[str, Any] = {
                 "base_url": provider_config.base_url,
@@ -53,7 +53,7 @@ class OpenAIProvider:
     @staticmethod
     async def fetch_available_models_details(
         provider_config: ProviderConfig,
-        timeout: float = 12.0,
+        timeout: float = default_timeout("api"),
         config_mgr: Optional[ConfigManager] = None
     ) -> Tuple[bool, List[Dict[str, Any]], str]:
         max_retries, initial_delay, max_delay, backoff_factor, jitter = get_retry_params(config_mgr)

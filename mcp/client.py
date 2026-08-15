@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 from tools.base import BaseTool
 from tools.registry import ToolRegistry
 from version import __version__
+from config import default_timeout
 
 # Global registry of active MCP sessions for automatic cleanup on process termination
 _ACTIVE_MCP_SESSIONS: List["MCPClientSession"] = []
@@ -131,7 +132,7 @@ class MCPClientSession:
         self._reader_task = asyncio.create_task(self._read_loop())
         self._stderr_task = asyncio.create_task(self._read_stderr_loop())
 
-        mcp_timeout = self._config_mgr.config.timeouts.mcp if self._config_mgr else 60.0
+        mcp_timeout = self._config_mgr.config.timeouts.mcp if self._config_mgr else default_timeout("mcp")
 
         try:
             await self._send_request("initialize", {
@@ -170,7 +171,7 @@ class MCPClientSession:
         self._endpoint_event.clear()
         self._post_url = None
 
-        mcp_timeout = self._config_mgr.config.timeouts.mcp if self._config_mgr else 60.0
+        mcp_timeout = self._config_mgr.config.timeouts.mcp if self._config_mgr else default_timeout("mcp")
         stream_timeout = httpx.Timeout(connect=mcp_timeout, read=None, write=mcp_timeout, pool=mcp_timeout)
 
         if not self._http_client or getattr(self._http_client, "is_closed", False):
@@ -217,7 +218,7 @@ class MCPClientSession:
             return False
 
     async def _sse_reader_loop(self, headers: Dict[str, str]):
-        mcp_timeout = self._config_mgr.config.timeouts.mcp if self._config_mgr else 60.0
+        mcp_timeout = self._config_mgr.config.timeouts.mcp if self._config_mgr else default_timeout("mcp")
         stream_timeout = httpx.Timeout(connect=mcp_timeout, read=None, write=mcp_timeout, pool=mcp_timeout)
 
         try:
@@ -300,7 +301,7 @@ class MCPClientSession:
                     else:
                         fut.set_result(msg.get("result", {}))
 
-    async def _send_request(self, method: str, params: Dict[str, Any], timeout: float = 60.0) -> Dict[str, Any]:
+    async def _send_request(self, method: str, params: Dict[str, Any], timeout: float = default_timeout("mcp")) -> Dict[str, Any]:
         self._request_id += 1
         req_id = self._request_id
 
@@ -438,7 +439,7 @@ class MCPClientSession:
             pass
 
     async def call_tool(self, name: str, arguments: Dict[str, Any]) -> Any:
-        mcp_timeout = self._config_mgr.config.timeouts.mcp if self._config_mgr else 60.0
+        mcp_timeout = self._config_mgr.config.timeouts.mcp if self._config_mgr else default_timeout("mcp")
         res = await self._send_request("tools/call", {
             "name": name,
             "arguments": arguments

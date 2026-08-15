@@ -37,6 +37,20 @@ class BudgetsConfig(BaseModel):
     symbol: int = Field(default=30, description="Maximum symbol search matches returned by search_symbols.")
 
 
+def default_timeout(name: str) -> float:
+    """
+    Returns the canonical default for a TimeoutsConfig field (e.g. "shell", "web", "mcp").
+    Call sites that need a fallback for when no ConfigManager is available should use this
+    instead of re-typing the literal, so TimeoutsConfig stays the single source of truth.
+    """
+    return TimeoutsConfig.model_fields[name].default
+
+
+def default_budget(name: str) -> int:
+    """Same as default_timeout(), but for BudgetsConfig fields (e.g. "web", "symbol")."""
+    return BudgetsConfig.model_fields[name].default
+
+
 class TurnsConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
