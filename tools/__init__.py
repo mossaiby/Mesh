@@ -24,6 +24,7 @@ from tools.consensus_tool import ConsensusTool
 from tools.symbol_tool import SearchSymbolsTool
 from tools.job_tool import BackgroundShellTool
 from tools.git_tool import (
+    GitInitTool,
     GitStatusTool,
     GitDiffTool,
     GitCommitTool,
@@ -57,6 +58,7 @@ __all__ = [
     "ConsensusTool",
     "SearchSymbolsTool",
     "BackgroundShellTool",
+    "GitInitTool",
     "GitStatusTool",
     "GitDiffTool",
     "GitCommitTool",

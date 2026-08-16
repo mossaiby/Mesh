@@ -269,8 +269,23 @@ async def cmd_diff(engine: Any, args: List[str]):
 
 async def cmd_git(engine: Any, args: List[str]):
     try:
+        sub = args[0].lower() if args else ""
+
+        # Allow /git init even if the current directory is not yet a git repository
+        if sub == "init":
+            branch = args[1].strip() if len(args) > 1 else "main"
+            success, output = git_workflow.run_git_init(initial_branch=branch, root_dir=".")
+            if success:
+                console.print(f"[success]✔ {output}[/success]")
+            else:
+                console.print(f"[error]{output}[/error]")
+            return
+
         if not git_workflow.is_git_repository("."):
-            console.print("[error]Current directory is not a Git repository.[/error]")
+            console.print(
+                "[error]Current directory is not a Git repository.[/error]\n"
+                "Tip: Run [warning]/git init[/warning] to initialize a new Git repository here.\n"
+            )
             return
 
         if not args:
@@ -282,10 +297,8 @@ async def cmd_git(engine: Any, args: List[str]):
                     console.print(f"  • {c}")
             else:
                 console.print("  [dim]Working tree clean - no modified or untracked files.[/dim]")
-            console.print("\nUsage: [warning]/git status[/warning] | [warning]/git diff[/warning] | [warning]/git commit [<msg>][/warning] | [warning]/git push [<remote>] [<branch>][/warning] | [warning]/git branch [<name>][/warning]\n")
+            console.print("\nUsage: [warning]/git init [<branch>][/warning] | [warning]/git status[/warning] | [warning]/git diff[/warning] | [warning]/git commit [<msg>][/warning] | [warning]/git push [<remote>] [<branch>][/warning] | [warning]/git branch [<name>][/warning]\n")
             return
-
-        sub = args[0].lower()
 
         if sub == "status":
             await cmd_git(engine, [])
@@ -350,7 +363,7 @@ async def cmd_git(engine: Any, args: List[str]):
                 console.print(f"Current Git branch: [accent]{current}[/accent]\nUsage: [warning]/git branch <branch_name>[/warning]\n")
 
         else:
-            console.print("[error]Usage: /git status | /git diff | /git commit [<msg>] | /git push [<remote>] [<branch>] | /git branch [<name>][/error]")
+            console.print("[error]Usage: /git init [<branch>] | /git status | /git diff | /git commit [<msg>] | /git push [<remote>] [<branch>] | /git branch [<name>][/error]")
 
     except (KeyboardInterrupt, asyncio.CancelledError):
         console.print("\n[warning]⛔ Git operation cancelled by user.[/warning]")
@@ -671,6 +684,6 @@ def register_session_commands(engine: Any):
     engine.cmd_registry.register("reflexion", "View or distill cross-session error lessons: /reflexion [distill|clear]", lambda args: cmd_reflexion(engine, args), category="Memory & Knowledge")
     engine.cmd_registry.register("checkpoint", "Save, fork, restore, or list session checkpoints: /checkpoint [save|fork|restore|list] <args>", lambda args: cmd_checkpoint(engine, args), category="Session & System")
     engine.cmd_registry.register("diff", "Display unified file diff or revert last edit: /diff | /diff undo", lambda args: cmd_diff(engine, args), category="Workspace & Developer Tools")
-    engine.cmd_registry.register("git", "Run native Git commands: /git [status|diff|commit|push|branch]", lambda args: cmd_git(engine, args), category="Workspace & Developer Tools")
+    engine.cmd_registry.register("git", "Run native Git commands: /git [init|status|diff|commit|push|branch]", lambda args: cmd_git(engine, args), category="Workspace & Developer Tools")
     engine.cmd_registry.register("session", "Save, load, list, or delete disk session states: /session [save|load|list|delete] [<name>]", lambda args: cmd_session(engine, args), category="Session & System")
     engine.cmd_registry.register("log", "View or configure Markdown session logging: /log [on|off|status|<filepath>]", lambda args: cmd_log(engine, args), category="Session & System")

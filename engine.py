@@ -28,6 +28,7 @@ from tools import (
     ConsensusTool,
     SearchSymbolsTool,
     BackgroundShellTool,
+    GitInitTool,
     GitStatusTool,
     GitDiffTool,
     GitCommitTool,
@@ -174,6 +175,7 @@ class MeshEngine:
         self.tool_registry.register(GlobTool(self.permission_manager))
         self.tool_registry.register(ShellTool(self.permission_manager, self.config_mgr))
         self.tool_registry.register(BackgroundShellTool())
+        self.tool_registry.register(GitInitTool())
         self.tool_registry.register(GitStatusTool())
         self.tool_registry.register(GitDiffTool())
         self.tool_registry.register(GitCommitTool())

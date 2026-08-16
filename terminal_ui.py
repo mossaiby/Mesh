@@ -441,6 +441,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
         if cmd0 == "/git":
             if current_arg_index == 1:
                 subs = [
+                    ("init", "Initialize a new Git repository in workspace"),
                     ("status", "Show Git repository status"),
                     ("diff", "Show Git unified diff"),
                     ("commit", "Create Git commit (AI auto-message if omitted)"),

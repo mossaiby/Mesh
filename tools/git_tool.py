@@ -3,6 +3,28 @@ from tools.base import BaseTool
 import git_workflow
 
 
+class GitInitTool(BaseTool):
+    name = "git_init"
+    description = "Initializes a new Git repository in the current workspace directory."
+    is_proxied = False
+    requires_guard = True
+    parameters = {
+        "type": "object",
+        "properties": {
+            "initial_branch": {
+                "type": "string",
+                "description": "Optional initial default branch name (default: 'main')."
+            }
+        }
+    }
+
+    async def execute(self, initial_branch: str = "main") -> Dict[str, Any]:
+        success, output = git_workflow.run_git_init(initial_branch=initial_branch, root_dir=".")
+        if success:
+            return {"status": "success", "message": output, "branch": initial_branch}
+        return {"status": "error", "error": output}
+
+
 class GitStatusTool(BaseTool):
     name = "git_status"
     description = "Gets the current Git branch and list of modified/untracked files."

@@ -30,6 +30,47 @@ def is_git_repository(root_dir: str = ".") -> bool:
         return False
 
 
+def run_git_init(initial_branch: Optional[str] = "main", root_dir: str = ".") -> Tuple[bool, str]:
+    """Initializes a new Git repository with a default initial branch (default: 'main')."""
+    branch = initial_branch.strip() if initial_branch and initial_branch.strip() else "main"
+    try:
+        # Try modern git init -b <branch> (Git >= 2.28)
+        res = subprocess.run(
+            ["git", "init", "-b", branch],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=root_dir
+        )
+        if res.returncode != 0:
+            # Fallback for older git versions
+            res = subprocess.run(
+                ["git", "init"],
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                cwd=root_dir
+            )
+            if res.returncode == 0 and branch:
+                subprocess.run(
+                    ["git", "checkout", "-B", branch],
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    cwd=root_dir
+                )
+
+        if res.returncode == 0:
+            output = res.stdout.strip() or f"Initialized empty Git repository on branch '{branch}'."
+            return True, output
+        return False, res.stderr.strip() or res.stdout.strip()
+    except Exception as e:
+        return False, f"Git init failed: {str(e)}"
+
+
 def get_git_branch(root_dir: str = ".") -> str:
     try:
         res = subprocess.run(

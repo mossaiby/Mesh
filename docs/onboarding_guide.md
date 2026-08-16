@@ -1,6 +1,6 @@
 # ⚡ Mesh — Onboarding & User Guide
 
-Mesh is a modular, text-based AI CLI harness written in Python. It connects to cloud or local LLMs (OpenAI-compatible endpoints, plus a native Anthropic driver), gives them a rich toolbox (file editing, shell, git, web, memory), and wraps the whole thing in a terminal REPL with streaming Markdown output, safety guardrails, and session persistence.
+Mesh is a modular, text-based AI CLI harness written in Python. It connects to cloud or local LLMs (OpenAI-compatible endpoints, plus a native Anthropic driver), gives them a rich toolbox (file editing, shell, git, web, memory, MCPs), and wraps the whole thing in a terminal REPL with streaming Markdown output, safety guardrails, and session persistence.
 
 This guide takes you from zero to productive: installation, first run, core concepts, the full command reference, common workflows, configuration, and troubleshooting.
 
@@ -9,7 +9,7 @@ This guide takes you from zero to productive: installation, first run, core conc
 ## Table of Contents
 
 1. [What Mesh Is (and Isn't)](#1-what-mesh-is-and-isnt)
-2. [Installation](#2-installation)
+2. [Installation & Bootstrap](#2-installation--bootstrap)
 3. [First Run & API Keys](#3-first-run--api-keys)
 4. [Managing Providers via CLI (`/providers`)](#4-managing-providers-via-cli-providers)
 5. [Core Concepts](#5-core-concepts)
@@ -17,12 +17,13 @@ This guide takes you from zero to productive: installation, first run, core conc
 7. [Command Reference](#7-command-reference)
 8. [Operating Modes (Safety Model)](#8-operating-modes-safety-model)
 9. [Tools & Concurrency Model](#9-tools--concurrency-model)
-10. [Configuration Files & IDE Setup](#10-configuration-files--ide-setup)
-11. [Common Workflows](#11-common-workflows)
-12. [Sub-Agent Workflows](#12-sub-agent-workflows)
-13. [Memory, Notes & Learning Over Time](#13-memory-notes--learning-over-time)
-14. [Troubleshooting](#14-troubleshooting)
-15. [Quick Reference Card](#15-quick-reference-card)
+10. [Model Context Protocol (MCP stdio & SSE)](#10-model-context-protocol-mcp-stdio--sse)
+11. [Configuration Files & IDE Setup](#11-configuration-files--ide-setup)
+12. [Common Workflows](#12-common-workflows)
+13. [Sub-Agent Workflows](#13-sub-agent-workflows)
+14. [Memory, Notes & Learning Over Time](#14-memory-notes--learning-over-time)
+15. [Troubleshooting](#15-troubleshooting)
+16. [Quick Reference Card](#16-quick-reference-card)
 
 ---
 
@@ -30,7 +31,7 @@ This guide takes you from zero to productive: installation, first run, core conc
 
 **Mesh is:**
 - A terminal-based AI agent loop, similar in spirit to Claude Code or Aider, but provider-agnostic.
-- Built around a modular architecture: `InferenceCoordinator` handles streaming, metrics, and retry backoff, `ToolOrchestrator` handles concurrent read execution and sequential state mutation, and `SymbolIndexer` manages persistent AST symbol caching in `.mesh/symbols.cache.json`.
+- Built around a modular architecture: `InferenceCoordinator` handles streaming, metrics, prompt caching, and retry backoff; `ToolOrchestrator` handles concurrent read execution and sequential state mutation; and `SymbolIndexer` manages persistent AST symbol caching in `.mesh/symbols.cache.json`.
 - Configurable at the model, provider, tool, retry, and safety level via `/providers`, `/models`, `/config`, `config.json`, `config.schema.json`, `mcps.json`, and `skills.json`.
 
 **Mesh is not:**
@@ -40,7 +41,7 @@ This guide takes you from zero to productive: installation, first run, core conc
 
 ---
 
-## 2. Installation
+## 2. Installation & Bootstrap
 
 ### Prerequisites
 
@@ -53,14 +54,21 @@ This guide takes you from zero to productive: installation, first run, core conc
 | `eslint` | Optional — enables post-edit JS/TS linting. |
 | `cargo` | Optional — enables post-edit Rust checks. |
 | `gofmt` | Optional — enables post-edit Go formatting checks. |
-| `npx` / `uvx` | Optional — only needed if you configure external stdio MCP servers in `mcps.json` that depend on Node.js or `uv`. |
+| `npx` / `uvx` | Optional — only needed if you configure external MCP servers in `mcps.json` that depend on Node.js or `uv`. |
 
-### Install
+### Clone and Bootstrap
+
+Mesh provides intelligent bootstrap scripts that detect compatible Python 3.10+ installations, verify standard library `venv` support, and set up the virtual environment automatically:
 
 ```bash
 git clone https://github.com/mossaiby/Mesh.git
 cd Mesh
-pip install -r requirements.txt
+
+# Linux / macOS
+./bootstrap
+
+# Windows
+bootstrap.bat
 ```
 
 ---
@@ -72,10 +80,15 @@ pip install -r requirements.txt
 Export whichever providers you plan to use:
 
 ```bash
+# Linux / macOS
 export OPENAI_API_KEY="sk-..."
 export ANTHROPIC_API_KEY="sk-ant-..."
 export GROK_API_KEY="gsk_..."
 export OPENROUTER_API_KEY="sk-or-..."
+
+# Windows PowerShell
+$env:OPENAI_API_KEY="sk-..."
+$env:ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
 Local providers (Ollama, LM Studio, vLLM) typically need a dummy key:
@@ -83,6 +96,12 @@ Local providers (Ollama, LM Studio, vLLM) typically need a dummy key:
 ```bash
 export OLLAMA_API_KEY="dummy"
 export LOCAL_API_KEY="dummy"
+```
+
+Start Mesh:
+```bash
+./mesh          # Linux / macOS
+mesh.bat        # Windows
 ```
 
 ---
@@ -120,13 +139,13 @@ Understanding these ideas covers most of what you need to use Mesh effectively:
 
 **Turn Loop & Inference Coordinator.** When you send a prompt, `InferenceCoordinator` streams completions from the active model, accurately accounting for prompt, completion, and cached tokens via `tiktoken`. It auto-compacts context when nearing window limits and supports sticky auto-routing (`/switch auto`).
 
+**Prefix-Cached Context Compaction.** When context fills up, Mesh compacts older turns using in-context prefix matching so you receive a 90%+ prompt cache discount during the summarization pass. Pinned goals, rules, and skills stay permanently preserved in the system prompt.
+
 **Concurrent Tool Orchestrator.** When the model returns tool calls, `ToolOrchestrator` dynamically inspects whether each call is read-only. Contiguous read-only calls (like reading multiple files, running symbol searches, and checking git status) run concurrently via `asyncio.gather()`, while writes and shell commands run sequentially.
 
 **Background Symbol Indexer & `.mesh/symbols.cache.json`.** Codebase AST symbols are indexed in the background on a worker thread pool. Parsed signatures, classes, functions, and docstrings are saved to disk in `.mesh/symbols.cache.json`, enabling instantaneous startup and cache invalidation based on file modification times (`mtime`) and byte sizes.
 
 **Persistent History (`.mesh/history.txt`).** Input history persists across CLI launches so you can navigate prior commands using the `↑` and `↓` arrow keys or manage entries via `/history`.
-
-**Provider Backoff & Retries.** Network hiccups and HTTP 429 rate limit spikes are handled automatically via configurable exponential backoff with randomized jitter (`/config set retry`).
 
 **Modes & Safety Guard.** Blanket tool policies (`build`, `plan`, `review`, `chat`, `yolo`) combine with the LLM-backed `SafetyGuard` to prevent accidental damage.
 
@@ -177,7 +196,7 @@ Type `/help` any time for a live categorized list, or `/help <command>` for deta
 | --- | --- |
 | `/cd <path>` | Change working directory; syncs allowed directories, `PROJECT.md` rules, and triggers background symbol reindexing. |
 | `/project` | View/reload project rules (`PROJECT.md`) or the repo architecture map (`/project map`). Use `/project reload` to reindex symbols. |
-| `/git` | `status`, `diff`, `commit` (AI-generated commit message), `push`, `branch`. |
+| `/git` | `init [<branch>]`, `status`, `diff`, `commit` (AI-generated commit message), `push`, `branch`. |
 | `/diff` | View colorized diffs of recent file edits (`/diff`), or revert them (`/diff undo`). |
 | `/shell` \| `!` | Direct shell execution outside the LLM loop. |
 | `/python` \| `#` | Direct Python execution in a persistent namespace. |
@@ -202,7 +221,7 @@ Type `/help` any time for a live categorized list, or `/help <command>` for deta
 | `/tools [on\|off]` | List registered tools with schemas, or toggle tool-calling entirely. |
 | `/skills` | Enable/disable/register skills. |
 | `/dirs` | Manage the `PermissionManager` allow-list of directories. |
-| `/mcps [on\|off]` | View connected MCP servers or toggle them. |
+| `/mcps [on\|off\|enable\|disable] [<server>]` | View connected MCP servers or toggle them. |
 | `/compact` | Manually trigger semantic summarization of older conversation history. |
 
 ### 💻 Session & System
@@ -242,7 +261,7 @@ Mesh has two independent safety layers: **mode** (what tools are allowed) and **
 ### Parallel Read-Only Execution
 When the model requests multiple tool calls in a single turn, `ToolOrchestrator` partitions them:
 - **Read-Only Batches** (`read_file`, `glob_files`, `web_search`, `web_fetch`, `search_symbols`, `calculator`, `git_status`, `git_diff`, `memory` read): execute concurrently via `asyncio.gather()`.
-- **Mutating Tools** (`write_file`, `edit_file`, `hash_edit`, `shell`, `job`, `git_commit`, `git_push`, MCP tools): execute sequentially in order.
+- **Mutating Tools** (`write_file`, `edit_file`, `hash_edit`, `shell`, `job`, `git_init`, `git_commit`, `git_push`, `git_branch`, MCP tools): execute sequentially in order.
 
 ### Editing Strategies
 - **`hash_edit`**: Uses 4-character line hashes (`show_hashes: true` in `read_file`) to guarantee drift-free replacement.
@@ -250,7 +269,32 @@ When the model requests multiple tool calls in a single turn, `ToolOrchestrator`
 
 ---
 
-## 10. Configuration Files & IDE Setup
+## 10. Model Context Protocol (MCP stdio & SSE)
+
+Mesh supports both **stdio** (subprocess command) and **SSE** (Server-Sent Events HTTP) MCP transports configured in `mcps.json`:
+
+```json
+{
+  "mcpServers": {
+    "sqlite": {
+      "command": "uvx",
+      "args": ["mcp-server-sqlite", "--db-path", "data.db"]
+    },
+    "blender": {
+      "url": "http://localhost:8000/sse",
+      "headers": {
+        "Authorization": "Bearer my-secret-token"
+      }
+    }
+  }
+}
+```
+
+Use `/mcps` to inspect active connections and exposed tools, or `/mcps disable <name>` to toggle specific servers.
+
+---
+
+## 11. Configuration Files & IDE Setup
 
 ### `config.json` & IDE Schema Auto-Completion
 `config.json` links directly to `config.schema.json`:
@@ -282,7 +326,14 @@ Fine-tune system settings live from the CLI:
 
 ---
 
-## 11. Common Workflows
+## 12. Common Workflows
+
+**Initialize a Git repository and commit:**
+```
+/git init
+/git status
+/git commit
+```
 
 **Set up a new provider and discover models:**
 ```
@@ -322,7 +373,7 @@ Fine-tune system settings live from the CLI:
 
 ---
 
-## 12. Sub-Agent Workflows
+## 13. Sub-Agent Workflows
 
 | Workflow | What it does | Good for |
 |---|---|---|
@@ -334,7 +385,7 @@ Fine-tune system settings live from the CLI:
 
 ---
 
-## 13. Memory, Notes & Learning Over Time
+## 14. Memory, Notes & Learning Over Time
 
 | Mechanism | Command | Best for |
 |---|---|---|
@@ -346,7 +397,7 @@ Fine-tune system settings live from the CLI:
 
 ---
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 **Rate limits / 429 Errors**
 - Mesh automatically retries with exponential backoff and jitter. Adjust via `/config set retry retries 5` or `/config set retry initial-delay 2.0`.
@@ -359,11 +410,12 @@ Fine-tune system settings live from the CLI:
 
 ---
 
-## 15. Quick Reference Card
+## 16. Quick Reference Card
 
 ```
 LAUNCH
-  python main.py
+  ./mesh               # Linux / macOS
+  mesh.bat             # Windows
   python main.py --session <name>
   python main.py --resume
 
@@ -390,7 +442,7 @@ SAFETY & MODES
   /dirs
 
 DEV TOOLS
-  /git status|diff|commit|push|branch
+  /git init|status|diff|commit|push|branch
   /diff [undo]
   /loop <test_cmd>
   /project [map|reload]

@@ -12,23 +12,22 @@ A modern, modular and hackable AI CLI harness written in Python. Mesh connects t
 - **Persistent Command History (`/history`)** — Cross-session terminal history persisted on disk in `.mesh/history.txt` with `↑` / `↓` arrow-key recall and inspection/clearing commands.
 - **Multi-Provider Support with Exponential Backoff & Retry** — Talk to OpenAI, Anthropic, Grok, OpenRouter, Ollama, LM Studio, vLLM, DeepSeek, or any OpenAI-compatible REST endpoint, all configured in `config.json`. Includes customizable exponential backoff with randomized jitter (`/config set retry`) for resilient API communication.
 - **Concurrent Read-Only Tool Execution** — When a model requests multiple tool calls in a turn, contiguous read-only operations (`read_file`, `glob_files`, `web_search`, `web_fetch`, `search_symbols`, `calculator`, `git_status`, `git_diff`, memory queries) run in parallel via `asyncio.gather()`, while mutating actions execute sequentially with strict state safety.
+- **Model Context Protocol Client (`/mcps`)** — Native support for both **stdio** (subprocesses) and **SSE (Server-Sent Events)** HTTP transports (`mcps.json`), allowing seamless integration with local binaries or remote GUI applications (e.g. Blender, databases, web services).
 - **Background Symbol Indexing with Persistent Disk Cache (`.mesh/symbols.cache.json`)** — Polyglot Tree-sitter AST symbol indexing across 11 languages (Python, JS/TS, Rust, Go, C/C++, Java, C#, PHP, Ruby). Caches parsed symbols, line numbers, and docstrings to disk in `.mesh/symbols.cache.json` with `mtime`/size validation and runs incremental directory scans asynchronously in a background thread pool without blocking REPL interactions.
+- **Prefix-Cached Context Compaction (`/compact`)** — Compacts older conversation history using in-context prompt evaluation to maximize LLM prompt cache hits (saving up to 90% in token cost and latency), while preserving pinned goals, skills, and active tools.
 - **Accurate Token Accounting with `tiktoken`** — BPE tokenization for OpenAI/Anthropic/OpenRouter models with LRU encoding caching and graceful character-count fallback (`CHARS_PER_TOKEN = 4`) for precise context threshold triggers and compaction.
 - **IDE Config Auto-Completion & JSON Schema (`$schema`)** — Native Draft 2020-12 JSON Schema generation (`config.schema.json` and `/config schema`) provides instant autocomplete, parameter descriptions, and type validation in VS Code, Cursor, JetBrains, and Neovim.
 - **Modular Core Architecture** — Clean separation of concerns between `InferenceCoordinator` (turn loops, streaming, auto-routing, metrics) and `ToolOrchestrator` (batching, concurrent execution, logging, reflexion).
 - **Disk-Backed Session Save & Resume (`/session`)** — Save full conversation state, goals, todo graph, notes, memory, active mode, metrics, and checkpoints to disk under `sessions/<name>.json`. Resume anytime with `/session load <name>`, `python main.py --session <name>`, or `python main.py --resume`.
 - **Markdown Session Logging (`/log`)** — Stream clean, structured Markdown transcripts of user prompts, assistant responses, and tool executions to a log file (`session.md` or custom path) via CLI `--log` or `/log on <path>`.
 - **Operating Modes (`/mode`)** — `build` (full access, default), `plan` and `review` (read-only workspace inspection, no writes/shell/delegation/MCP), `chat` (conversational Q&A, brainstorming, and research with web search, fetch, calculator, advisor, and memory), and `yolo` (full access, no confirmation prompts for ambiguous-risk actions — high-risk actions are still always blocked).
-- **Safety Guard (`/guard`)** — An LLM-backed risk assessor that reviews tool calls before execution, can run in `supervised` or `autonomous` mode, supports per-session tool trust, and always blocks genuinely high-risk actions regardless of mode. Because the assessment is itself an LLM judging the call's text (command string, arguments) with no execution sandboxing, it's a best-effort layer, not a hard security boundary — a sufficiently obfuscated or misleadingly-framed command can potentially evade classification.
-- **Directory Permissions (`/dirs`)** — A `PermissionManager` enforces a working-directory allow-list for every file tool (`read_file`, `write_file`, `edit_file`, `hash_edit`, `glob_files`). Out-of-bounds access triggers an interactive Allow Once / Always Allow / Deny prompt. The `shell` tool only checks that the current working directory itself is allowed (which it always is by default) — it does not sandbox what a shell command can touch once it runs; shell risk is instead handled by the Safety Guard below.
-- **Model Context Protocol (`/mcps`)** — A native stdio/URL MCP client (`mcps.json`) that discovers and calls tools from external MCP servers (filesystem, SQLite, GitHub, etc.), with global and per-server toggles.
+- **Safety Guard (`/guard`)** — An LLM-backed risk assessor that reviews tool calls before execution, can run in `supervised` or `autonomous` mode, supports per-session tool trust, and always blocks genuinely high-risk actions regardless of mode.
+- **Directory Permissions (`/dirs`)** — A `PermissionManager` enforces a working-directory allow-list for every file/shell tool. Out-of-bounds access triggers an interactive Allow Once / Always Allow / Deny prompt.
 - **Sub-Agent & Multi-Agent Workflows (`/agent`)** — Spin up focused sub-agents for task delegation (`delegate`), branching exploration (`explore`), parallel task squads (`squad`), multi-model consensus (`consensus`), and second-opinion advisory review (`advisor`).
 - **Autonomous Test/Fix Loop (`/loop`)** — Runs a test or build command, and on failure automatically delegates a repair sub-agent to fix the code and retries, up to a configurable number of iterations.
 - **Declarative Skills (`/skills`)** — Package specialized system prompts and tools into reusable skills, loaded from `skills.json` or custom Python classes (see `skills/code_skill.py`).
 - **Persistent Memory & Notes** — A key-value `memory` store with semantic search (`/memory`), a running Markdown `notes.md` (`/note`), pinned session goals with completion criteria (`/goal`), and multi-step task tracking (`todo`).
-- **Context Engineering** — Semantic context compaction (`/compact`) that summarizes older turns without breaking active tool-call pairs, a Sub-Agent Distiller that summarizes large tool outputs before they hit context, and repository maps (`/project map`) built from PageRank symbol centrality.
-- **Session Continuity & Rollback** — Save and branch conversation state with checkpoints (`/checkpoint save|fork|restore|list`), file-edit history with undo (`/diff undo`), and reflexion (`/reflexion`) that distills cross-session error lessons.
-- **Native Tool Suite** — File ops (`read_file`, `write_file`, `edit_file`, `hash_edit`, `glob_files`), shell execution, key-less web search/fetch, Git tools, a calculator, and an `ask_user` tool for human-in-the-loop decisions.
+- **Native Tool Suite** — File ops (`read_file`, `write_file`, `edit_file`, `hash_edit`, `glob_files`), shell execution, key-less web search/fetch, Git tools (`git_init`, `git_status`, `git_diff`, `git_commit`, `git_push`, `git_branch`), a calculator, and an `ask_user` tool for human-in-the-loop decisions.
 - **Test-Driven Reliability** — Automated `pytest` test suite verifying concurrency partitioning, tool safety, dependency DAGs, file hash drift protection, permission isolation, and session roundtrip persistence.
 - **Rich Terminal UI** — Real-time Markdown streaming with syntax highlighting, toggleable Chain-of-Thought display (`/debug`), and an interactive arrow-key model/menu switcher with context-aware tab completion.
 
@@ -54,8 +53,8 @@ A modern, modular and hackable AI CLI harness written in Python. Mesh connects t
       │                  │             │          │                │        │ SymbolIndexer      │
 ┌─────┴──────┐  ┌────────┴──────┐ ┌────┴───┐ ┌────┴───┐ ┌──────────┴───┐    │ (.mesh disk cache) │
 │ Providers  │  │ Tool Registry │ │ Safety │ │ Skills │ │ MCP Client   │    └────────────────────┘
-│ (Retry &   │  │ & Permissions │ │ Guard  │ │        │ │ (mcps.json)  │
-│ Backoff)   │  │               │ │        │ │        │ │              │
+│ (Retry &   │  │ & Permissions │ │ Guard  │ │        │ │ (stdio & SSE)│
+│ Backoff)   │  │               │ │        │ │        │ │ (mcps.json)  │
 └────────────┘  └───────────────┘ └────────┘ └────────┘ └──────────────┘
 ```
 
@@ -69,13 +68,19 @@ A modern, modular and hackable AI CLI harness written in Python. Mesh connects t
 - Node.js / `npx` (optional, for Node-based MCP servers)
 - `uv` / `uvx` (optional, for Python-based MCP servers)
 
-### 2. Installation
+### 2. Installation & Bootstrap
+
+Clone the repository and run the bootstrap script:
 
 ```bash
 git clone https://github.com/mossaiby/Mesh.git
 cd Mesh
-pip install -r requirements.txt
-pip install pytest pytest-asyncio
+
+# Linux / macOS
+./bootstrap
+
+# Windows
+bootstrap.bat
 ```
 
 ### 3. Configure API Keys
@@ -98,7 +103,8 @@ export LOCAL_API_KEY="dummy"
 
 ```bash
 # Start an interactive CLI session
-python main.py
+./mesh          # Linux / macOS
+mesh.bat        # Windows
 
 # Enable session Markdown logging on launch
 python main.py --log session.md
@@ -150,7 +156,7 @@ python main.py path/to/script.txt --non-interactive
 | `/skills enable\|disable <name>` | List registered skills, or toggle a skill |
 | `/dirs [add\|remove\|clear] [<path>]` | View or modify allowed working directories |
 | `/mcps [on\|off\|enable\|disable] [<server>]` | View or toggle Model Context Protocol servers |
-| `/compact` | Semantically summarize older conversation history to free context tokens |
+| `/compact` | Semantically summarize older conversation history using cached in-context prefixing |
 
 ### Agents & Workflows
 | Command | Description |
@@ -177,7 +183,7 @@ python main.py path/to/script.txt --non-interactive
 | `/script <file.txt>` | Execute commands and prompts line-by-line from script file |
 | `/project [map\|reload]` | View or reload project rules and repository map |
 | `/diff` / `/diff undo` | Display unified file diff or revert last edit |
-| `/git [status\|diff\|commit\|push\|branch]` | Run native Git commands |
+| `/git [init\|status\|diff\|commit\|push\|branch]` | Run native Git commands |
 
 ---
 
