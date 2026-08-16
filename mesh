@@ -1,2 +1,11 @@
-#!/bin/bash
-.venv/bin/python main.py "$@"
+#!/usr/bin/env bash
+set -e
+
+# Auto-bootstrap if virtual environment is not yet created
+if [ ! -f ".venv/bin/python" ]; then
+    echo "[!] Virtual environment not found (.venv/bin/python)."
+    echo "[+] Running ./bootstrap to initialize environment..."
+    ./bootstrap
+fi
+
+exec .venv/bin/python main.py "$@"

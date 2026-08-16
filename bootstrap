@@ -1,4 +1,52 @@
-#!/bin/bash
-python -m venv .venv
-.venv/bin/pip install --upgrade pip
+#!/usr/bin/env bash
+set -e
+
+# Find a compatible Python >= 3.10 executable
+PYTHON_BIN=""
+for cmd in python3 python python3.13 python3.12 python3.11 python3.10; do
+    if command -v "$cmd" >/dev/null 2>&1; then
+        if "$cmd" -c "import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)" 2>/dev/null; then
+            PYTHON_BIN="$cmd"
+            break
+        fi
+    fi
+done
+
+if [ -z "$PYTHON_BIN" ]; then
+    echo "[Error] No compatible Python >= 3.10 found in PATH." >&2
+    echo "Checked: python3, python, python3.13, python3.12, python3.11, python3.10" >&2
+    echo "Please install Python 3.10 or higher." >&2
+    exit 1
+fi
+
+echo "[+] Using Python: $($PYTHON_BIN --version 2>&1) ($PYTHON_BIN)"
+
+# Verify venv module is installed (common issue on Debian/Ubuntu)
+if ! "$PYTHON_BIN" -c "import venv" 2>/dev/null; then
+    echo "" >&2
+    echo "[Error] The 'venv' standard library module is missing for $PYTHON_BIN." >&2
+    echo "On Debian/Ubuntu systems, install it by running:" >&2
+    echo "    sudo apt update && sudo apt install python3-venv" >&2
+    echo "On Fedora/RHEL systems, install it by running:" >&2
+    echo "    sudo dnf install python3-virtualenv" >&2
+    echo "On Arch Linux systems, install it by running:" >&2
+    echo "    sudo pacman -S python-virtualenv" >&2
+    exit 1
+fi
+
+# Create virtual environment if it doesn't exist
+if [ ! -f ".venv/bin/python" ]; then
+    echo "[+] Creating virtual environment in .venv..."
+    "$PYTHON_BIN" -m venv .venv
+else
+    echo "[+] Virtual environment .venv already exists."
+fi
+
+# Upgrade pip and install dependencies
+echo "[+] Installing and updating dependencies..."
+.venv/bin/python -m pip install --upgrade pip
 .venv/bin/pip install -r requirements.txt
+
+echo ""
+echo "[✔] Mesh environment bootstrapped successfully!"
+echo "Start Mesh anytime with: ./mesh"
