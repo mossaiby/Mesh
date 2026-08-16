@@ -111,6 +111,10 @@ def estimate_tokens(messages: List[Dict[str, Any]], model_name: Optional[str] = 
 
 
 def find_safe_split_index(chat_msgs: List[Dict[str, Any]], min_keep: int = 2) -> int:
+    """
+    Finds a safe index to split history so that preserved messages start on a clean
+    user boundary and don't orphan assistant tool calls or tool response pairs.
+    """
     if len(chat_msgs) <= min_keep:
         return 0
 
@@ -129,6 +133,11 @@ async def compact_messages(
     config_mgr: ConfigManager, 
     min_keep: Optional[int] = None
 ) -> Tuple[List[Dict[str, Any]], bool, str]:
+    """
+    Summarizes older conversation turns into a structured summary block.
+    Uses in-context prefix matching to leverage the provider's prompt cache
+    (saving up to 90% in token cost and latency during the summarization pass).
+    """
     keep_count = min_keep if min_keep is not None else config_mgr.config.compaction_settings.minkeep
 
     system_msgs = [m for m in messages if m.get("role") == "system"]
@@ -142,34 +151,17 @@ async def compact_messages(
     to_summarize = chat_msgs[:split_idx]
     to_keep = chat_msgs[split_idx:]
 
-    history_text_lines = []
-    for msg in to_summarize:
-        role = msg.get("role", "unknown").capitalize()
-        content = msg.get("content", "")
-        tool_calls = msg.get("tool_calls", None)
-        
-        line = f"Role: {role}"
-        if content:
-            line += f"\nContent: {content}"
-        if tool_calls:
-            line += f"\nTool Calls: {tool_calls}"
-        history_text_lines.append(line)
-
-    formatted_history = "\n\n---\n\n".join(history_text_lines)
-
-    summarization_prompt = [
-        {
-            "role": "system",
-            "content": (
-                "You are a conversation summarizer. Provide a concise, structured summary "
-                "of the provided conversation history. Highlight key user preferences, "
-                "decisions made, technical facts established, and ongoing task status. "
-                "Be brief and objective."
-            )
-        },
+    # Leverage provider prefix cache by keeping the exact message history up to split_idx
+    # and appending the summarization request as the final user message.
+    summarization_prompt = list(system_msgs) + list(to_summarize) + [
         {
             "role": "user",
-            "content": f"Summarize the following conversation history:\n\n{formatted_history}"
+            "content": (
+                "[System Request: Summarize Conversation History]\n"
+                "Please provide a concise, structured summary of the conversation above up to this point. "
+                "Highlight key user preferences, decisions made, technical facts established, file edits, "
+                "and ongoing task status. Be brief, objective, and dense with facts."
+            )
         }
     ]
 
@@ -184,6 +176,7 @@ async def compact_messages(
     if not summary_text.strip():
         return messages, False, "Failed to generate summary from model."
 
+    # Reassemble compacted history
     new_messages = []
     new_messages.extend(system_msgs)
     new_messages.append({
@@ -201,7 +194,7 @@ async def compact_messages(
     compacted_count = len(to_summarize)
 
     details = (
-        f"Compacted {compacted_count} old messages into 1 summary. "
+        f"Compacted {compacted_count} old messages into 1 summary (cached in-context). "
         f"Total messages reduced from {orig_count} to {new_count}."
     )
     return new_messages, True, details
@@ -212,6 +205,10 @@ async def maybe_auto_compact(
     config_mgr: ConfigManager,
     min_keep: Optional[int] = None
 ) -> Tuple[List[Dict[str, Any]], bool, str]:
+    """
+    Checks if estimated token usage exceeds the configured auto-compact threshold ratio.
+    If exceeded, triggers compaction automatically.
+    """
     cfg = config_mgr.config
     if not cfg.auto_compact:
         return messages, False, ""
