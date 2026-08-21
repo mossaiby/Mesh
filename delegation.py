@@ -1,6 +1,7 @@
 import asyncio
 import contextvars
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
+from rich.markup import escape
 from config import ConfigManager
 from providers import get_provider
 from render.stream_renderer import StreamRenderer
@@ -177,7 +178,9 @@ async def run_delegated_task(
 
             if verbose:
                 for tc in active_calls:
-                    console.print(f"  [dim]↳ {depth_tag}sub-agent tool call:[/dim] [tool]{tc['name']}[/tool]([dim]{tc['args']}[/dim])")
+                    name_esc = escape(str(tc.get("name", "")))
+                    args_esc = escape(str(tc.get("args", "")))
+                    console.print(f"  [dim]↳ {depth_tag}sub-agent tool call:[/dim] [tool]{name_esc}[/tool]([dim]{args_esc}[/dim])")
 
             result_strs = await _execute_turn_tool_calls(tool_registry, active_calls)
 

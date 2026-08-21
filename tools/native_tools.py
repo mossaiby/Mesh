@@ -1,6 +1,8 @@
 import os
 import sys
 import glob
+import re
+import fnmatch
 import asyncio
 import difflib
 import zlib
@@ -406,6 +408,168 @@ class GlobTool(BaseTool):
             return {"pattern": pattern, "matches": matches[:100], "count": len(matches)}
         except Exception as e:
             return {"error": f"Glob search failed: {str(e)}"}
+
+
+class GrepTool(BaseTool):
+    name = "grep"
+    description = (
+        "Searches for a regular expression pattern across files in a directory (recursively) "
+        "or within a single file. Returns matching lines with 1-based line numbers and relative file paths."
+    )
+    is_proxied = True
+    parameters = {
+        "type": "object",
+        "properties": {
+            "pattern": {
+                "type": "string",
+                "description": "Regular expression or search string to match."
+            },
+            "path": {
+                "type": "string",
+                "description": "Optional directory or specific file path to search (defaults to current directory '.')."
+            },
+            "file_pattern": {
+                "type": "string",
+                "description": "Optional glob pattern to filter target files (e.g. '*.py', '*.ts', '**/*.json')."
+            },
+            "case_sensitive": {
+                "type": "boolean",
+                "description": "Whether the search is case-sensitive (default: true)."
+            },
+            "max_results": {
+                "type": "integer",
+                "description": "Maximum number of matching lines to return (default: 100)."
+            },
+            "context_lines": {
+                "type": "integer",
+                "description": "Optional number of leading and trailing context lines to include per match (default: 0)."
+            }
+        },
+        "required": ["pattern"]
+    }
+
+    IGNORED_DIRS = frozenset({
+        ".git", "__pycache__", ".venv", "venv", "node_modules",
+        "target", "build", ".mesh", "dist", ".tox", ".pytest_cache",
+        ".hypothesis", ".idea", ".vscode"
+    })
+
+    def __init__(self, permission_manager: Optional[PermissionManager] = None):
+        self.permission_manager = permission_manager or default_permission_manager
+
+    @staticmethod
+    def _is_binary_file(filepath: str) -> bool:
+        """Heuristic check to skip binary files by detecting null bytes in header."""
+        try:
+            with open(filepath, "rb") as f:
+                chunk = f.read(1024)
+                return b"\x00" in chunk
+        except Exception:
+            return True
+
+    async def execute(
+        self,
+        pattern: str,
+        path: str = ".",
+        file_pattern: Optional[str] = None,
+        case_sensitive: bool = True,
+        max_results: int = 100,
+        context_lines: int = 0,
+        **kwargs: Any
+    ) -> Dict[str, Any]:
+        # Handle parameter aliases gracefully
+        if "root_dir" in kwargs and (path == "." or not path):
+            path = kwargs["root_dir"]
+        if "include" in kwargs and file_pattern is None:
+            file_pattern = kwargs["include"]
+        if "ignore_case" in kwargs:
+            case_sensitive = not bool(kwargs["ignore_case"])
+
+        target_path = path or "."
+        if not await self.permission_manager.check_and_request_permission(self.name, target_path):
+            return {"error": f"Permission denied for path '{target_path}'."}
+
+        if not os.path.exists(target_path):
+            return {"error": f"Path '{target_path}' does not exist."}
+
+        try:
+            max_results_int = max(1, int(max_results)) if max_results is not None else 100
+        except (ValueError, TypeError):
+            max_results_int = 100
+
+        try:
+            context_lines_int = max(0, int(context_lines)) if context_lines is not None else 0
+        except (ValueError, TypeError):
+            context_lines_int = 0
+
+        flags = 0
+        if not case_sensitive:
+            flags |= re.IGNORECASE
+
+        try:
+            regex = re.compile(pattern, flags)
+        except re.error as e:
+            return {"error": f"Invalid regular expression pattern '{pattern}': {str(e)}"}
+
+        files_to_search: List[Tuple[str, str]] = []
+
+        if os.path.isfile(target_path):
+            rel_name = target_path.replace("\\", "/") if not os.path.isabs(target_path) else os.path.relpath(target_path, ".").replace("\\", "/")
+            files_to_search.append((target_path, rel_name))
+        else:
+            for root, dirs, files in os.walk(target_path):
+                dirs[:] = [d for d in dirs if d not in self.IGNORED_DIRS and not d.startswith(".")]
+                for file in files:
+                    if file_pattern and not fnmatch.fnmatch(file, file_pattern):
+                        continue
+                    full_path = os.path.join(root, file)
+                    rel_path = os.path.relpath(full_path, target_path if target_path != "." else ".").replace("\\", "/")
+                    files_to_search.append((full_path, rel_path))
+
+        matches: List[Dict[str, Any]] = []
+        truncated = False
+
+        for full_path, rel_path in files_to_search:
+            if self._is_binary_file(full_path):
+                continue
+
+            try:
+                with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                    lines = f.readlines()
+            except Exception:
+                continue
+
+            for idx, line in enumerate(lines):
+                clean_line = line.rstrip("\r\n")
+                if regex.search(clean_line):
+                    match_item: Dict[str, Any] = {
+                        "path": rel_path,
+                        "line": idx + 1,
+                        "content": clean_line
+                    }
+                    if context_lines_int > 0:
+                        start_c = max(0, idx - context_lines_int)
+                        end_c = min(len(lines), idx + context_lines_int + 1)
+                        match_item["context"] = [
+                            f"L{c_idx + 1}: {lines[c_idx].rstrip(chr(10)).rstrip(chr(13))}"
+                            for c_idx in range(start_c, end_c)
+                        ]
+
+                    matches.append(match_item)
+                    if len(matches) >= max_results_int:
+                        truncated = True
+                        break
+
+            if truncated:
+                break
+
+        return {
+            "pattern": pattern,
+            "path": target_path,
+            "count": len(matches),
+            "matches": matches,
+            "truncated": truncated
+        }
 
 
 class ShellTool(BaseTool):

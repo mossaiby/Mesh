@@ -6,6 +6,7 @@ from tools.native_tools import (
     EditFileTool,
     HashEditTool,
     GlobTool,
+    GrepTool,
     ShellTool,
     compute_line_hash,
     find_best_fuzzy_match
@@ -155,6 +156,49 @@ async def test_glob_tool(temp_workspace):
 
     res = await glob_tool.execute(pattern="**/*.py", root_dir=temp_workspace)
     assert res["count"] == 3
+
+
+@pytest.mark.asyncio
+async def test_grep_tool(temp_workspace):
+    pm = PermissionManager()
+    pm.allowed_dirs = [temp_workspace]
+
+    writer = WriteFileTool(pm)
+    grep_tool = GrepTool(pm)
+
+    await writer.execute(
+        path=os.path.join(temp_workspace, "src", "service.py"),
+        content="def start_server():\n    print('Starting HTTP server')\n    return True\n"
+    )
+    await writer.execute(
+        path=os.path.join(temp_workspace, "docs", "README.md"),
+        content="# API Documentation\nUse start_server to launch.\n"
+    )
+
+    # 1. Recursive directory search
+    res1 = await grep_tool.execute(pattern=r"start_server", path=temp_workspace)
+    assert res1["count"] == 2
+    assert not res1["truncated"]
+
+    # 2. File pattern filtering
+    res2 = await grep_tool.execute(pattern=r"start_server", path=temp_workspace, file_pattern="*.py")
+    assert res2["count"] == 1
+    assert res2["matches"][0]["path"].endswith("service.py")
+    assert res2["matches"][0]["line"] == 1
+
+    # 3. Context lines
+    res3 = await grep_tool.execute(pattern=r"Starting HTTP", path=temp_workspace, context_lines=1)
+    assert res3["count"] == 1
+    assert len(res3["matches"][0]["context"]) == 3
+    assert "L2:     print('Starting HTTP server')" in res3["matches"][0]["context"]
+
+    # 4. Case-insensitive search
+    res4 = await grep_tool.execute(pattern=r"starting http", path=temp_workspace, case_sensitive=False)
+    assert res4["count"] == 1
+
+    # 5. Invalid regex pattern handling
+    res5 = await grep_tool.execute(pattern=r"[invalid-regex", path=temp_workspace)
+    assert "error" in res5
 
 
 @pytest.mark.asyncio

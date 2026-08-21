@@ -19,6 +19,7 @@ from tools import (
     EditFileTool,
     HashEditTool,
     GlobTool,
+    GrepTool,
     ShellTool,
     DelegateTaskTool,
     GoalTool,
@@ -173,6 +174,7 @@ class MeshEngine:
         self.tool_registry.register(EditFileTool(self.permission_manager))
         self.tool_registry.register(HashEditTool(self.permission_manager))
         self.tool_registry.register(GlobTool(self.permission_manager))
+        self.tool_registry.register(GrepTool(self.permission_manager))
         self.tool_registry.register(ShellTool(self.permission_manager, self.config_mgr))
         self.tool_registry.register(BackgroundShellTool())
         self.tool_registry.register(GitInitTool())

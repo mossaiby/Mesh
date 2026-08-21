@@ -12,6 +12,7 @@ from tools.native_tools import (
     EditFileTool,
     HashEditTool,
     GlobTool,
+    GrepTool,
     ShellTool,
     compute_line_hash,
 )
@@ -49,6 +50,7 @@ __all__ = [
     "EditFileTool",
     "HashEditTool",
     "GlobTool",
+    "GrepTool",
     "ShellTool",
     "DelegateTaskTool",
     "GoalTool",

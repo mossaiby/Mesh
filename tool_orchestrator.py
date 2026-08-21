@@ -1,5 +1,6 @@
 import asyncio
 from typing import List, Dict, Any, Tuple
+from rich.markup import escape
 import reflexion
 from theme import console
 
@@ -66,10 +67,12 @@ class ToolOrchestrator:
 
         for is_readonly, call_batch in batches:
             for tool_call in call_batch:
+                name_escaped = escape(str(tool_call.get("name", "")))
+                args_escaped = escape(str(tool_call.get("args", "")))
                 if self.debug_mode:
-                    console.print(f"[brand]🔧 DEBUG - Tool Request:[/brand] [tool]{tool_call['name']}[/tool]([dim]{tool_call['args']}[/dim])")
+                    console.print(f"[brand]🔧 DEBUG - Tool Request:[/brand] [tool]{name_escaped}[/tool]([dim]{args_escaped}[/dim])")
                 else:
-                    console.print(f"[accent]⚡ Tool Request:[/accent] [tool]{tool_call['name']}[/tool]([dim]{tool_call['args']}[/dim])")
+                    console.print(f"[accent]⚡ Tool Request:[/accent] [tool]{name_escaped}[/tool]([dim]{args_escaped}[/dim])")
 
             if is_readonly and len(call_batch) > 1:
                 results = await asyncio.gather(*(self.tool_registry.execute(tc["name"], tc["args"]) for tc in call_batch))
@@ -80,7 +83,9 @@ class ToolOrchestrator:
                 self.session_logger.log_tool_call(tool_call["name"], tool_call["args"], tool_result)
 
                 if self.debug_mode:
-                    console.print(f"[brand]🔧 DEBUG - Tool Result ([tool]{tool_call['name']}[/tool]):[/brand]\n{tool_result}")
+                    name_escaped = escape(str(tool_call.get("name", "")))
+                    console.print(f"[brand]🔧 DEBUG - Tool Result ([tool]{name_escaped}[/tool]):[/brand]")
+                    console.print(tool_result, markup=False)
 
                 if isinstance(tool_result, str) and '"error":' in tool_result:
                     reflexion.record_reflexion_event(
