@@ -11,18 +11,24 @@ from tools.ask_tool import _read_single_key
 from theme import console
 
 
+# Canonical context-size ladder offered in menus and CLI completions.
+# Powershell-style powers-of-two (8K–128K) plus vendor-standard sizes above that
+# (Claude 200K, GPT-5 400K, Gemini 1M/2M). Single source of truth — import this,
+# don't duplicate it.
 COMMON_CONTEXT_SIZES = [
     (8192, "8,192 tokens (8K)"),
     (16384, "16,384 tokens (16K)"),
     (32768, "32,768 tokens (32K)"),
     (65536, "65,536 tokens (64K)"),
-    (128000, "128,000 tokens (128K)"),
+    (131072, "131,072 tokens (128K)"),
     (200000, "200,000 tokens (200K)"),
     (262144, "262,144 tokens (256K)"),
-    (524288, "524,288 tokens (512K)"),
+    (400000, "400,000 tokens (400K)"),
     (1000000, "1,000,000 tokens (1M)"),
+    (1048576, "1,048,576 tokens (1M)"),
     (2097152, "2,097,152 tokens (2M)"),
 ]
+
 
 
 def _interactive_item_picker(items: List[str], title: str) -> Optional[str]:
@@ -144,7 +150,7 @@ async def infer_context_window(
                 if match:
                     raw_num = match.group(1).replace(",", "")
                     num_val = int(float(raw_num[:-1]) * 1000) if raw_num.endswith("k") else int(raw_num)
-                    if num_val in (8192, 16384, 32768, 65536, 128000, 200000, 262144, 524288, 1000000, 2097152):
+                    if num_val in {size for size, _ in COMMON_CONTEXT_SIZES}:
                         return num_val
         except Exception:
             pass

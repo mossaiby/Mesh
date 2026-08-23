@@ -6,7 +6,7 @@
   "auto_compact_threshold": 0.75,
   "max_delegation_depth": 2,
   "advisor_model": "lmstudio:gemma-4-e4b",
-  "guard_enabled": true,
+  "guard_enabled": false,
   "guard_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
   "guard_autonomy": "supervised",
   "router_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",

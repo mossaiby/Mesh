@@ -2,6 +2,7 @@ import os
 import sys
 from typing import List, Optional, Any, Tuple
 from tools.memory_tool import _load_memory
+from commands.model_commands import COMMON_CONTEXT_SIZES
 import jobs
 from theme import console
 
@@ -290,7 +291,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
             elif current_arg_index == 4:
                 word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
                 if word1 == "add":
-                    sizes = ["8192", "16384", "32768", "65536", "128000", "200000", "262144", "524288", "1000000", "2097152"]
+                    sizes = [str(size) for size, _ in COMMON_CONTEXT_SIZES]
                     for sz in sizes:
                         if sz.startswith(current_word):
                             yield Completion(sz, start_position=-len(current_word), display_meta=f"{int(sz):,} tokens")
