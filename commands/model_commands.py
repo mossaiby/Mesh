@@ -507,7 +507,7 @@ async def cmd_models(engine: Any, args: List[str]):
 
     active = cfg.active_model
     console.print("[success]Configured Models:[/success]")
-    for key, model_cfg in cfg.models.items():
+    for key, model_cfg in sorted(cfg.models.items()):
         provider_cfg = cfg.providers.get(model_cfg.provider)
         provider_name = provider_cfg.name if provider_cfg else model_cfg.provider
         
