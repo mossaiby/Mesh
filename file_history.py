@@ -21,7 +21,7 @@ class FileHistoryTracker:
         old_content = ""
         if os.path.exists(path):
             try:
-                with open(path, "r", encoding="utf-8", errors="replace") as f:
+                with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
                     old_content = f.read()
             except Exception:
                 old_content = ""
@@ -86,7 +86,7 @@ class FileHistoryTracker:
                 dir_name = os.path.dirname(path)
                 if dir_name:
                     os.makedirs(dir_name, exist_ok=True)
-                with open(path, "w", encoding="utf-8") as f:
+                with open(path, "w", encoding="utf-8", newline="") as f:
                     f.write(entry["old_content"])
                 return True, f"Reverted last edit to '{path}' ({len(entry['old_content'])} bytes restored)."
         except Exception as e:

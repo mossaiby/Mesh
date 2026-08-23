@@ -211,3 +211,152 @@ async def test_shell_tool_execution(temp_workspace):
     res = await shell_tool.execute(command=cmd)
     assert res["exit_code"] == 0
     assert "Hello from shell" in res["stdout"]
+
+
+# ---------- Regression tests: byte-faithful writes & edit hygiene ----------
+
+@pytest.mark.asyncio
+async def test_write_and_hash_edit_preserve_lf_endings(temp_workspace):
+    """Regression: writers opened files in universal-newline text mode and injected
+    CRLF line endings into pure-LF files when running on Windows ('noise/artifacts')."""
+    pm = PermissionManager()
+    pm.allowed_dirs = [temp_workspace]
+
+    writer = WriteFileTool(pm)
+    hasher = HashEditTool(pm)
+
+    test_file = os.path.join(temp_workspace, "lf.txt")
+    await writer.execute(path=test_file, content="aaa\nbbb\nccc\n")
+
+    res = await hasher.execute(
+        path=test_file,
+        start_line=2,
+        start_hash=compute_line_hash("bbb"),
+        end_line=2,
+        end_hash=compute_line_hash("bbb"),
+        new_str="BBB",
+    )
+    assert res["status"] == "success"
+    with open(test_file, "rb") as f:
+        raw = f.read()
+    assert raw == b"aaa\nBBB\nccc\n"
+    assert b"\r" not in raw
+
+
+@pytest.mark.asyncio
+async def test_edit_tools_preserve_crlf_files(temp_workspace):
+    """Edits to a CRLF file must not silently convert it to LF, and inserted
+    lines adopt the file's dominant EOL style."""
+    pm = PermissionManager()
+    pm.allowed_dirs = [temp_workspace]
+
+    writer = WriteFileTool(pm)
+    editor = EditFileTool(pm)
+    hasher = HashEditTool(pm)
+
+    crlf_file = os.path.join(temp_workspace, "crlf.txt")
+    await writer.execute(path=crlf_file, content="alpha\r\nbeta\r\ngamma\r\n")
+
+    res1 = await hasher.execute(
+        path=crlf_file,
+        start_line=2,
+        start_hash=compute_line_hash("beta"),
+        end_line=2,
+        end_hash=compute_line_hash("beta"),
+        new_str="beta2",
+    )
+    assert res1["status"] == "success"
+    with open(crlf_file, "rb") as f:
+        assert f.read() == b"alpha\r\nbeta2\r\ngamma\r\n"
+
+    res2 = await editor.execute(path=crlf_file, old_str="gamma", new_str="GAMMA")
+    assert res2["status"] == "success"
+    with open(crlf_file, "rb") as f:
+        assert f.read() == b"alpha\r\nbeta2\r\nGAMMA\r\n"
+
+
+@pytest.mark.asyncio
+async def test_hash_edit_delete_leaves_no_phantom_newline(temp_workspace):
+    """Regression: deleting a line via empty new_str used to leave an empty line behind."""
+    pm = PermissionManager()
+    pm.allowed_dirs = [temp_workspace]
+
+    writer = WriteFileTool(pm)
+    hasher = HashEditTool(pm)
+
+    test_file = os.path.join(temp_workspace, "del.txt")
+    await writer.execute(path=test_file, content="aaa\nbbb\nccc\n")
+
+    res = await hasher.execute(
+        path=test_file,
+        start_line=2,
+        start_hash=compute_line_hash("bbb"),
+        end_line=2,
+        end_hash=compute_line_hash("bbb"),
+        new_str="",
+    )
+    assert res["status"] == "success"
+    with open(test_file, "r", encoding="utf-8", newline="") as f:
+        assert f.read() == "aaa\nccc\n"
+
+
+def test_fuzzy_single_line_rules():
+    """A one-character value flip on a short line scores ~0.875 raw similarity;
+    it must NOT clear the stricter single-line fuzzy bar (0.95)."""
+    # Value flip: raw ratio 0.875 >= multi-line threshold 0.85, but < 0.95 -> rejected
+    found, _, _, _ = find_best_fuzzy_match(["flag = 1\n"], "flag = 2\n", threshold=0.85)
+    assert found is False
+
+    # Whitespace-only drift collapses to an identical string -> accepted
+    found, _, _, _ = find_best_fuzzy_match(
+        ["value = compute_total(price)   \n"],
+        "value = compute_total(price)\n",
+        threshold=0.85,
+    )
+    assert found is True
+
+
+def test_find_best_fuzzy_match_multiline_whitespace_drift():
+    """Multi-line fuzzy matching tolerates indentation/whitespace drift."""
+    content_lines = [
+        "def main():\n",
+        "\tprint('line 1')\n",
+        "\tprint('line 2')\n",
+        "\treturn True\n",
+    ]
+    query = "    print('line 1')\n    print('line 2')\n"  # spaces vs tabs
+    found, start, end, ratio = find_best_fuzzy_match(content_lines, query, threshold=0.80)
+    assert found is True
+    assert (start, end) == (1, 3)
+
+
+@pytest.mark.asyncio
+async def test_hash_edit_argument_validation(temp_workspace):
+    """Missing or malformed arguments produce actionable errors instead of a raw TypeError."""
+    pm = PermissionManager()
+    pm.allowed_dirs = [temp_workspace]
+
+    writer = WriteFileTool(pm)
+    hasher = HashEditTool(pm)
+    test_file = os.path.join(temp_workspace, "v.txt")
+    await writer.execute(path=test_file, content="one\ntwo\n")
+
+    res_missing = await hasher.execute(
+        path=test_file,
+        start_line=1,
+        start_hash=compute_line_hash("one"),
+        new_str="x",
+    )  # end_line / end_hash omitted
+    assert "error" in res_missing
+    assert "end_line" in res_missing["error"]
+
+    res_malformed = await hasher.execute(
+        path=test_file,
+        start_line=1,
+        start_hash="abc",  # 3 characters - malformed
+        end_line=2,
+        end_hash=compute_line_hash("two"),
+        new_str="x",
+    )
+    assert "error" in res_malformed
+    assert "malformed" in res_malformed["error"]

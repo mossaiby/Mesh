@@ -22,20 +22,84 @@ def compute_line_hash(line: str) -> str:
     return f"{zlib.crc32(clean.encode('utf-8')) & 0xffff:04x}"
 
 
+def write_text_exact(path: str, content: str) -> None:
+    """Writes UTF-8 text byte-faithfully: no OS newline translation, no injected CR."""
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(content)
+
+
+def detect_dominant_eol(lines: List[str]) -> str:
+    """Returns the dominant line ending ('\r\n' or '\n') among the given lines."""
+    crlf = sum(1 for ln in lines if ln.endswith("\r\n"))
+    lf = sum(1 for ln in lines if ln.endswith("\n") and not ln.endswith("\r\n"))
+    return "\r\n" if crlf > lf else "\n"
+
+
+def _normalize_eol(text: str, eol: str) -> str:
+    """Normalizes every newline in text to the given EOL style."""
+    unified = text.replace("\r\n", "\n").replace("\r", "\n")
+    return unified if eol == "\n" else unified.replace("\n", eol)
+
+
+def _collapse_ws(text: str) -> str:
+    """Canonical form for similarity scoring: collapses per-line whitespace."""
+    return "\n".join(" ".join(segment.split()) for segment in text.splitlines())
+
+
+def splice_line_range(
+    lines: List[str],
+    start_idx: int,
+    end_idx: int,
+    new_str: str
+) -> List[str]:
+    """
+    Line-oriented splice shared by edit_file (fuzzy branch) and hash_edit.
+
+    - Empty new_str deletes lines[start_idx:end_idx] entirely (no phantom newline).
+    - Otherwise new_str is normalized to the file's dominant EOL, and a bare
+      (newline-less) new_str inherits the replaced range's terminator so the
+      following line stays properly separated.
+    """
+    if new_str == "":
+        return lines[:start_idx] + lines[end_idx:]
+
+    replaced = lines[start_idx:end_idx]
+    prev_ending = ""
+    if replaced:
+        last = replaced[-1]
+        if last.endswith("\r\n"):
+            prev_ending = "\r\n"
+        elif last.endswith("\n"):
+            prev_ending = "\n"
+
+    tail = _normalize_eol(new_str, detect_dominant_eol(lines))
+    if prev_ending and not tail.endswith(("\n", "\r")):
+        tail += prev_ending
+    return lines[:start_idx] + [tail] + lines[end_idx:]
+
+
 def find_best_fuzzy_match(
     content_lines: List[str],
     old_str: str,
-    threshold: float = 0.85
+    threshold: float = 0.85,
+    single_line_threshold: float = 0.95
 ) -> Tuple[bool, int, int, float]:
     """
     Searches for the best fuzzy match for old_str within content_lines.
     Returns (found, start_line_idx, end_line_idx, ratio).
+
+    Similarity is computed on a whitespace-collapsed canonical form so that
+    indentation-only drift does not mask a real match. Single-line windows are
+    held to a stricter bar (raw ratio >= single_line_threshold, or identical
+    after whitespace collapsing) because short strings let tiny but semantic
+    edits (e.g. 'flag = 1' vs 'flag = 2' scores 0.875) clear the normal bar.
     """
     old_lines = old_str.splitlines(keepends=True)
     n_old = len(old_lines)
     if n_old == 0 or not content_lines:
         return False, -1, -1, 0.0
 
+    old_collapsed = _collapse_ws(old_str)
     best_ratio = 0.0
     best_start = -1
     best_end = -1
@@ -45,7 +109,20 @@ def find_best_fuzzy_match(
     for w_size in window_sizes:
         for i in range(len(content_lines) - w_size + 1):
             window_text = "".join(content_lines[i : i + w_size])
-            ratio = difflib.SequenceMatcher(None, window_text, old_str).ratio()
+            if w_size == 1:
+                # Strict rule for single-line targets (see docstring).
+                raw_ratio = difflib.SequenceMatcher(None, window_text, old_str).ratio()
+                collapsed_ratio = difflib.SequenceMatcher(
+                    None, _collapse_ws(window_text), old_collapsed
+                ).ratio()
+                if raw_ratio >= single_line_threshold or collapsed_ratio >= 0.999:
+                    ratio = max(raw_ratio, collapsed_ratio)
+                else:
+                    ratio = 0.0
+            else:
+                ratio = difflib.SequenceMatcher(
+                    None, _collapse_ws(window_text), old_collapsed
+                ).ratio()
             if ratio > best_ratio:
                 best_ratio = ratio
                 best_start = i
@@ -164,8 +241,7 @@ class WriteFileTool(BaseTool):
             dir_name = os.path.dirname(path)
             if dir_name:
                 os.makedirs(dir_name, exist_ok=True)
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(content)
+            write_text_exact(path, content)
 
             # Hot update symbol index for modified file
             try:
@@ -225,7 +301,7 @@ class EditFileTool(BaseTool):
             return {"error": f"File '{path}' does not exist."}
 
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
+            with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
                 content = f.read()
 
             match_method = "exact"
@@ -238,10 +314,7 @@ class EditFileTool(BaseTool):
                 )
                 if found:
                     match_method = f"fuzzy ({int(ratio * 100)}% similarity at lines {start_idx + 1}-{end_idx})"
-                    new_lines_str = new_str
-                    if end_idx > 0 and content_lines[end_idx - 1].endswith("\n") and not new_lines_str.endswith("\n"):
-                        new_lines_str += "\n"
-                    updated_lines = content_lines[:start_idx] + [new_lines_str] + content_lines[end_idx:]
+                    updated_lines = splice_line_range(content_lines, start_idx, end_idx, new_str)
                     updated_content = "".join(updated_lines)
                 else:
                     line_info = f"at line {start_idx + 1}" if start_idx != -1 else ""
@@ -255,8 +328,7 @@ class EditFileTool(BaseTool):
 
             diff_text = file_history_tracker.record_edit(path, updated_content, action="edit_file")
 
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(updated_content)
+            write_text_exact(path, updated_content)
 
             # Hot update symbol index for modified file
             try:
@@ -305,11 +377,28 @@ class HashEditTool(BaseTool):
         self,
         path: str,
         start_line: int,
-        start_hash: str,
-        end_line: int,
-        end_hash: str,
-        new_str: str
+        start_hash: str = None,
+        end_line: int = None,
+        end_hash: str = None,
+        new_str: str = None
     ) -> Dict[str, Any]:
+        # Friendly argument validation (prevents raw TypeError leaking to the model).
+        missing = [arg for arg, val in (
+            ("path", path),
+            ("start_line", start_line),
+            ("start_hash", start_hash),
+            ("end_line", end_line),
+            ("end_hash", end_hash),
+            ("new_str", new_str),
+        ) if val is None]
+        if missing:
+            return {
+                "error": (
+                    f"Missing required arguments for hash_edit: {', '.join(missing)}. "
+                    f"Required signature: hash_edit(path, start_line, start_hash, end_line, end_hash, new_str). "
+                    f"Get current line numbers and hashes via read_file with show_hashes=True."
+                )
+            }
         if not await self.permission_manager.check_and_request_permission(self.name, path):
             return {"error": f"Permission denied for path '{path}'."}
 
@@ -323,7 +412,7 @@ class HashEditTool(BaseTool):
             return {"error": "start_line and end_line must be valid integers."}
 
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
+            with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
                 content = f.read()
 
             lines = content.splitlines(keepends=True)
@@ -339,28 +428,36 @@ class HashEditTool(BaseTool):
             actual_end_hash = compute_line_hash(lines[end_line - 1])
 
             mismatches = []
-            if actual_start_hash.lower() != start_hash.lower().strip():
-                mismatches.append(f"start_line {start_line} hash mismatch: expected '{start_hash}', found '{actual_start_hash}' (content: {repr(lines[start_line-1].strip())})")
+            if not isinstance(start_hash, str) or len(start_hash.strip()) != 4:
+                mismatches.append(
+                    f"start_hash '{start_hash}' is malformed: expected a 4-character hash "
+                    f"(found line {start_line} content starts with {repr(lines[start_line-1].strip()[:40])})."
+                )
+            if not isinstance(end_hash, str) or len(end_hash.strip()) != 4:
+                mismatches.append(
+                    f"end_hash '{end_hash}' is malformed: expected a 4-character hash "
+                    f"(found line {end_line} content starts with {repr(lines[end_line-1].strip()[:40])})."
+                )
 
-            if actual_end_hash.lower() != end_hash.lower().strip():
-                mismatches.append(f"end_line {end_line} hash mismatch: expected '{end_hash}', found '{actual_end_hash}' (content: {repr(lines[end_line-1].strip())})")
+            if not mismatches:
+                if actual_start_hash.lower() != start_hash.lower().strip():
+                    mismatches.append(f"start_line {start_line} hash mismatch: expected '{start_hash}', found '{actual_start_hash}' (content: {repr(lines[start_line-1].strip())})")
+
+            if not mismatches:
+                if actual_end_hash.lower() != end_hash.lower().strip():
+                    mismatches.append(f"end_line {end_line} hash mismatch: expected '{end_hash}', found '{actual_end_hash}' (content: {repr(lines[end_line-1].strip())})")
 
             if mismatches:
                 return {
                     "error": "Hash verification failed! File content has changed or line numbers were off:\n" + "\n".join(mismatches) + "\nRe-read the file using read_file with show_hashes=True."
                 }
 
-            new_lines_str = new_str
-            if lines[end_line - 1].endswith("\n") and not new_lines_str.endswith("\n"):
-                new_lines_str += "\n"
-
-            updated_lines = lines[:start_line - 1] + [new_lines_str] + lines[end_line:]
+            updated_lines = splice_line_range(lines, start_line - 1, end_line, new_str)
             updated_content = "".join(updated_lines)
 
             diff_text = file_history_tracker.record_edit(path, updated_content, action="hash_edit")
 
-            with open(path, "w", encoding="utf-8") as f:
-                f.write(updated_content)
+            write_text_exact(path, updated_content)
 
             # Hot update symbol index for modified file
             try:
