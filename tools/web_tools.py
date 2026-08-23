@@ -97,7 +97,7 @@ class WebSearchTool(BaseTool):
                     valid_results.append({
                         "title": clean_title,
                         "url": clean_url,
-                        "snippet": snippet_text
+                        "snippet": snippet_text or "No snippet available."
                     })
 
             final_results: List[Dict[str, str]] = [

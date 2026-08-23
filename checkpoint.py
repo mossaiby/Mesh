@@ -57,8 +57,8 @@ class CheckpointManager:
         mesh_instance.messages = copy.deepcopy(snap["messages"])
 
         # Restore goal
-        if hasattr(mesh_instance, "goal_tool") and snap.get("goal"):
-            g = snap["goal"]
+        if hasattr(mesh_instance, "goal_tool"):
+            g = snap.get("goal") or {}
             mesh_instance.goal_tool._goal = g.get("goal")
             mesh_instance.goal_tool._criteria = copy.deepcopy(g.get("success_criteria", []))
             mesh_instance.goal_tool._notify()

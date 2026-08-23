@@ -36,7 +36,7 @@ class JobEntry:
         except Exception:
             pass
         finally:
-            if self.process.returncode is not None:
+            if self.process.returncode is not None and self.status == "running":
                 self.status = "completed" if self.process.returncode == 0 else f"failed (code {self.process.returncode})"
 
     async def _read_stderr(self):
@@ -55,22 +55,22 @@ class JobEntry:
 
     async def stop(self) -> bool:
         if self.process.returncode is None:
+            self.status = "stopped"
             try:
                 if sys.platform == "win32":
                     import subprocess
-                    subprocess.run(
+                    await asyncio.to_thread(
+                        subprocess.run,
                         ["taskkill", "/F", "/T", "/PID", str(self.pid)],
                         stdout=subprocess.DEVNULL,
                         stderr=subprocess.DEVNULL
                     )
                 else:
                     self.process.terminate()
-                self.status = "stopped"
                 return True
             except Exception:
                 try:
                     self.process.kill()
-                    self.status = "stopped"
                     return True
                 except Exception:
                     return False

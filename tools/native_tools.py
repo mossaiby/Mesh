@@ -107,6 +107,9 @@ class ReadFileTool(BaseTool):
             except (ValueError, TypeError):
                 end_line_int = None
 
+            if start_line_int is not None and end_line_int is not None and end_line_int < start_line_int:
+                return {"error": f"Invalid line range: end_line ({end_line_int}) cannot be less than start_line ({start_line_int})."}
+
             s_idx = (start_line_int - 1) if start_line_int and start_line_int > 0 else 0
             e_idx = end_line_int if end_line_int and end_line_int > 0 else total_lines
 
@@ -177,7 +180,7 @@ class WriteFileTool(BaseTool):
             }
 
             # Trigger post-edit linter hook
-            linter_feedback = hook_manager.run_post_edit_hooks(path)
+            linter_feedback = await hook_manager.run_post_edit_hooks_async(path)
             if linter_feedback:
                 res["_linter_feedback"] = linter_feedback
 
@@ -268,7 +271,7 @@ class EditFileTool(BaseTool):
             }
 
             # Trigger post-edit linter hook
-            linter_feedback = hook_manager.run_post_edit_hooks(path)
+            linter_feedback = await hook_manager.run_post_edit_hooks_async(path)
             if linter_feedback:
                 res["_linter_feedback"] = linter_feedback
 
@@ -372,7 +375,7 @@ class HashEditTool(BaseTool):
             }
 
             # Trigger post-edit linter hook
-            linter_feedback = hook_manager.run_post_edit_hooks(path)
+            linter_feedback = await hook_manager.run_post_edit_hooks_async(path)
             if linter_feedback:
                 res["_linter_feedback"] = linter_feedback
 
@@ -642,9 +645,19 @@ class ShellTool(BaseTool):
         except asyncio.TimeoutError:
             if proc:
                 try:
-                    proc.kill()
+                    if sys.platform == "win32":
+                        subprocess.run(
+                            ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL
+                        )
+                    else:
+                        proc.terminate()
                 except Exception:
-                    pass
+                    try:
+                        proc.kill()
+                    except Exception:
+                        pass
             return {"error": f"Command execution timed out after {timeout} seconds."}
         except Exception as e:
             return {"error": f"Command execution failed: {str(e)}"}

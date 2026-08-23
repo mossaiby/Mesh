@@ -208,6 +208,10 @@ class OpenAIProvider:
             except (KeyboardInterrupt, asyncio.CancelledError):
                 raise
             except Exception as exc:
+                if "stream_options" in kwargs and "stream_options" in str(exc).lower():
+                    del kwargs["stream_options"]
+                    continue
+
                 if not is_transient_error(exc) or attempt > max_retries or yielded_any:
                     raise
 

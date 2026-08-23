@@ -1,6 +1,5 @@
 import asyncio
 import ast
-import difflib
 import json
 from typing import Dict, List, Any, Optional
 from tools.base import BaseTool
@@ -52,15 +51,10 @@ class ToolRegistry:
         Determines whether a tool call with the given arguments is read-only
         and safe for concurrent execution.
         """
-        resolved_name = tool_name
-        if resolved_name not in self._tools:
-            close = difflib.get_close_matches(tool_name, list(self._tools.keys()), n=1, cutoff=0.72)
-            if close:
-                resolved_name = close[0]
-            else:
-                return False
+        if tool_name not in self._tools:
+            return False
 
-        tool = self._tools[resolved_name]
+        tool = self._tools[tool_name]
 
         kwargs = {}
         if isinstance(arguments, str):
@@ -106,8 +100,12 @@ class ToolRegistry:
         if engine is None or not engine.enabled or repair.is_non_repairable(err):
             return (result if result is not None else {"error": err}), notes
 
-        # Layer 1: mechanical retry for transient-looking errors
-        if repair.is_transient(err):
+        # Layer 1: mechanical retry for transient-looking errors (safe/read-only tools only)
+        if (
+            repair.is_transient(err)
+            and not getattr(tool, "requires_guard", False)
+            and tool_name not in repair.REPAIR_EXCLUDED_TOOLS
+        ):
             for attempt in range(1, engine.mechanical_retries + 1):
                 await asyncio.sleep(engine.mechanical_delay * attempt)
                 console.print(
@@ -142,6 +140,7 @@ class ToolRegistry:
             return json.dumps({"error": f"Error executing tool '{tool_name}': {str(e)}"})
 
     async def _execute_inner(self, tool_name: str, arguments_json: str) -> str:
+        import difflib
         engine = self.repair_engine
         repair_notes: List[str] = []
 
@@ -289,7 +288,12 @@ class CalculatorTool(BaseTool):
             if isinstance(node.op, ast.Pow):
                 if isinstance(right, (int, float)) and abs(right) > 1000:
                     raise ValueError("Exponent too large.")
-                return left ** right
+                if isinstance(left, (int, float)) and abs(left) > 1000 and abs(right) > 10:
+                    raise ValueError("Base and exponent combination too large.")
+                res = left ** right
+                if isinstance(res, int) and res.bit_length() > 20_000:
+                    raise ValueError("Calculation result exceeds maximum allowed size.")
+                return res
             raise ValueError(f"Unsupported operator: {type(node.op).__name__}")
         if isinstance(node, ast.UnaryOp):
             operand = cls._eval_node(node.operand)

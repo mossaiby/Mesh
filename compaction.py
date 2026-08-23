@@ -165,13 +165,16 @@ async def compact_messages(
         }
     ]
 
-    model_cfg, provider_cfg = config_mgr.get_active_model_and_provider()
-    provider = get_provider(model_cfg, provider_cfg, config_mgr)
+    try:
+        model_cfg, provider_cfg = config_mgr.get_active_model_and_provider()
+        provider = get_provider(model_cfg, provider_cfg, config_mgr)
 
-    summary_text = ""
-    async for chunk in provider.stream_chat(summarization_prompt):
-        if chunk["type"] == "content":
-            summary_text += chunk["value"]
+        summary_text = ""
+        async for chunk in provider.stream_chat(summarization_prompt):
+            if chunk["type"] == "content":
+                summary_text += chunk["value"]
+    except Exception as e:
+        return messages, False, f"Compaction skipped (model call failed: {e})."
 
     if not summary_text.strip():
         return messages, False, "Failed to generate summary from model."

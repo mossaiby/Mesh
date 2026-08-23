@@ -1,6 +1,7 @@
 import os
 import shutil
 import subprocess
+import asyncio
 from typing import Dict, Any, Optional, List
 from theme import console
 from config import default_timeout
@@ -69,6 +70,10 @@ class HookManager:
             pass
 
         return None
+
+    async def run_post_edit_hooks_async(self, filepath: str) -> Optional[str]:
+        """Asynchronously runs detected linter/formatter on filepath in a worker thread."""
+        return await asyncio.to_thread(self.run_post_edit_hooks, filepath)
 
 
 # Global hook manager instance

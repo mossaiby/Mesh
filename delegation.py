@@ -47,9 +47,13 @@ async def _execute_turn_tool_calls(
     active_calls: List[Dict[str, str]]
 ) -> List[str]:
     results: List[Optional[str]] = [None] * len(active_calls)
+    current_depth = CURRENT_DELEGATION_DEPTH.get()
 
     async def run_bounded(i: int, tc: Dict[str, str]):
-        async with _delegation_semaphore:
+        if current_depth <= 1:
+            async with _delegation_semaphore:
+                results[i] = await tool_registry.execute(tc["name"], tc["args"])
+        else:
             results[i] = await tool_registry.execute(tc["name"], tc["args"])
 
     delegate_indices = [i for i, tc in enumerate(active_calls) if tc["name"] == "delegate_task"]

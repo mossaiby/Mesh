@@ -78,6 +78,7 @@ class InferenceCoordinator:
                 if auto_compacted:
                     console.print(f"[warning]📑   {compact_details}[/warning]")
                     self.session_logger.log_system_event(compact_details)
+                    rollback_count = max(0, len(self.engine.messages) - 1)
 
                 # 3. Prepare tool schemas
                 provider = get_provider(model_cfg, provider_cfg, self.config_mgr)
@@ -214,7 +215,8 @@ class InferenceCoordinator:
                         })
                     assistant_msg["tool_calls"] = formatted_tool_calls
 
-                self.engine.messages.append(assistant_msg)
+                if "content" in assistant_msg or "tool_calls" in assistant_msg:
+                    self.engine.messages.append(assistant_msg)
 
                 if not active_calls or not self.engine.tools_enabled:
                     break

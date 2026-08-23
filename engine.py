@@ -158,7 +158,7 @@ class MeshEngine:
         if sys_idx is not None:
             self.messages[sys_idx]["content"] = full_sys
         else:
-            self.messages = [{"role": "system", "content": full_sys}]
+            self.messages.insert(0, {"role": "system", "content": full_sys})
 
     def setup_defaults(self):
         # 1. Register Base Tools
