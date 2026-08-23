@@ -186,7 +186,7 @@ class InferenceCoordinator:
                     metrics_parts.append(f"${turn_cost:.4f} turn, ${self.engine.session_cost_usd:.4f} session")
 
                 if cfg.show_statistics:
-                    ttft_fmt = f"{ttft_sec*1000:.0f}ms" if ttft_sec < 1.0 else f"{ttft_sec:.2f}s"
+                    ttft_fmt = f"{ttft_sec*1000:.0f} ms" if ttft_sec < 1.0 else f"{ttft_sec:.2f} s"
                     metrics_parts.append(f"TTFT: {ttft_fmt}, {tps:.1f} tok/s")
 
                 if metrics_parts:
