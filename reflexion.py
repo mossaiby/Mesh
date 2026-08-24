@@ -1,11 +1,11 @@
 import json
 import os
 from typing import Dict, Any, List, Optional, Tuple
-from config import ConfigManager
+from config import ConfigManager, APP_ROOT
 from providers import get_provider
 from theme import console
 
-REFLEXION_FILE = "reflexion.json"
+REFLEXION_FILE = os.path.join(APP_ROOT, "reflexion.json")
 
 DISTILL_SYSTEM_PROMPT = (
     "You are Mesh's Reflexion Assistant. You will be given a log of tool failures, "

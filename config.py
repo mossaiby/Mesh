@@ -3,6 +3,8 @@ import os
 from typing import Dict, Optional, Tuple, List, Any
 from pydantic import BaseModel, Field, ConfigDict
 
+APP_ROOT = os.path.dirname(os.path.abspath(__file__))
+
 
 def apply_network_proxy(proxy_url: Optional[str]) -> None:
     """Sets or clears HTTP/HTTPS/ALL_PROXY environment variables."""
@@ -237,8 +239,13 @@ def generate_config_schema(filepath: str = "config.schema.json") -> Dict[str, An
 
 
 class ConfigManager:
-    def __init__(self, filepath: str = "config.json"):
-        self.filepath = filepath
+    def __init__(self, filepath: Optional[str] = None):
+        if filepath is None:
+            self.filepath = os.path.join(APP_ROOT, "config.json")
+        elif not os.path.isabs(filepath):
+            self.filepath = os.path.join(APP_ROOT, filepath)
+        else:
+            self.filepath = filepath
         self.config: MeshConfig = self.load()
 
     def load(self) -> MeshConfig:
@@ -254,7 +261,7 @@ class ConfigManager:
         apply_network_proxy(cfg.network_proxy)
 
         # Auto-generate or update config.schema.json alongside config.json
-        schema_path = os.path.join(os.path.dirname(self.filepath) or ".", "config.schema.json")
+        schema_path = os.path.join(os.path.dirname(self.filepath) or APP_ROOT, "config.schema.json")
         if not os.path.exists(schema_path):
             generate_config_schema(schema_path)
 
@@ -269,7 +276,7 @@ class ConfigManager:
         with open(self.filepath, "w", encoding="utf-8") as f:
             f.write(self.config.model_dump_json(indent=2, by_alias=True))
 
-        schema_path = os.path.join(os.path.dirname(self.filepath) or ".", "config.schema.json")
+        schema_path = os.path.join(os.path.dirname(self.filepath) or APP_ROOT, "config.schema.json")
         generate_config_schema(schema_path)
 
     def get_model_and_provider(self, key: str) -> Tuple[ModelConfig, ProviderConfig]:

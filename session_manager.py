@@ -5,9 +5,10 @@ import copy
 from typing import Dict, Any, List, Optional, Tuple
 from tools.note_tool import _read_notes, _write_notes
 from tools.memory_tool import _load_memory, _save_memory
+from config import APP_ROOT
 
 
-SESSIONS_DIR = "sessions"
+SESSIONS_DIR = os.path.join(APP_ROOT, "sessions")
 
 
 def _ensure_sessions_dir() -> str:

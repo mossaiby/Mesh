@@ -4,9 +4,10 @@ import os
 import sys
 from typing import Dict, Any, Tuple
 from tools.base import BaseTool
+from config import APP_ROOT
 from theme import console
 
-CUSTOM_TOOLS_DIR = "custom_tools"
+CUSTOM_TOOLS_DIR = os.path.join(APP_ROOT, "custom_tools")
 
 
 def _ensure_custom_tools_dir() -> str:

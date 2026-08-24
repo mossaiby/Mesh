@@ -1,15 +1,21 @@
 import json
 import os
-from typing import Dict
+from typing import Dict, Optional
 from skills.base import BaseSkill, DeclarativeSkill
 from tools.registry import ToolRegistry
+from config import APP_ROOT
 
 
 class SkillRegistry:
-    def __init__(self, tool_registry: ToolRegistry, filepath: str = "skills.json"):
+    def __init__(self, tool_registry: ToolRegistry, filepath: Optional[str] = None):
         self._skills: Dict[str, BaseSkill] = {}
         self.tool_registry = tool_registry
-        self.filepath = filepath
+        if filepath is None:
+            self.filepath = os.path.join(APP_ROOT, "skills.json")
+        elif not os.path.isabs(filepath):
+            self.filepath = os.path.join(APP_ROOT, filepath)
+        else:
+            self.filepath = filepath
 
     def load_from_file(self) -> None:
         """Loads declaratively defined skills from skills.json file."""

@@ -1,7 +1,8 @@
 import fnmatch
 import json
 import os
-from typing import Dict, Tuple
+from typing import Dict, Tuple, Optional
+from config import APP_ROOT
 
 
 class PricingManager:
@@ -10,8 +11,13 @@ class PricingManager:
     and computes real-time USD costs per turn and session.
     Applies prompt cache read discounts when cached tokens are present.
     """
-    def __init__(self, filepath: str = "pricing.json"):
-        self.filepath = filepath
+    def __init__(self, filepath: Optional[str] = None):
+        if filepath is None:
+            self.filepath = os.path.join(APP_ROOT, "pricing.json")
+        elif not os.path.isabs(filepath):
+            self.filepath = os.path.join(APP_ROOT, filepath)
+        else:
+            self.filepath = filepath
         self.prices: Dict[str, Dict[str, float]] = {}
         self.load_pricing()
 

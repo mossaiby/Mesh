@@ -3,6 +3,7 @@ import sys
 from typing import List, Optional, Any, Tuple
 from tools.memory_tool import _load_memory
 from commands.model_commands import COMMON_CONTEXT_SIZES
+from config import APP_ROOT
 import jobs
 from theme import console
 
@@ -16,7 +17,7 @@ except ImportError:
     PROMPT_TOOLKIT_AVAILABLE = False
 
 
-HISTORY_FILE = os.path.join(".mesh", "history.txt")
+HISTORY_FILE = os.path.join(APP_ROOT, ".mesh", "history.txt")
 
 
 def get_path_completions(partial_path: str, prefix: str = "") -> List[Tuple[str, str, str]]:

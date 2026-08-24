@@ -2,9 +2,10 @@ import json
 import os
 from typing import Dict, Any
 from tools.base import BaseTool
+from config import APP_ROOT
 import memory_search
 
-MEMORY_FILE = "memory.json"
+MEMORY_FILE = os.path.join(APP_ROOT, "memory.json")
 
 
 def _load_memory() -> Dict[str, Any]:

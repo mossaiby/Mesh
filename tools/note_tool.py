@@ -1,8 +1,9 @@
 import os
 from typing import Dict, Any
 from tools.base import BaseTool
+from config import APP_ROOT
 
-NOTES_FILE = "notes.md"
+NOTES_FILE = os.path.join(APP_ROOT, "notes.md")
 
 
 def _read_notes() -> str:

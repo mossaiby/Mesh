@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 from tools.base import BaseTool
 from tools.registry import ToolRegistry
 from version import __version__
-from config import default_timeout
+from config import default_timeout, APP_ROOT
 
 # Global registry of active MCP sessions for automatic cleanup on process termination
 _ACTIVE_MCP_SESSIONS: List["MCPClientSession"] = []
@@ -502,8 +502,13 @@ class MCPClientSession:
 
 class MCPManager:
     """Manages parsing of mcps.json, server sessions, tool aggregation, and state toggles."""
-    def __init__(self, filepath: str = "mcps.json", config_mgr: Optional[Any] = None):
-        self.filepath = filepath
+    def __init__(self, filepath: Optional[str] = None, config_mgr: Optional[Any] = None):
+        if filepath is None:
+            self.filepath = os.path.join(APP_ROOT, "mcps.json")
+        elif not os.path.isabs(filepath):
+            self.filepath = os.path.join(APP_ROOT, filepath)
+        else:
+            self.filepath = filepath
         self._config_mgr = config_mgr
         self.sessions: Dict[str, MCPClientSession] = {}
         self.adapters: Dict[str, List[MCPToolAdapter]] = {}
