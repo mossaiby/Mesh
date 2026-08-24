@@ -26,6 +26,7 @@ def _read_single_key() -> str:
             raise KeyboardInterrupt()
         return ch.decode('utf-8', errors='ignore')
     else:
+        import select
         import tty
         import termios
         fd = sys.stdin.fileno()
@@ -34,13 +35,16 @@ def _read_single_key() -> str:
             tty.setraw(fd)
             ch = sys.stdin.read(1)
             if ch == '\x1b':
-                ch2 = sys.stdin.read(1)
-                if ch2 == '[':
-                    ch3 = sys.stdin.read(1)
-                    if ch3 == 'A':
-                        return "up"
-                    elif ch3 == 'B':
-                        return "down"
+                # Non-blocking check for escape sequence bytes to avoid blocking on bare Escape
+                r, _, _ = select.select([sys.stdin], [], [], 0.05)
+                if r:
+                    ch2 = sys.stdin.read(1)
+                    if ch2 == '[':
+                        ch3 = sys.stdin.read(1)
+                        if ch3 == 'A':
+                            return "up"
+                        elif ch3 == 'B':
+                            return "down"
                 return "escape"
             elif ch in ('\r', '\n'):
                 return "enter"

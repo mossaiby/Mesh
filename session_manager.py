@@ -15,6 +15,13 @@ def _ensure_sessions_dir() -> str:
     return SESSIONS_DIR
 
 
+def _clean_session_name(name: str) -> str:
+    """Normalizes and sanitizes a session name for disk storage."""
+    raw = name.removesuffix(".json").strip()
+    clean = "".join(c for c in raw if c.isalnum() or c in ("-", "_", ".")).strip()
+    return clean or f"session_{time.strftime('%Y%m%d_%H%M%S')}"
+
+
 class SessionManager:
     """
     Manages disk-backed session save, resume, list, and delete operations under sessions/.
@@ -27,9 +34,7 @@ class SessionManager:
 
     def save_session(self, name: Optional[str] = None) -> Tuple[bool, str]:
         session_name = name or self.active_session_name or f"session_{time.strftime('%Y%m%d_%H%M%S')}"
-        clean_name = "".join(c for c in session_name if c.isalnum() or c in ("-", "_")).strip()
-        if not clean_name:
-            clean_name = f"session_{time.strftime('%Y%m%d_%H%M%S')}"
+        clean_name = _clean_session_name(session_name)
 
         dir_path = _ensure_sessions_dir()
         filepath = os.path.join(dir_path, f"{clean_name}.json")
@@ -70,7 +75,7 @@ class SessionManager:
             return False, f"Failed to save session: {e}"
 
     def load_session(self, name: str) -> Tuple[bool, str]:
-        clean_name = name.removesuffix(".json")
+        clean_name = _clean_session_name(name)
         filepath = os.path.join(SESSIONS_DIR, f"{clean_name}.json")
 
         if not os.path.exists(filepath):
@@ -163,7 +168,7 @@ class SessionManager:
         return sessions[0]["name"] if sessions else None
 
     def delete_session(self, name: str) -> Tuple[bool, str]:
-        clean_name = name.removesuffix(".json")
+        clean_name = _clean_session_name(name)
         filepath = os.path.join(SESSIONS_DIR, f"{clean_name}.json")
         if not os.path.exists(filepath):
             return False, f"Session file '{filepath}' not found."

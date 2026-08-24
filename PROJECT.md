@@ -1,0 +1,3 @@
+## Mesh repo convention (commit 816429d)
+
+ALL user-file reads/writes in `tools/native_tools.py` and `file_history.py` must be byte-faithful: `open(..., newline='')` on both read and write sides, writes via `write_text_exact()`. Never use universal-newline text mode on repo files; it injects `CRLF` into `LF` files on Windows. Line splices go through `splice_line_range()` (empty new_str deletes the range entirely). Fuzzy matching: single-line windows need >=0.95 raw ratio or whitespace-collapsed equality; multi-line scores against whitespace-collapsed text.

@@ -134,6 +134,45 @@ def find_best_fuzzy_match(
     return False, best_start, best_end, best_ratio
 
 
+def get_fuzzy_edit_settings(config_mgr: Optional[Any] = None) -> Tuple[bool, float]:
+    """
+    Resolves fuzzy edit behavior from configuration (edit_settings.fuzzy_enabled /
+    edit_settings.fuzzy_threshold) with safe fallbacks when no ConfigManager is
+    available or the settings are missing (e.g. older config.json files).
+    """
+    enabled = True
+    threshold = 0.85
+    try:
+        if config_mgr is not None:
+            edit_cfg = getattr(config_mgr.config, "edit_settings", None)
+            if edit_cfg is not None:
+                enabled = bool(edit_cfg.fuzzy_enabled)
+                try:
+                    threshold = float(edit_cfg.fuzzy_threshold)
+                except (TypeError, ValueError):
+                    pass
+    except Exception:
+        pass
+    return enabled, threshold
+
+
+def resolve_fuzzy_edit_params(
+    config_mgr: Optional[Any] = None,
+    requested_threshold: Optional[float] = None
+) -> Tuple[bool, float]:
+    """
+    Combines configured fuzzy edit defaults with an explicit per-call override.
+    A non-None requested_threshold always wins over the configured value.
+    """
+    enabled, threshold = get_fuzzy_edit_settings(config_mgr)
+    if requested_threshold is not None:
+        try:
+            threshold = float(requested_threshold)
+        except (TypeError, ValueError):
+            pass
+    return enabled, threshold
+
+
 class ReadFileTool(BaseTool):
     name = "read_file"
     description = "Reads text content from a file with optional line range and 4-character line hashes for hash_edit."
@@ -169,7 +208,7 @@ class ReadFileTool(BaseTool):
             return {"error": f"File '{path}' does not exist."}
 
         try:
-            with open(path, "r", encoding="utf-8", errors="replace") as f:
+            with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
                 lines = f.readlines()
 
             total_lines = len(lines)
@@ -278,27 +317,36 @@ class EditFileTool(BaseTool):
             "new_str": {"type": "string", "description": "New replacement string."},
             "fuzzy_threshold": {
                 "type": "number",
-                "description": "Optional similarity threshold for fuzzy matching (default: 0.85, range 0.0 to 1.0)."
+                "description": "Optional similarity threshold override for this edit (0.5-1.0); omit to use the configured default (/config set edit threshold)."
             }
         },
         "required": ["path", "old_str", "new_str"]
     }
 
-    def __init__(self, permission_manager: Optional[PermissionManager] = None):
+    def __init__(
+        self,
+        permission_manager: Optional[PermissionManager] = None,
+        config_mgr: Optional[Any] = None
+    ):
         self.permission_manager = permission_manager or default_permission_manager
+        self._config_mgr = config_mgr
 
     async def execute(
         self,
         path: str,
         old_str: str,
         new_str: str,
-        fuzzy_threshold: float = 0.85
+        fuzzy_threshold: Optional[float] = None
     ) -> Dict[str, Any]:
         if not await self.permission_manager.check_and_request_permission(self.name, path):
             return {"error": f"Permission denied for path '{path}'."}
 
         if not os.path.exists(path):
             return {"error": f"File '{path}' does not exist."}
+
+        fuzzy_enabled, effective_threshold = resolve_fuzzy_edit_params(
+            self._config_mgr, fuzzy_threshold
+        )
 
         try:
             with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
@@ -307,10 +355,10 @@ class EditFileTool(BaseTool):
             match_method = "exact"
             if old_str in content:
                 updated_content = content.replace(old_str, new_str, 1)
-            else:
+            elif fuzzy_enabled:
                 content_lines = content.splitlines(keepends=True)
                 found, start_idx, end_idx, ratio = find_best_fuzzy_match(
-                    content_lines, old_str, threshold=fuzzy_threshold
+                    content_lines, old_str, threshold=effective_threshold
                 )
                 if found:
                     match_method = f"fuzzy ({int(ratio * 100)}% similarity at lines {start_idx + 1}-{end_idx})"
@@ -325,6 +373,15 @@ class EditFileTool(BaseTool):
                             f"Try using read_file with show_hashes=True and hash_edit for exact line range replacements."
                         )
                     }
+            else:
+                # Fuzzy fallback is disabled via "/config set edit fuzzy off".
+                return {
+                    "error": (
+                        f"Target string 'old_str' not found in '{path}'. "
+                        f"Fuzzy fallback matching is disabled (/config set edit fuzzy off). "
+                        f"Try using read_file with show_hashes=True and hash_edit for exact line range replacements."
+                    )
+                }
 
             diff_text = file_history_tracker.record_edit(path, updated_content, action="edit_file")
 
@@ -614,7 +671,7 @@ class GrepTool(BaseTool):
         files_to_search: List[Tuple[str, str]] = []
 
         if os.path.isfile(target_path):
-            rel_name = target_path.replace("\\", "/") if not os.path.isabs(target_path) else os.path.relpath(target_path, ".").replace("\\", "/")
+            rel_name = os.path.relpath(target_path, ".").replace("\\", "/") if os.path.isabs(target_path) else target_path.replace("\\", "/")
             files_to_search.append((target_path, rel_name))
         else:
             for root, dirs, files in os.walk(target_path):
@@ -623,7 +680,7 @@ class GrepTool(BaseTool):
                     if file_pattern and not fnmatch.fnmatch(file, file_pattern):
                         continue
                     full_path = os.path.join(root, file)
-                    rel_path = os.path.relpath(full_path, target_path if target_path != "." else ".").replace("\\", "/")
+                    rel_path = os.path.relpath(full_path, ".").replace("\\", "/")
                     files_to_search.append((full_path, rel_path))
 
         matches: List[Dict[str, Any]] = []
@@ -634,7 +691,7 @@ class GrepTool(BaseTool):
                 continue
 
             try:
-                with open(full_path, "r", encoding="utf-8", errors="replace") as f:
+                with open(full_path, "r", encoding="utf-8", errors="replace", newline="") as f:
                     lines = f.readlines()
             except Exception:
                 continue

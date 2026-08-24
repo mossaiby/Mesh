@@ -84,6 +84,20 @@ class CompactionSettings(BaseModel):
     minkeep: int = Field(default=2, description="Minimum recent messages to keep uncompacted during context compaction.")
 
 
+class EditConfig(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    fuzzy_enabled: bool = Field(
+        default=True,
+        description="Whether edit_file may fall back to whitespace-tolerant fuzzy block matching when the exact old_str is not found."
+    )
+    fuzzy_threshold: float = Field(
+        default=0.95,
+        alias="fuzzy-threshold",
+        description="Default similarity threshold (0.5 to 1.0) for fuzzy edit matching; higher values require closer matches."
+    )
+
+
 class LoggingConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -193,6 +207,7 @@ class MeshConfig(BaseModel):
     repair_settings: RepairConfig = Field(default_factory=RepairConfig, description="Tool repair and transient retry settings.")
     retry_settings: RetryConfig = Field(default_factory=RetryConfig, description="Provider API exponential backoff and retry settings.")
     compaction_settings: CompactionSettings = Field(default_factory=CompactionSettings, description="Context compaction retention parameters.")
+    edit_settings: EditConfig = Field(default_factory=EditConfig, description="File edit tool behavior (fuzzy matching toggle and threshold).")
     logging: LoggingConfig = Field(default_factory=LoggingConfig, description="Markdown session logging configuration.")
 
     providers: Dict[str, ProviderConfig] = Field(default_factory=dict, description="Configured LLM providers and endpoints.")

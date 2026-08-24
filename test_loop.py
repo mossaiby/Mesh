@@ -23,6 +23,7 @@ async def run_iterative_test_loop(
         return {"status": "error", "error": "Shell execution tool 'shell' is not registered."}
 
     agent_turns = config_mgr.config.turns.agent
+    error_output = ""
 
     for iteration in range(1, iterations_limit + 1):
         console.print(f"[label]Iteration {iteration}/{iterations_limit}:[/label] Running test command...")

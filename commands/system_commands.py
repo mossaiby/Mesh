@@ -49,6 +49,10 @@ CONFIG_SET_MAP = {
     "compact": {
         "threshold": ("auto_compact_threshold", None, float, "Auto-compaction context threshold ratio (0.01-1.0 or 1-100%)"),
         "minkeep": ("compaction_settings", "minkeep", int, "Minimum recent messages to keep uncompacted"),
+    },
+    "edit": {
+        "fuzzy": ("edit_settings", "fuzzy_enabled", bool, "Allow edit_file fuzzy block matching when exact old_str is not found (true/false)"),
+        "threshold": ("edit_settings", "fuzzy_threshold", float, "Default fuzzy match similarity threshold for edits (0.5-1.0)"),
     }
 }
 
@@ -151,6 +155,8 @@ async def cmd_status(engine: Any, args: List[str]):
     console.print(f"• [label]Sub-Agent Tool Distillation:[/label] {distill_state}")
     console.print(f"• [label]Repair Engine:[/label] {repair_state}")
     console.print(f"• [label]Post-Edit Linter Hooks:[/label] {hooks_state}")
+    fuzzy_state = "[success]ON[/success]" if cfg.edit_settings.fuzzy_enabled else "[error]OFF[/error]"
+    console.print(f"• [label]Fuzzy Edit Matching:[/label] {fuzzy_state} (threshold: {cfg.edit_settings.fuzzy_threshold:.2f})")
     console.print(f"• [label]Delegation Recursion Depth:[/label] {cfg.max_delegation_depth}")
     guard_state = "[success]ON[/success]" if engine.safety_guard.enabled else "[error]OFF[/error]"
     guard_model_str = cfg.guard_model or f"{cfg.active_model} (active)"
@@ -227,7 +233,7 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
                     curr_val = getattr(getattr(cfg, container_attr), sub_attr)
                 else:
                     curr_val = getattr(cfg, container_attr)
-                    if p_name == "threshold":
+                    if cat == "compact" and p_name == "threshold":
                         curr_val = f"{int(curr_val * 100)}%"
                 console.print(f"  • [label]{cat} {p_name}[/label]: [accent]{curr_val}[/accent] — [dim]{desc}[/dim]")
             console.print()
@@ -249,7 +255,7 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
                 curr_val = getattr(getattr(cfg, container_attr), sub_attr)
             else:
                 curr_val = getattr(cfg, container_attr)
-                if p_name == "threshold":
+                if category == "compact" and p_name == "threshold":
                     curr_val = f"{int(curr_val * 100)}%"
             console.print(f"  • [label]{category} {p_name}[/label]: [accent]{curr_val}[/accent] — [dim]{desc}[/dim]")
         console.print(f"\nUsage: [warning]/config set {category} <param> <value>[/warning]\n")
@@ -287,11 +293,15 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
                 return
         elif val_type == float:
             typed_val = float(raw_val)
-            if param == "threshold":
+            if category == "compact" and param == "threshold":
                 if typed_val > 1.0:
                     typed_val = typed_val / 100.0
                 if not (0.01 <= typed_val <= 1.0):
                     console.print("[error]Threshold percentage must be between 1 and 100 (or 0.01 and 1.0).[/error]")
+                    return
+            elif category == "edit" and param == "threshold":
+                if not (0.5 <= typed_val <= 1.0):
+                    console.print("[error]Fuzzy threshold must be between 0.5 and 1.0.[/error]")
                     return
             elif typed_val <= 0:
                 console.print("[error]Value must be greater than zero.[/error]")
@@ -326,7 +336,7 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
 
     engine.config_mgr.save()
 
-    if param == "threshold":
+    if category == "compact" and param == "threshold":
         display_val = f"{int(typed_val * 100)}%"
     elif isinstance(typed_val, bool):
         display_val = "true" if typed_val else "false"
@@ -363,7 +373,7 @@ async def cmd_config(engine: Any, args: List[str]):
         console.print(f"  • [label]cost[/label]: {cost_s}")
         console.print(f"  • [label]statistics[/label]: {stats_s}")
         console.print("  • [label]schema[/label]: Generate or update config.schema.json for IDE autocompletion")
-        console.print("  • [label]set[/label]: Fine-tune timeouts, budgets, turns, repair, retry, & compaction parameters")
+        console.print("  • [label]set[/label]: Fine-tune timeouts, budgets, turns, repair, retry, compaction, & edit parameters")
         console.print("    [dim](Usage: /config set <category> <param> <value>, e.g. /config set timeout web 120 or /config set retry retries 5)[/dim]\n")
         console.print("Usage: [warning]/config distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|schema|set [args][/warning]\n")
         return

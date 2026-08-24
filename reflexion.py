@@ -19,6 +19,28 @@ DISTILL_SYSTEM_PROMPT = (
 )
 
 
+def _safe_parse_json(raw: str) -> Dict[str, Any]:
+    raw = (raw or "").strip()
+    if raw.startswith("```"):
+        raw = raw.strip("`")
+        if raw.lower().startswith("json"):
+            raw = raw[4:]
+        raw = raw.strip()
+    try:
+        data = json.loads(raw)
+    except Exception:
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            try:
+                data = json.loads(raw[start:end + 1])
+            except Exception:
+                return {}
+        else:
+            return {}
+    return data if isinstance(data, dict) else {}
+
+
 def _load_reflexion_data() -> Dict[str, Any]:
     if not os.path.exists(REFLEXION_FILE):
         return {"events": [], "lessons": []}
@@ -80,14 +102,7 @@ async def distill_reflexion_lessons(config_mgr: ConfigManager) -> Tuple[bool, st
             if chunk["type"] == "content":
                 raw_text += chunk["value"]
 
-        raw_text = raw_text.strip()
-        if raw_text.startswith("```"):
-            raw_text = raw_text.strip("`")
-            if raw_text.lower().startswith("json"):
-                raw_text = raw_text[4:]
-            raw_text = raw_text.strip()
-
-        parsed = json.loads(raw_text)
+        parsed = _safe_parse_json(raw_text)
         new_lessons = parsed.get("lessons", [])
 
         if isinstance(new_lessons, list) and new_lessons:

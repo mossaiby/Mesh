@@ -380,7 +380,10 @@ async def cmd_goal(engine: Any, args: List[str]):
         await engine.goal_tool.execute("clear")
         console.print("[warning]Goal cleared.[/warning]")
 
-    elif subcmd == "done" and len(args) >= 2:
+    elif subcmd == "done":
+        if len(args) < 2:
+            console.print("[error]Usage: /goal done <criterion number>[/error]")
+            return
         try:
             idx = int(args[1])
         except ValueError:

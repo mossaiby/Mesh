@@ -253,9 +253,13 @@ class AnthropicProvider:
                         elif event.type == "message_start":
                             if hasattr(event.message, "usage") and event.message.usage:
                                 u = event.message.usage
-                                prompt_tokens = getattr(u, "input_tokens", 0) or 0
+                                # In Anthropic API, input_tokens is non-cached input tokens.
+                                # Total prompt tokens includes non-cached, cache-read, and cache-creation tokens.
                                 cache_read_tokens = getattr(u, "cache_read_input_tokens", 0) or 0
                                 cache_creation_tokens = getattr(u, "cache_creation_input_tokens", 0) or 0
+                                raw_input = getattr(u, "input_tokens", 0) or 0
+                                prompt_tokens = raw_input + cache_read_tokens + cache_creation_tokens
+
                                 yielded_any = True
                                 yield {
                                     "type": "usage",

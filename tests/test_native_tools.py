@@ -9,7 +9,8 @@ from tools.native_tools import (
     GrepTool,
     ShellTool,
     compute_line_hash,
-    find_best_fuzzy_match
+    find_best_fuzzy_match,
+    get_fuzzy_edit_settings
 )
 from tools.permissions import PermissionManager
 from file_history import file_history_tracker
@@ -360,3 +361,103 @@ async def test_hash_edit_argument_validation(temp_workspace):
     )
     assert "error" in res_malformed
     assert "malformed" in res_malformed["error"]
+
+
+class _EditSettingsStub:
+    def __init__(self, fuzzy_enabled=True, fuzzy_threshold=0.85):
+        self.fuzzy_enabled = fuzzy_enabled
+        self.fuzzy_threshold = fuzzy_threshold
+
+
+class _ConfigStub:
+    def __init__(self, fuzzy_enabled=True, fuzzy_threshold=0.85):
+        self.edit_settings = _EditSettingsStub(fuzzy_enabled, fuzzy_threshold)
+
+
+class _ConfigManagerStub:
+    def __init__(self, fuzzy_enabled=True, fuzzy_threshold=0.85):
+        self.config = _ConfigStub(fuzzy_enabled, fuzzy_threshold)
+
+
+def test_get_fuzzy_edit_settings_defaults_without_config_mgr():
+    enabled, threshold = get_fuzzy_edit_settings(None)
+    assert enabled is True
+    assert threshold == 0.85
+
+
+@pytest.mark.asyncio
+async def test_edit_file_fuzzy_disabled_by_config(temp_workspace):
+    """With edit.fuzzy_enabled=false, a near-miss old_str must fail instead of fuzzy-matching."""
+    pm = PermissionManager()
+    pm.allowed_dirs = [temp_workspace]
+    cfg = _ConfigManagerStub(fuzzy_enabled=False)
+
+    writer = WriteFileTool(pm)
+    editor = EditFileTool(pm, cfg)
+
+    test_file = os.path.join(temp_workspace, "fz.txt")
+    await writer.execute(path=test_file, content="apple\nblueberry\ncherry\n")
+
+    # Exact match still works when fuzzy is disabled.
+    res_exact = await editor.execute(path=test_file, old_str="blueberry", new_str="blackberry")
+    assert res_exact["status"] == "success"
+    assert res_exact["message"].startswith("Successfully updated")
+
+    # Near-miss (would score ~0.71 multi-line) must be rejected, not fuzzy-matched.
+    res_fuzzy = await editor.execute(
+        path=test_file,
+        old_str="apple\nblackberry extra words\n",
+        new_str="apricot\n",
+    )
+    assert "error" in res_fuzzy
+    assert "Fuzzy fallback matching is disabled" in res_fuzzy["error"]
+
+    # File content untouched by the rejected near-miss edit.
+    with open(test_file, "r", newline="") as f:
+        assert f.read() == "apple\nblackberry\ncherry\n"
+
+
+@pytest.mark.asyncio
+async def test_edit_file_fuzzy_threshold_from_config(temp_workspace):
+    """A configured threshold is honored at runtime; per-call overrides still win."""
+    pm = PermissionManager()
+    pm.allowed_dirs = [temp_workspace]
+
+    # old_str scores ~0.83 against the file content: accepted at a lenient
+    # configured threshold (0.79) but rejected at a strict one (0.90).
+    strict_editor = EditFileTool(pm, _ConfigManagerStub(fuzzy_enabled=True, fuzzy_threshold=0.90))
+    lenient_editor = EditFileTool(pm, _ConfigManagerStub(fuzzy_enabled=True, fuzzy_threshold=0.79))
+
+    test_file = os.path.join(temp_workspace, "thr.txt")
+    await WriteFileTool(pm).execute(path=test_file, content="apple\nblueberry\ncherry\n")
+
+    near_miss_old = "apple\nblueberry extra\n"
+
+    res_strict = await strict_editor.execute(path=test_file, old_str=near_miss_old, new_str="apricot\nplum\n")
+    assert "error" in res_strict  # ~0.83 similarity < strict configured threshold
+
+    # The same edit succeeds under the lenient threshold and applies the splice.
+    res_lenient = await lenient_editor.execute(path=test_file, old_str=near_miss_old, new_str="apricot\nplum\n")
+    assert res_lenient["status"] == "success"
+    assert "fuzzy" in res_lenient["message"]
+    with open(test_file, "r", newline="") as f:
+        assert f.read() == "apricot\nplum\ncherry\n"
+
+    # Per-call fuzzy_threshold override beats the configured default.
+    res_override = await lenient_editor.execute(
+        path=test_file,
+        old_str="apricot\nplum extra\n",  # ~0.8 similarity
+        new_str="x",
+        fuzzy_threshold=1.1,  # impossible score -> never matches despite lenient config
+    )
+    assert "error" in res_override
+
+    # The identical edit without the override succeeds at the configured threshold.
+    res_default = await lenient_editor.execute(
+        path=test_file,
+        old_str="apricot\nplum extra\n",
+        new_str="x",
+    )
+    assert res_default["status"] == "success"
+    with open(test_file, "r", newline="") as f:
+        assert f.read() == "x\ncherry\n"

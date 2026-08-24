@@ -52,7 +52,7 @@ class InferenceCoordinator:
                     latest_user_prompt = ""
                     for msg in reversed(self.engine.messages):
                         if msg.get("role") == "user":
-                            latest_user_prompt = msg.get("content", "")
+                            latest_user_prompt = str(msg.get("content") or "")
                             break
 
                     try:

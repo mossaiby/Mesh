@@ -95,15 +95,13 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
         cmd0 = raw_words[0].lower() if raw_words else ""
 
         # -------------------------------------------------------------
-        # 1. `@` Mention Path Completion
+        # 1. `@` Mention Path Completion (only when current token is @mention)
         # -------------------------------------------------------------
-        if "@" in text:
-            at_idx = text.rfind("@")
-            partial_at = text[at_idx:]
-            for full_text, display, meta in get_path_completions(partial_at, prefix="@"):
+        if current_word.startswith("@"):
+            for full_text, display, meta in get_path_completions(current_word, prefix="@"):
                 yield Completion(
                     full_text,
-                    start_position=-len(partial_at),
+                    start_position=-len(current_word),
                     display=display,
                     display_meta=meta
                 )

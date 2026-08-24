@@ -48,6 +48,24 @@
       "title": "CompactionSettings",
       "type": "object"
     },
+    "EditConfig": {
+      "properties": {
+        "fuzzy_enabled": {
+          "default": true,
+          "description": "Whether edit_file may fall back to whitespace-tolerant fuzzy block matching when the exact old_str is not found.",
+          "title": "Fuzzy Enabled",
+          "type": "boolean"
+        },
+        "fuzzy-threshold": {
+          "default": 0.95,
+          "description": "Default similarity threshold (0.5 to 1.0) for fuzzy edit matching; higher values require closer matches.",
+          "title": "Fuzzy-Threshold",
+          "type": "number"
+        }
+      },
+      "title": "EditConfig",
+      "type": "object"
+    },
     "LoggingConfig": {
       "properties": {
         "enabled": {
@@ -455,6 +473,10 @@
     "compaction_settings": {
       "$ref": "#/$defs/CompactionSettings",
       "description": "Context compaction retention parameters."
+    },
+    "edit_settings": {
+      "$ref": "#/$defs/EditConfig",
+      "description": "File edit tool behavior (fuzzy matching toggle and threshold)."
     },
     "logging": {
       "$ref": "#/$defs/LoggingConfig",

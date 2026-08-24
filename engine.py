@@ -171,7 +171,7 @@ class MeshEngine:
         self.tool_registry.register(WebFetchTool(self.config_mgr))
         self.tool_registry.register(ReadFileTool(self.permission_manager))
         self.tool_registry.register(WriteFileTool(self.permission_manager))
-        self.tool_registry.register(EditFileTool(self.permission_manager))
+        self.tool_registry.register(EditFileTool(self.permission_manager, self.config_mgr))
         self.tool_registry.register(HashEditTool(self.permission_manager))
         self.tool_registry.register(GlobTool(self.permission_manager))
         self.tool_registry.register(GrepTool(self.permission_manager))
