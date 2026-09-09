@@ -446,6 +446,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                     ("diff", "Show Git unified diff"),
                     ("commit", "Create Git commit (AI auto-message if omitted)"),
                     ("push", "Push active branch to remote"),
+                    ("pull", "Pull active branch from remote"),
                     ("branch", "Create or switch feature branch")
                 ]
                 for sub, meta in subs:
@@ -456,7 +457,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                 if word1 == "diff":
                     if "staged".startswith(current_word.lower()):
                         yield Completion("staged", start_position=-len(current_word), display_meta="Show staged (--cached) diff")
-                elif word1 == "push":
+                elif word1 in ("push", "pull"):
                     for remote in ("origin", "upstream"):
                         if remote.startswith(current_word.lower()):
                             yield Completion(remote, start_position=-len(current_word))

@@ -352,11 +352,11 @@ async def cmd_git(engine: Any, args: List[str]):
         elif sub == "pull":
             remote = args[1] if len(args) > 1 else "origin"
             branch = args[2] if len(args) > 2 else git_workflow.get_git_branch(".")
-            console.print(f"[brand]\\\\ud83d\\\\udcee Pulling active branch '[accent]{branch}[/accent]' from remote '[accent]{remote}[/accent]'...[/brand]")
-             
+            console.print(f"[brand]📮 Pulling active branch '[accent]{branch}[/accent]' from remote '[accent]{remote}[/accent]'...[/brand]")
+
             success, output = git_workflow.run_git_pull(remote=remote, branch=branch)
             if success:
-                console.print(f"[success]\\\\u2714 Pulled successfully:[/success] {output}")
+                console.print(f"[success]✔ Pulled successfully:[/success] {output}")
             else:
                 console.print(f"[error]Git pull failed:[/error] {output}")
         elif sub == "branch":
