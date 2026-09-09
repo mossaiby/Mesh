@@ -95,7 +95,7 @@ class TodoTool(BaseTool):
             else:
                 blockers = self._blocking_deps(item)
                 blocked_by = ", ".join(f"#{b['id']}" for b in blockers)
-                console.print(f"  [error]⏳[/error] [dim]{item['id']}. {item['task']} — blocked by {blocked_by}[/dim]")
+                console.print(f"  [error]⊘[/error] [dim]{item['id']}. {item['task']} — blocked by {blocked_by}[/dim]")
 
         total = len(self._todos)
         done = sum(1 for i in self._todos if i["completed"])
