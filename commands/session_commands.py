@@ -178,6 +178,102 @@ async def cmd_shell(engine: Any, args: List[str]):
         console.print(f"[error]Shell command failed: {e}[/error]")
 
 
+async def cmd_grep(engine: Any, args: List[str]):
+    if not args:
+        console.print(
+            "[error]Usage: /grep <pattern> \\[path] \\[-i] \\[-g <glob>] \\[-c <n>] \\[-m <n>][/error]\n"
+            "  -i           case-insensitive search\n"
+            "  -g <glob>    filter files (e.g. -g '*.py')\n"
+            "  -c <n>       lines of context around each match\n"
+            "  -m <n>       max results (default 100)"
+        )
+        return
+
+    grep_tool = engine.tool_registry._tools.get("grep")
+    if grep_tool is None:
+        console.print("[error]Grep tool is not registered.[/error]")
+        return
+
+    pattern = None
+    path = "."
+    case_sensitive = True
+    file_pattern = None
+    context_lines = 0
+    max_results = 100
+    positional: List[str] = []
+
+    i = 0
+    while i < len(args):
+        arg = args[i]
+        if arg == "-i":
+            case_sensitive = False
+        elif arg == "-g" and i + 1 < len(args):
+            i += 1
+            file_pattern = args[i]
+        elif arg == "-c" and i + 1 < len(args):
+            i += 1
+            try:
+                context_lines = int(args[i])
+            except ValueError:
+                console.print(f"[error]Invalid context value '{args[i]}'.[/error]")
+                return
+        elif arg == "-m" and i + 1 < len(args):
+            i += 1
+            try:
+                max_results = int(args[i])
+            except ValueError:
+                console.print(f"[error]Invalid max results value '{args[i]}'.[/error]")
+                return
+        else:
+            positional.append(arg)
+        i += 1
+
+    if not positional:
+        console.print("[error]Usage: /grep <pattern> \\[path] \\[-i] \\[-g <glob>] \\[-c <n>] \\[-m <n>][/error]")
+        return
+
+    pattern = positional[0]
+    if len(positional) > 1:
+        path = " ".join(positional[1:]).strip()
+
+    console.print(f"[brand]🔎 Grep:[/brand] '{pattern}' in '{path}'" + (f" (files: {file_pattern})" if file_pattern else ""))
+
+    result = await grep_tool.execute(
+        pattern=pattern,
+        path=path,
+        file_pattern=file_pattern,
+        case_sensitive=case_sensitive,
+        max_results=max_results,
+        context_lines=context_lines
+    )
+
+    if "error" in result:
+        console.print(f"[error]{result['error']}[/error]")
+        return
+
+    matches = result.get("matches", [])
+    if not matches:
+        console.print("[dim]No matches found.[/dim]")
+        return
+
+    for m in matches:
+        if m.get("context"):
+            console.print(f"\n[label]{m['path']}[/label]:[accent]{m['line']}[/accent]")
+            for c_line in m["context"]:
+                c_num, _, c_text = c_line.partition(": ")
+                if c_num == f"L{m['line']}":
+                    console.print(f"  [warning]{c_line}[/warning]")
+                else:
+                    console.print(f"  [dim]{c_line}[/dim]")
+        else:
+            console.print(f"[label]{m['path']}[/label]:[accent]{m['line']}[/accent]: {m['content']}")
+
+    footer = f"\n[success]{result['count']} match(es)[/success]"
+    if result.get("truncated"):
+        footer += " [warning](truncated - refine your search or raise -m)[/warning]"
+    console.print(footer + "\n")
+
+
 async def cmd_python(engine: Any, args: List[str]):
     if not args:
         console.print("[error]Usage: /python <code> | # <code>[/error]")
@@ -735,6 +831,7 @@ def register_session_commands(engine: Any):
     engine.cmd_registry.register("cd", "Change working directory and reload workspace context: /cd <path>", lambda args: cmd_cd(engine, args), category="Workspace & Developer Tools")
     engine.cmd_registry.register("shell", "Execute shell command directly (bypasses LLM): /shell <cmd> | !<cmd>", lambda args: cmd_shell(engine, args), category="Workspace & Developer Tools")
     engine.cmd_registry.register("python", "Execute Python snippet directly (bypasses LLM): /python <code> | #<code>", lambda args: cmd_python(engine, args), category="Workspace & Developer Tools")
+    engine.cmd_registry.register("grep", "Search files with regex directly (bypasses LLM): /grep <pattern> [path] [-i] [-g <glob>] [-c <n>] [-m <n>]", lambda args: cmd_grep(engine, args), category="Workspace & Developer Tools")
     engine.cmd_registry.register("goal", "View, set, or manage pinned session goal: /goal [<text>] [| criteria] | /goal done <#> | /goal clear", lambda args: cmd_goal(engine, args), category="Memory & Knowledge")
     engine.cmd_registry.register("todo", "View or manage the dependency-aware TODO list (auto-displays on change): /todo [add <task> [| depends_on: <ids>]|complete <#>|clear|list]", lambda args: cmd_todo(engine, args), category="Memory & Knowledge")
     engine.cmd_registry.register("note", "View or edit persistent Markdown notes: /note [append <text>|clear]", lambda args: cmd_note(engine, args), category="Memory & Knowledge")

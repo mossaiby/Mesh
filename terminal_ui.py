@@ -463,6 +463,19 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                             yield Completion(remote, start_position=-len(current_word))
             return
 
+        # --- /grep ---
+        if cmd0 == "/grep":
+            if current_arg_index >= 2 and current_word.startswith("-"):
+                for flag, meta in [
+                    ("-i", "Case-insensitive search"),
+                    ("-g", "Filter by file glob (e.g. *.py)"),
+                    ("-c", "Lines of context around match"),
+                    ("-m", "Maximum number of results")
+                ]:
+                    if flag.startswith(current_word.lower()):
+                        yield Completion(flag, start_position=-len(current_word), display_meta=meta)
+            return
+
         # --- /diff ---
         if cmd0 == "/diff":
             if current_arg_index == 1:
