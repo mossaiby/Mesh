@@ -12,9 +12,12 @@ pushd %~dp0
 :: Ensure Python uses UTF-8 encoding for stdin/stdout
 set PYTHONIOENCODING=utf-8
 
-:: Auto-bootstrap if virtual environment is not yet created
-if not exist ".venv\Scripts\python.exe" (
-    echo [!] Virtual environment not found (.venv\Scripts\python.exe^).
+:: Auto-bootstrap if the virtual environment is missing or incomplete (e.g. a
+:: previous bootstrap run failed partway through and left python.exe behind
+:: without pip - checking for pip.exe here, not just python.exe, makes sure
+:: that gets repaired automatically instead of silently reused).
+if not exist ".venv\Scripts\pip.exe" (
+    echo [!] Virtual environment not found or incomplete (.venv\Scripts\pip.exe^).
     echo [+] Running bootstrap.bat to initialize environment...
     call bootstrap.bat
     if %ERRORLEVEL% neq 0 (

@@ -45,16 +45,48 @@ if %ERRORLEVEL% neq 0 (
     exit /b 1
 )
 
-:: Create .venv if missing
-if not exist ".venv\Scripts\python.exe" (
+:: Check for ensurepip. On Windows this is normally bundled by the python.org
+:: installer, but some stripped-down or corporate Python installs omit it -
+:: that lets venv creation "succeed" while leaving pip missing inside it, so
+:: we check for it explicitly with a clear message rather than failing later
+:: with a confusing "pip not found" error.
+%PYTHON_BIN% -c "import ensurepip" >nul 2>&1
+if %ERRORLEVEL% neq 0 (
+    echo.
+    echo [Error] The 'ensurepip' component is missing, so a virtual environment can be
+    echo created but won't have pip installed inside it.
+    echo Please modify/repair your Python installation from the Windows Settings or installer,
+    echo and ensure pip is selected as a feature.
+    exit /b 1
+)
+
+:: Create (or repair) the virtual environment. We check for pip.exe rather
+:: than just python.exe: if a previous bootstrap attempt failed partway
+:: through, it can leave python.exe behind without pip ever being installed.
+:: Checking python.exe alone would silently reuse that broken environment on
+:: every subsequent run instead of repairing it, and Mesh would then fail
+:: later with a confusing "ModuleNotFoundError" unrelated to the real cause.
+if exist ".venv\Scripts\pip.exe" (
+    echo [+] Virtual environment .venv already exists.
+) else (
+    if exist ".venv" (
+        echo [!] Found an incomplete .venv - pip is missing, recreating it...
+        rmdir /s /q ".venv"
+    )
     echo [+] Creating virtual environment in .venv...
     %PYTHON_BIN% -m venv .venv
     if %ERRORLEVEL% neq 0 (
+        rmdir /s /q ".venv" >nul 2>&1
         echo [Error] Failed to create virtual environment in .venv.
         exit /b 1
     )
-) else (
-    echo [+] Virtual environment .venv already exists.
+    if not exist ".venv\Scripts\pip.exe" (
+        rmdir /s /q ".venv" >nul 2>&1
+        echo.
+        echo [Error] Virtual environment was created but pip is missing.
+        echo Please ensure pip/ensurepip is installed for your Python and try again.
+        exit /b 1
+    )
 )
 
 :: Upgrade pip and install requirements

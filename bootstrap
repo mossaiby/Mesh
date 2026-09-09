@@ -34,12 +34,51 @@ if ! "$PYTHON_BIN" -c "import venv" 2>/dev/null; then
     exit 1
 fi
 
-# Create virtual environment if it doesn't exist
-if [ ! -f ".venv/bin/python" ]; then
-    echo "[+] Creating virtual environment in .venv..."
-    "$PYTHON_BIN" -m venv .venv
-else
+# Verify ensurepip is available. On Debian/Ubuntu, the 'venv' module itself
+# ships in the base python3 package, but the ensurepip component needed to
+# actually provision pip inside a new venv ships separately - so the check
+# above can pass while venv creation below still fails to install pip.
+if ! "$PYTHON_BIN" -c "import ensurepip" 2>/dev/null; then
+    echo "" >&2
+    echo "[Error] The 'ensurepip' component is missing for $PYTHON_BIN, so a virtual" >&2
+    echo "environment can be created but won't have pip installed inside it." >&2
+    echo "On Debian/Ubuntu systems, install it by running:" >&2
+    echo "    sudo apt update && sudo apt install python3-venv" >&2
+    echo "On Fedora/RHEL systems, install it by running:" >&2
+    echo "    sudo dnf install python3-pip" >&2
+    echo "On Arch Linux systems, install it by running:" >&2
+    echo "    sudo pacman -S python-pip" >&2
+    exit 1
+fi
+
+# Create (or repair) the virtual environment. We specifically check for pip
+# rather than just the python interpreter: if a previous bootstrap attempt
+# was interrupted or failed partway through (e.g. the ensurepip issue above),
+# it can leave a `.venv/bin/python` symlink behind without pip ever being
+# installed. If we only checked for python here, that broken environment
+# would be silently reused on every subsequent run instead of being repaired,
+# and Mesh would fail later with a confusing "ModuleNotFoundError" that looks
+# unrelated to the real (already-fixed) cause.
+if [ -f ".venv/bin/pip" ]; then
     echo "[+] Virtual environment .venv already exists."
+else
+    if [ -d ".venv" ]; then
+        echo "[!] Found an incomplete .venv (missing pip) - recreating it..."
+        rm -rf .venv
+    fi
+    echo "[+] Creating virtual environment in .venv..."
+    if ! "$PYTHON_BIN" -m venv .venv; then
+        rm -rf .venv
+        echo "[Error] Failed to create virtual environment in .venv." >&2
+        exit 1
+    fi
+    if [ ! -f ".venv/bin/pip" ]; then
+        rm -rf .venv
+        echo "" >&2
+        echo "[Error] Virtual environment was created but pip is missing." >&2
+        echo "Please ensure pip/ensurepip is installed for $PYTHON_BIN and try again." >&2
+        exit 1
+    fi
 fi
 
 # Upgrade pip and install dependencies

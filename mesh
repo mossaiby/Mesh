@@ -13,9 +13,12 @@ cd "$MESH_DIR"
 # Ensure Python uses UTF-8 encoding for stdin/stdout
 export PYTHONIOENCODING=utf-8
 
-# Auto-bootstrap if virtual environment is not yet created
-if [ ! -f ".venv/bin/python" ]; then
-    echo "[!] Virtual environment not found (.venv/bin/python)."
+# Auto-bootstrap if the virtual environment is missing or incomplete (e.g. a
+# previous bootstrap run failed partway through and left a python symlink
+# behind without pip - checking for pip here, not just python, makes sure
+# that gets repaired automatically instead of silently reused).
+if [ ! -f ".venv/bin/pip" ]; then
+    echo "[!] Virtual environment not found or incomplete (.venv/bin/pip)."
     echo "[+] Running ./bootstrap to initialize environment..."
     ./bootstrap
 fi
