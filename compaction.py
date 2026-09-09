@@ -76,7 +76,7 @@ def estimate_tokens(messages: List[Dict[str, Any]], model_name: Optional[str] = 
         try:
             total_tokens = 0
             for msg in messages:
-                total_tokens += 3  # Per-message framing overhead (<|im_start|>role ... <|im_end|>)
+                total_tokens += 3  # Per-message framing overhead (role ...)
                 role = msg.get("role") or ""
                 if role:
                     total_tokens += len(encoder.encode(role, disallowed_special=()))
@@ -129,8 +129,8 @@ def find_safe_split_index(chat_msgs: List[Dict[str, Any]], min_keep: int = 2) ->
 
 
 async def compact_messages(
-    messages: List[Dict[str, Any]], 
-    config_mgr: ConfigManager, 
+    messages: List[Dict[str, Any]],
+    config_mgr: ConfigManager,
     min_keep: Optional[int] = None
 ) -> Tuple[List[Dict[str, Any]], bool, str]:
     """
@@ -192,13 +192,21 @@ async def compact_messages(
     })
     new_messages.extend(to_keep)
 
+    # Check that compaction actually reduces token count
+    model_id = model_cfg.model_id if model_cfg else None
+    old_token_count = estimate_tokens(messages, model_name=model_id)
+    new_token_count = estimate_tokens(new_messages, model_name=model_id)
+    if new_token_count >= old_token_count:
+        return messages, False, f"Compaction did not reduce token count (old: {old_token_count}, new: {new_token_count})."
+
     orig_count = len(messages)
     new_count = len(new_messages)
     compacted_count = len(to_summarize)
 
     details = (
         f"Compacted {compacted_count} old messages into 1 summary (cached in-context). "
-        f"Total messages reduced from {orig_count} to {new_count}."
+        f"Total messages reduced from {orig_count} to {new_count}. "
+        f"Token count reduced from {old_token_count} to {new_token_count}."
     )
     return new_messages, True, details
 

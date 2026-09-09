@@ -41,6 +41,26 @@ def _normalize_eol(text: str, eol: str) -> str:
     return unified if eol == "\n" else unified.replace("\n", eol)
 
 
+def split_physical_lines(text: str) -> List[str]:
+    """
+    Splits text into physical lines keeping their terminators, treating only
+    CRLF, CR and LF as line boundaries (same records file.readlines() yields,
+    and the way editors/git/python tracebacks number lines).
+
+    str.splitlines() must NOT be used for line-oriented file editing: it also
+    breaks on VT/FF (\\x0b, \\x0c), FS/GS/RS (\\x1c-\\x1e), NEL (\\x85), U+2028
+    and U+2029. When such characters appear inside a file's content,
+    str.splitlines() invents phantom line breaks, desynchronizing read_file
+    line numbers/hashes from hash_edit/edit_file (every subsequent hash_edit
+    then fails with off-by-N hash mismatches).
+    """
+    parts = re.split(r"(\r\n|\r|\n)", text)
+    lines = [parts[i] + parts[i + 1] for i in range(0, len(parts) - 1, 2)]
+    if parts[-1]:
+        lines.append(parts[-1])
+    return lines
+
+
 def _collapse_ws(text: str) -> str:
     """Canonical form for similarity scoring: collapses per-line whitespace."""
     return "\n".join(" ".join(segment.split()) for segment in text.splitlines())
@@ -94,7 +114,7 @@ def find_best_fuzzy_match(
     after whitespace collapsing) because short strings let tiny but semantic
     edits (e.g. 'flag = 1' vs 'flag = 2' scores 0.875) clear the normal bar.
     """
-    old_lines = old_str.splitlines(keepends=True)
+    old_lines = split_physical_lines(old_str)
     n_old = len(old_lines)
     if n_old == 0 or not content_lines:
         return False, -1, -1, 0.0
@@ -356,7 +376,7 @@ class EditFileTool(BaseTool):
             if old_str in content:
                 updated_content = content.replace(old_str, new_str, 1)
             elif fuzzy_enabled:
-                content_lines = content.splitlines(keepends=True)
+                content_lines = split_physical_lines(content)
                 found, start_idx, end_idx, ratio = find_best_fuzzy_match(
                     content_lines, old_str, threshold=effective_threshold
                 )
@@ -472,7 +492,7 @@ class HashEditTool(BaseTool):
             with open(path, "r", encoding="utf-8", errors="replace", newline="") as f:
                 content = f.read()
 
-            lines = content.splitlines(keepends=True)
+            lines = split_physical_lines(content)
             total_lines = len(lines)
 
             if start_line < 1 or start_line > total_lines:

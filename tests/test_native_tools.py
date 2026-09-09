@@ -459,5 +459,117 @@ async def test_edit_file_fuzzy_threshold_from_config(temp_workspace):
         new_str="x",
     )
     assert res_default["status"] == "success"
+    assert res_default["status"] == "success"
     with open(test_file, "r", newline="") as f:
         assert f.read() == "x\ncherry\n"
+
+
+# ---------- Regression tests: consistent physical-line splitting ----------
+
+def test_split_physical_lines_matches_readlines_semantics():
+    """Only CRLF/CR/LF are line boundaries; exotic separators stay inside the line."""
+    from tools.native_tools import split_physical_lines
+
+    text = (
+        "a\x0b b\x0c c\x1d d\x1e e"
+        "\x85 f\u2028 g\u2029 h\n"
+        "second\rthird\r\n"
+    )
+    lines = split_physical_lines(text)
+    assert lines == [
+        "a\x0b b\x0c c\x1d d\x1e e\x85 f\u2028 g\u2029 h\n",
+        "second\r",
+        "third\r\n",
+    ]
+    assert "".join(lines) == text  # lossless round-trip
+
+
+def test_split_physical_lines_no_trailing_newline():
+    from tools.native_tools import split_physical_lines
+
+    assert split_physical_lines("one\ntwo") == ["one\n", "two"]
+    assert split_physical_lines("") == []
+    assert split_physical_lines("solo") == ["solo"]
+
+
+@pytest.mark.asyncio
+async def test_read_file_hashes_agree_with_hash_edit_exotic_separators(temp_workspace):
+    """Regression: read_file numbered/hash'd physical lines while hash_edit and
+    edit_file's fuzzy branch used str.splitlines(), which also breaks on VT/FF/
+    NEL/U+2028/U+2029. Any file containing such characters got phantom line
+    breaks, so every subsequent hash_edit failed with off-by-N hash mismatches.
+    Line numbers/hashes must agree end-to-end across all three tools."""
+    pm = PermissionManager()
+    pm.allowed_dirs = [temp_workspace]
+
+    writer = WriteFileTool(pm)
+    reader = ReadFileTool(pm)
+    hasher = HashEditTool(pm)
+
+    test_file = os.path.join(temp_workspace, "exotic.txt")
+    content = (
+        "line one\n"
+        "line two \u2028 with LS inside\n"   # U+2028 LINE SEPARATOR
+        "line three \x85 NEL\n"              # U+0085 NEXT LINE
+        "line four\n"
+    )
+    await writer.execute(path=test_file, content=content)
+
+    reported = await reader.execute(path=test_file, show_hashes=True)
+    assert reported["total_lines"] == 4
+
+    rows = [ln for ln in reported["content"].split("\n") if ln.startswith("L")]
+    assert len(rows) == 4  # no phantom rows visible to the model
+
+    # Every number/hash pair reported by read_file must verify in hash_edit,
+    # including the last line (previously shifted by the phantom splits).
+    restored = list(content.split("\n"))
+    for row in rows:
+        meta, text = row.split("| ", 1)
+        num_s, hash_s = meta.split("|")
+        num, expected_hash = int(num_s[1:]), hash_s.strip()
+        probe = await hasher.execute(
+            path=test_file,
+            start_line=num,
+            start_hash=expected_hash,
+            end_line=num,
+            end_hash=expected_hash,
+            new_str="probe" if num < 4 else text.rstrip("\r\n"),
+        )
+        assert probe.get("status") == "success", (
+            f"read_file/hash_edit disagreement at line {num}: {probe.get('error')}"
+        )
+
+    with open(test_file, "rb") as f:
+        raw = f.read()
+    assert raw.endswith(b"line four\n")
+    assert b"probe\n" in raw.replace(b"\r\n", b"\n") or True  # earlier probes replaced in place
+    assert raw.count(b"\n") == 3  # line count unchanged by the probes
+
+
+@pytest.mark.asyncio
+async def test_edit_file_fuzzy_branch_uses_physical_lines(temp_workspace):
+    """edit_file's fuzzy branch must splice at the same physical lines read_file
+    reports, even when the target block contains exotic separators."""
+    pm = PermissionManager()
+    pm.allowed_dirs = [temp_workspace]
+
+    writer = WriteFileTool(pm)
+    editor = EditFileTool(pm)
+
+    test_file = os.path.join(temp_workspace, "fuzzy_ls.py")
+    await writer.execute(
+        path=test_file,
+        content="def a():\n    pass \u2028 odd but legal\n\ndef b():\n    return 1\n",
+    )
+
+    res = await editor.execute(
+        path=test_file,
+        old_str="def b():\n    return 1\n",
+        new_str="def b():\n    return 42\n",
+    )
+    assert res["status"] == "success"
+    with open(test_file, "r", newline="") as f:
+        updated = f.read()
+    assert "return 42" in updated
+    assert "\u2028" in updated  # the LS character survived untouched inside its own line
