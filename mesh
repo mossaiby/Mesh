@@ -1,6 +1,13 @@
 #!/usr/bin/env bash
 set -e
 
+# Resolve the script directory and change to it
+MESH_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$MESH_DIR"
+
+# Ensure Python uses UTF-8 encoding for stdin/stdout
+export PYTHONIOENCODING=utf-8
+
 # Auto-bootstrap if virtual environment is not yet created
 if [ ! -f ".venv/bin/python" ]; then
     echo "[!] Virtual environment not found (.venv/bin/python)."
