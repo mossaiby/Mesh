@@ -1,6 +1,11 @@
 @echo off
 setlocal
 
+:: Capture the caller's current directory before we change into Mesh's own
+:: directory below, so main.py can be told where the user actually invoked
+:: mesh.bat from (this lets mesh.bat be called from anywhere, not just its own dir).
+set "CALLER_DIR=%CD%"
+
 :: Resolve the script directory and change to it
 pushd %~dp0
 
@@ -19,5 +24,5 @@ if not exist ".venv\Scripts\python.exe" (
     )
 )
 
-.venv\Scripts\python.exe main.py %*
+.venv\Scripts\python.exe main.py --cwd "%CALLER_DIR%" %*
 popd

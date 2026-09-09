@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -e
 
+# Capture the caller's current directory before we change into Mesh's own
+# directory below, so main.py can be told where the user actually invoked
+# `mesh` from (this lets `mesh` be called from anywhere, not just its own dir).
+CALLER_DIR="$(pwd)"
+
 # Resolve the script directory and change to it
 MESH_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$MESH_DIR"
@@ -15,4 +20,4 @@ if [ ! -f ".venv/bin/python" ]; then
     ./bootstrap
 fi
 
-exec .venv/bin/python main.py "$@"
+exec .venv/bin/python main.py --cwd "$CALLER_DIR" "$@"
