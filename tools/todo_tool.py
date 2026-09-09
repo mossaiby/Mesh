@@ -50,8 +50,12 @@ class TodoTool(BaseTool):
         "required": ["action"]
     }
 
-    def __init__(self):
+    def __init__(self, auto_display: bool = True):
         self._todos: List[Dict[str, Any]] = []
+        # When True, the list is re-rendered to the console after every
+        # mutating action (add/complete/clear), not just on explicit 'display',
+        # so the user always sees the current state as soon as it changes.
+        self.auto_display = auto_display
 
     def is_read_only(self, action: str = "", **kwargs) -> bool:
         return str(action).lower() in ("list", "next")
@@ -135,6 +139,8 @@ class TodoTool(BaseTool):
                 "depends_on": sorted(set(depends_on))
             }
             self._todos.append(item)
+            if self.auto_display:
+                self._render()
             return {"status": "added", "task": item}
 
         elif action_lower == "list":
@@ -174,10 +180,14 @@ class TodoTool(BaseTool):
                 }
 
             item["completed"] = True
+            if self.auto_display:
+                self._render()
             return {"status": "completed", "task": item}
 
         elif action_lower == "clear":
             self._todos.clear()
+            if self.auto_display:
+                self._render()
             return {"status": "cleared", "message": "TODO list cleared."}
 
         else:

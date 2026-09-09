@@ -506,6 +506,29 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                         yield Completion(sub, start_position=-len(current_word), display_meta=meta)
             return
 
+        # --- /todo ---
+        if cmd0 == "/todo":
+            if current_arg_index == 1:
+                for sub, meta in [
+                    ("add", "Add a new TODO task"),
+                    ("complete", "Mark a task complete by ID"),
+                    ("clear", "Clear the entire TODO list"),
+                    ("list", "Display the current TODO list")
+                ]:
+                    if sub.startswith(current_word.lower()):
+                        yield Completion(sub, start_position=-len(current_word), display_meta=meta)
+            elif current_arg_index == 2:
+                word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
+                if word1 == "complete":
+                    todo_tool = self.mesh.tool_registry._tools.get("todo")
+                    todos = getattr(todo_tool, "_todos", []) if todo_tool else []
+                    for t in todos:
+                        if not t["completed"]:
+                            tid_str = str(t["id"])
+                            if tid_str.startswith(current_word):
+                                yield Completion(tid_str, start_position=-len(current_word), display_meta=t["task"][:30])
+            return
+
         # --- /note ---
         if cmd0 == "/note":
             if current_arg_index == 1:

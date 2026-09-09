@@ -417,6 +417,54 @@ async def cmd_goal(engine: Any, args: List[str]):
             engine.goal_tool.render(console)
 
 
+async def cmd_todo(engine: Any, args: List[str]):
+    todo = engine.todo_tool
+
+    if not args:
+        await todo.execute(action="display")
+        return
+
+    subcmd = args[0].lower()
+
+    if subcmd == "add":
+        if len(args) < 2:
+            console.print("[error]Usage: /todo add <task> [| depends_on: 1,2][/error]")
+            return
+        raw = " ".join(args[1:])
+        task_part, _, deps_part = raw.partition("|")
+        task_text = task_part.strip()
+        depends_on: List[int] = []
+        deps_part = deps_part.strip()
+        if deps_part.lower().startswith("depends_on:"):
+            deps_part = deps_part.split(":", 1)[1]
+        if deps_part:
+            for chunk in deps_part.replace(" ", "").split(","):
+                if chunk.isdigit():
+                    depends_on.append(int(chunk))
+        result = await todo.execute(action="add", task=task_text, depends_on=depends_on)
+        if "error" in result:
+            console.print(f"[error]{result['error']}[/error]")
+
+    elif subcmd == "complete" and len(args) >= 2:
+        try:
+            task_id = int(args[1])
+        except ValueError:
+            console.print("[error]Usage: /todo complete <task_id>[/error]")
+            return
+        result = await todo.execute(action="complete", task_id=task_id)
+        if "error" in result:
+            console.print(f"[error]{result['error']}[/error]")
+
+    elif subcmd == "clear":
+        await todo.execute(action="clear")
+
+    elif subcmd == "list":
+        await cmd_todo(engine, [])
+
+    else:
+        console.print("[error]Usage: /todo [add <task> [| depends_on: <ids>]|complete <task_id>|clear|list][/error]")
+
+
 async def cmd_note(engine: Any, args: List[str]):
     if not args:
         notes = _read_notes()
@@ -688,6 +736,7 @@ def register_session_commands(engine: Any):
     engine.cmd_registry.register("shell", "Execute shell command directly (bypasses LLM): /shell <cmd> | !<cmd>", lambda args: cmd_shell(engine, args), category="Workspace & Developer Tools")
     engine.cmd_registry.register("python", "Execute Python snippet directly (bypasses LLM): /python <code> | #<code>", lambda args: cmd_python(engine, args), category="Workspace & Developer Tools")
     engine.cmd_registry.register("goal", "View, set, or manage pinned session goal: /goal [<text>] [| criteria] | /goal done <#> | /goal clear", lambda args: cmd_goal(engine, args), category="Memory & Knowledge")
+    engine.cmd_registry.register("todo", "View or manage the dependency-aware TODO list (auto-displays on change): /todo [add <task> [| depends_on: <ids>]|complete <#>|clear|list]", lambda args: cmd_todo(engine, args), category="Memory & Knowledge")
     engine.cmd_registry.register("note", "View or edit persistent Markdown notes: /note [append <text>|clear]", lambda args: cmd_note(engine, args), category="Memory & Knowledge")
     engine.cmd_registry.register("memory", "View or edit persistent memory key-value store: /memory [save|get|list|search|delete|clear] <args>", lambda args: cmd_memory(engine, args), category="Memory & Knowledge")
     engine.cmd_registry.register("dream", "Analyze conversation transcript and extract persistent notes, memory facts, and skills: /dream", lambda args: cmd_dream(engine, args), category="Memory & Knowledge")
