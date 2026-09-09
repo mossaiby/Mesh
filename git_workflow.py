@@ -220,8 +220,28 @@ def run_git_push(
         return False, res.stderr.strip() or res.stdout.strip()
     except Exception as e:
         return False, f"Git push failed: {str(e)}"
+def run_git_pull(remote: str = "origin", branch: Optional[str] = None, root_dir: str = ".") -> Tuple[bool, str]:
+    if not is_git_repository(root_dir):
+        return False, "Directory is not a Git repository."
 
+    target_branch = branch or get_git_branch(root_dir)
+    cmd = ["git", "pull", remote, target_branch]
 
+    try:
+        res = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            cwd=root_dir
+        )
+        if res.returncode == 0:
+            output = res.stdout.strip() or res.stderr.strip() or "Pulled successfully."
+            return True, output
+        return False, res.stderr.strip() or res.stdout.strip()
+    except Exception as e:
+        return False, f"Git pull failed: {str(e)}"
 def create_or_switch_branch(branch_name: str, root_dir: str = ".") -> Tuple[bool, str]:
     if not is_git_repository(root_dir):
         return False, "Directory is not a Git repository."

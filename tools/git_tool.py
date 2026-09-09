@@ -105,8 +105,30 @@ class GitPushTool(BaseTool):
         if success:
             return {"status": "success", "remote": remote, "branch": branch, "output": output}
         return {"status": "error", "error": output}
+class GitPullTool(BaseTool):
+    name = "git_pull"
+    description = "Pulls changes from a remote Git repository."
+    is_proxied = False
+    requires_guard = True
+    parameters = {
+        "type": "object",
+        "properties": {
+            "remote": {
+                "type": "string",
+                "description": "Git remote name (default: 'origin')."
+            },
+            "branch": {
+                "type": "string",
+                "description": "Optional target branch name (defaults to active branch)."
+            }
+        }
+    }
 
-
+    async def execute(self, remote: str = "origin", branch: Optional[str] = None) -> Dict[str, Any]:
+        success, output = git_workflow.run_git_pull(remote=remote, branch=branch)
+        if success:
+            return {"status": "success", "remote": remote, "branch": branch, "output": output}
+        return {"status": "error", "error": output}
 class GitBranchTool(BaseTool):
     name = "git_branch"
     description = "Creates or switches to a Git feature branch."

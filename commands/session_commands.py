@@ -297,7 +297,7 @@ async def cmd_git(engine: Any, args: List[str]):
                     console.print(f"  • {c}")
             else:
                 console.print("  [dim]Working tree clean - no modified or untracked files.[/dim]")
-            console.print("\nUsage: [warning]/git init [<branch>][/warning] | [warning]/git status[/warning] | [warning]/git diff[/warning] | [warning]/git commit [<msg>][/warning] | [warning]/git push [<remote>] [<branch>][/warning] | [warning]/git branch [<name>][/warning]\n")
+                console.print("\nUsage: [warning]/git init [<branch>][/warning] | [warning]/git status[/warning] | [warning]/git diff[/warning] | [warning]/git commit [<msg>][/warning] | [warning]/git push [<remote>] [<branch>][/warning] | [warning]/git pull [<remote>] [<branch>][/warning] | [warning]/git branch [<name>][/warning]\n")
             return
 
         if sub == "status":
@@ -349,7 +349,16 @@ async def cmd_git(engine: Any, args: List[str]):
                 console.print(f"[success]✔ Pushed successfully:[/success] {output}")
             else:
                 console.print(f"[error]Git push failed:[/error] {output}")
-
+        elif sub == "pull":
+            remote = args[1] if len(args) > 1 else "origin"
+            branch = args[2] if len(args) > 2 else git_workflow.get_git_branch(".")
+            console.print(f"[brand]\\\\ud83d\\\\udcee Pulling active branch '[accent]{branch}[/accent]' from remote '[accent]{remote}[/accent]'...[/brand]")
+             
+            success, output = git_workflow.run_git_pull(remote=remote, branch=branch)
+            if success:
+                console.print(f"[success]\\\\u2714 Pulled successfully:[/success] {output}")
+            else:
+                console.print(f"[error]Git pull failed:[/error] {output}")
         elif sub == "branch":
             if len(args) > 1:
                 new_branch = args[1].strip()
