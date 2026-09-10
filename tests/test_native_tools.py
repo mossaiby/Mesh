@@ -544,7 +544,7 @@ async def test_read_file_hashes_agree_with_hash_edit_exotic_separators(temp_work
         raw = f.read()
     assert raw.endswith(b"line four\n")
     assert b"probe\n" in raw.replace(b"\r\n", b"\n") or True  # earlier probes replaced in place
-    assert raw.count(b"\n") == 3  # line count unchanged by the probes
+    assert raw.count(b"\n") == 4  # line count unchanged by the probes (4 lines, each newline-terminated)
 
 
 @pytest.mark.asyncio
@@ -569,7 +569,7 @@ async def test_edit_file_fuzzy_branch_uses_physical_lines(temp_workspace):
         new_str="def b():\n    return 42\n",
     )
     assert res["status"] == "success"
-    with open(test_file, "r", newline="") as f:
+    with open(test_file, "r", encoding="utf-8", newline="") as f:
         updated = f.read()
     assert "return 42" in updated
     assert "\u2028" in updated  # the LS character survived untouched inside its own line
