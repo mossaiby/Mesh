@@ -20,7 +20,7 @@ async def cmd_agent(engine: Any, args: List[str]):
             console.print("  • [label]squad[/label]: 4-stage pipeline (Architect -> Coder -> Tester -> Auditor) (/agent squad <task>)")
             console.print("  • [label]consensus[/label]: Adversarial multi-model audit (/agent consensus <q> | <proposal>)")
             console.print("  • [label]delegate[/label]: Hand task to an autonomous sub-agent (/agent delegate <task>)")
-            console.print("  • [label]advisor[/label]: Consult second opinion (/agent advisor <question> | /agent advisor model [<key>])")
+            console.print("  • [label]advisor[/label]: Consult second opinion (/agent advisor <question>; configure model via /switch advisor)")
             console.print("\nUsage: [warning]/agent explore <task>[/warning] | [warning]/agent squad <task>[/warning] | [warning]/agent consensus <q> | <p>[/warning] | [warning]/agent delegate <task>[/warning] | [warning]/agent advisor <q>[/warning]\n")
             return
 
@@ -165,31 +165,10 @@ async def cmd_agent(engine: Any, args: List[str]):
             if not sub_args:
                 advisor_model_str = cfg.advisor_model or f"{cfg.active_model} (active model)"
                 console.print(
-                    f"Advisor is currently using model: [accent]{advisor_model_str}[/accent]\n"
-                    f"Usage: [warning]/agent advisor <question>[/warning] | [warning]/agent advisor model [<key>][/warning] | [warning]/agent advisor model clear[/warning]"
+                    f"Advisor is currently using model: [accent]{advisor_model_str}[/accent] "
+                    f"(configure with [warning]/switch advisor[/warning])\n"
+                    f"Usage: [warning]/agent advisor <question>[/warning]"
                 )
-                return
-
-            a_sub = sub_args[0].lower()
-
-            if a_sub == "model":
-                if len(sub_args) == 1:
-                    cfg.advisor_model = None
-                    engine.config_mgr.save()
-                    console.print("[success]Advisor model reset to the active model.[/success]")
-                    return
-                key = sub_args[1]
-                if key.lower() in ("clear", "reset", "none"):
-                    cfg.advisor_model = None
-                    engine.config_mgr.save()
-                    console.print("[success]Advisor model reset to the active model.[/success]")
-                    return
-                if key not in cfg.models:
-                    console.print(f"[error]Unknown model key '{key}'. See /models for valid keys.[/error]")
-                    return
-                cfg.advisor_model = key
-                engine.config_mgr.save()
-                console.print(f"[success]Advisor model set to '[accent]{key}[/accent]'.[/success]")
                 return
 
             question = " ".join(sub_args)

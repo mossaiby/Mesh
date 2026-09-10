@@ -602,6 +602,28 @@ async def cmd_switch(engine: Any, args: List[str]):
         console.print(f"[success]Router model set to '[label]{target_key}[/label]' ({models_dict[target_key].name}).[/success]")
         return
 
+    elif sub == "advisor":
+        if len(args) == 1:
+            a_str = cfg.advisor_model or f"[dim]none set (using active model: {cfg.active_model})[/dim]"
+            console.print(
+                f"Advisor model is currently: [accent]{a_str}[/accent]\n"
+                f"Usage: [warning]/switch advisor <model_key>[/warning] | [warning]/switch advisor clear[/warning]"
+            )
+            return
+        target_key = args[1]
+        if target_key.lower() in ("clear", "reset", "none"):
+            cfg.advisor_model = None
+            engine.config_mgr.save()
+            console.print("[success]Advisor model reset to the active model.[/success]")
+            return
+        if target_key not in models_dict:
+            console.print(f"[error]Model key '{target_key}' not found in config.json. See /models for valid keys.[/error]")
+            return
+        cfg.advisor_model = target_key
+        engine.config_mgr.save()
+        console.print(f"[success]Advisor model set to '[label]{target_key}[/label]' ({models_dict[target_key].name}).[/success]")
+        return
+
     if args:
         target_key = args[0]
         if target_key not in models_dict:
@@ -696,7 +718,7 @@ def register_model_commands(engine: Any):
     )
     engine.cmd_registry.register(
         "switch",
-        "Switch active model or mode: /switch [auto|router|<model_key>]",
+        "Switch active model or mode: /switch [auto|router|advisor|<model_key>]",
         lambda args: cmd_switch(engine, args),
         category="Models & Settings"
     )

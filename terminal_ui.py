@@ -228,27 +228,16 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                     ("squad", "4-stage pipeline (Architect->Coder->Tester->Auditor)"),
                     ("consensus", "Adversarial multi-model audit"),
                     ("delegate", "Hand task to autonomous sub-agent"),
-                    ("advisor", "Consult second opinion or change advisor model")
+                    ("advisor", "Consult second opinion")
                 ]
                 for sub, meta in subs:
                     if sub.startswith(current_word.lower()):
                         yield Completion(sub, start_position=-len(current_word), display_meta=meta)
             elif current_arg_index == 2:
                 word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
-                if word1 == "advisor":
-                    if "model".startswith(current_word.lower()):
-                        yield Completion("model", start_position=-len(current_word), display_meta="Configure advisor model")
-                elif word1 == "delegate":
+                if word1 == "delegate":
                     if "depth".startswith(current_word.lower()):
                         yield Completion("depth", start_position=-len(current_word), display_meta="Set delegation recursion depth")
-            elif current_arg_index == 3:
-                word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
-                word2 = typed_words[2].lower() if len(typed_words) > 2 else ""
-                if word1 == "advisor" and word2 == "model":
-                    models = list(self.mesh.config_mgr.config.models.keys()) + ["clear", "reset"]
-                    for m in models:
-                        if m.lower().startswith(current_word.lower()):
-                            yield Completion(m, start_position=-len(current_word))
             return
 
         # --- /models ---
@@ -301,7 +290,8 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
             if current_arg_index == 1:
                 subs = [
                     ("auto", "Enable sticky model auto-routing mode"),
-                    ("router", "View or configure the model router model")
+                    ("router", "View or configure the model router model"),
+                    ("advisor", "View or configure the advisor model")
                 ]
                 for sub, meta in subs:
                     if sub.startswith(current_word.lower()):
@@ -314,7 +304,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                         yield Completion(m, start_position=-len(current_word), display_meta=cfg.name)
             elif current_arg_index == 2:
                 word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
-                if word1 == "router":
+                if word1 in ("router", "advisor"):
                     models = list(self.mesh.config_mgr.config.models.keys()) + ["clear", "reset"]
                     for m in models:
                         if m.lower().startswith(current_word.lower()):

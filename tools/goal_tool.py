@@ -13,7 +13,7 @@ class GoalTool(BaseTool):
     the goal (and remaining/completed criteria) is folded directly into the
     system prompt via the on_change callback, so it stays visible to the
     model even after /compact summarizes the conversation, after /switch
-    changes models, or after /clear wipes the chat history. A todo list or
+    changes models, or after /new wipes the chat history. A todo list or
     an ordinary chat message would not survive any of those; a pinned goal
     does, by design.
     """
