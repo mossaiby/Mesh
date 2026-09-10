@@ -356,6 +356,12 @@
       "title": "Max Delegation Depth",
       "type": "integer"
     },
+    "project-map-enabled": {
+      "default": true,
+      "description": "Whether the repository architecture map is generated and folded into the system prompt (see /project map enable|disable).",
+      "title": "Project-Map-Enabled",
+      "type": "boolean"
+    },
     "advisor_model": {
       "anyOf": [
         {

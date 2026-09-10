@@ -73,6 +73,7 @@ class MockMeshConfig:
         self.auto_compact = True
         self.auto_compact_threshold = 0.75
         self.max_delegation_depth = 2
+        self.project_map_enabled = True
         self.advisor_model = None
         self.guard_enabled = False
         self.guard_model = None

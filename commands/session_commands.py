@@ -768,7 +768,37 @@ async def cmd_script(engine: Any, args: List[str]):
 
 async def cmd_project(engine: Any, args: List[str]):
     if args and args[0].lower() in ("map", "graph"):
-        map_text = repo_map.get_repo_map_instructions(".", token_budget=engine.config_mgr.config.budgets.repo_map)
+        map_args = args[1:]
+        cfg = engine.config_mgr.config
+
+        if map_args and map_args[0].lower() in ("enable", "on"):
+            cfg.project_map_enabled = True
+            engine.config_mgr.save()
+            engine.update_system_message()
+            console.print("[success]Repository map ENABLED.[/success] It will be folded into the system prompt.")
+            return
+
+        if map_args and map_args[0].lower() in ("disable", "off"):
+            cfg.project_map_enabled = False
+            engine.config_mgr.save()
+            engine.update_system_message()
+            console.print("[warning]Repository map DISABLED.[/warning] It will no longer be added to the system prompt.")
+            return
+
+        if not cfg.project_map_enabled:
+            console.print(
+                "[dim]Repository map is disabled.[/dim] "
+                "Enable it with [warning]/project map enable[/warning], or view it once anyway below.\n"
+            )
+
+        budget = cfg.budgets.repo_map
+        if budget <= 0:
+            console.print(
+                "[dim]Repository map budget is 0, so there's nothing to show.[/dim] "
+                "Raise it with [warning]/config set budget repo-map <n>[/warning] (e.g. 500)."
+            )
+            return
+        map_text = repo_map.get_repo_map_instructions(".", token_budget=budget)
         if map_text:
             console.print(f"\n[success]=== Repository Architecture Map ===[/success]\n")
             console.print(Markdown(map_text))
@@ -792,7 +822,7 @@ async def cmd_project(engine: Any, args: List[str]):
         console.print()
     else:
         console.print("[dim]No project rules file (PROJECT.md, MESH.md, AGENTS.md) found in current directory.[/dim]")
-    console.print("Usage: [warning]/project[/warning] | [warning]/project map[/warning] | [warning]/project reload[/warning]\n")
+    console.print("Usage: [warning]/project[/warning] | [warning]/project map [enable|disable][/warning] | [warning]/project reload[/warning]\n")
 
 
 async def cmd_reflexion(engine: Any, args: List[str]):
@@ -838,7 +868,7 @@ def register_session_commands(engine: Any):
     engine.cmd_registry.register("memory", "View or edit persistent memory key-value store: /memory [save|get|list|search|delete|clear] <args>", lambda args: cmd_memory(engine, args), category="Memory & Knowledge")
     engine.cmd_registry.register("dream", "Analyze conversation transcript and extract persistent notes, memory facts, and skills: /dream", lambda args: cmd_dream(engine, args), category="Memory & Knowledge")
     engine.cmd_registry.register("script", "Execute commands and prompts line-by-line from script file: /script <file.txt>", lambda args: cmd_script(engine, args), category="Workspace & Developer Tools")
-    engine.cmd_registry.register("project", "View or reload project rules and repository map: /project [map|reload]", lambda args: cmd_project(engine, args), category="Workspace & Developer Tools")
+    engine.cmd_registry.register("project", "View or reload project rules and repository map: /project [map [enable|disable]|reload]", lambda args: cmd_project(engine, args), category="Workspace & Developer Tools")
     engine.cmd_registry.register("reflexion", "View or distill cross-session error lessons: /reflexion [distill|clear]", lambda args: cmd_reflexion(engine, args), category="Memory & Knowledge")
     engine.cmd_registry.register("checkpoint", "Save, fork, restore, or list session checkpoints: /checkpoint [save|fork|restore|list] <args>", lambda args: cmd_checkpoint(engine, args), category="Session & System")
     engine.cmd_registry.register("diff", "Display unified file diff or revert last edit: /diff | /diff undo", lambda args: cmd_diff(engine, args), category="Workspace & Developer Tools")

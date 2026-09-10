@@ -333,6 +333,12 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
                 engine.repair_engine.mechanical_retries = typed_val
             elif param == "delay":
                 engine.repair_engine.mechanical_delay = typed_val
+    elif category == "budget" and param == "repo-map":
+        # Repo map is folded directly into the system prompt (see engine.py's
+        # update_system_message), so a budget change here needs to trigger a
+        # rebuild - otherwise the old map (or its absence) would silently
+        # stick around until some unrelated event happened to refresh it.
+        engine.update_system_message()
 
     engine.config_mgr.save()
 

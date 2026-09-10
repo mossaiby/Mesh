@@ -479,6 +479,12 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                 for sub, meta in [("map", "Display repository architecture map"), ("reload", "Reload project rules and repo map")]:
                     if sub.startswith(current_word.lower()):
                         yield Completion(sub, start_position=-len(current_word), display_meta=meta)
+            elif current_arg_index == 2:
+                word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
+                if word1 == "map":
+                    for sub, meta in [("enable", "Fold the repo map into the system prompt"), ("disable", "Stop generating/injecting the repo map")]:
+                        if sub.startswith(current_word.lower()):
+                            yield Completion(sub, start_position=-len(current_word), display_meta=meta)
             return
 
         # --- /checkpoint ---

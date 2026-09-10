@@ -79,8 +79,13 @@ class RepoMapGenerator:
     def generate_repo_map(self, root_dir: str = ".", token_budget: int = 500) -> str:
         """
         Generates a token-compact Markdown tree map of the repository's key symbols
-        ranked by architectural importance.
+        ranked by architectural importance. A token_budget of 0 or less disables
+        the map entirely (returns ""), rather than emitting a header with nothing
+        useful under it.
         """
+        if token_budget <= 0:
+            return ""
+
         symbols = symbol_search.symbol_indexer.symbol_index
         if not symbols:
             symbol_search.symbol_indexer.load_cache(root_dir)

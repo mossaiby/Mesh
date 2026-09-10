@@ -158,6 +158,11 @@ class MeshConfig(BaseModel):
         default=2,
         description="Maximum recursion depth for autonomous sub-agent task delegation."
     )
+    project_map_enabled: bool = Field(
+        default=True,
+        alias="project-map-enabled",
+        description="Whether the repository architecture map is generated and folded into the system prompt (see /project map enable|disable)."
+    )
     advisor_model: Optional[str] = Field(
         default=None,
         description="Dedicated model key to consult for second opinions during /agent advisor (defaults to active model)."
