@@ -5,7 +5,24 @@ import sys
 from engine import MeshEngine
 
 
+def set_terminal_title(title: str) -> None:
+    """Set the terminal window/tab title across Windows, macOS, and Linux."""
+    if not sys.stdout.isatty():
+        return
+
+    if sys.platform == "win32":
+        import ctypes
+
+        ctypes.windll.kernel32.SetConsoleTitleW(title)
+    else:
+        # OSC 0 sets both window title and icon/tab name in Unix terminals
+        sys.stdout.write(f"\033]0;{title}\007")
+        sys.stdout.flush()
+
+
 def main():
+    set_terminal_title("Mesh")
+
     parser = argparse.ArgumentParser(description="Mesh - Modern AI Harness CLI")
     parser.add_argument("script", nargs="?", help="Optional path to a script file to execute on launch")
     parser.add_argument("-f", "--file", help="Path to a script file to execute on launch")

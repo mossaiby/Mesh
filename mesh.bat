@@ -27,5 +27,8 @@ if not exist ".venv\Scripts\pip.exe" (
     )
 )
 
-.venv\Scripts\python.exe main.py --cwd "%CALLER_DIR%" %*
+:: Restore caller directory first
 popd
+
+:: Exit batch mode into command-line context before executing Python
+endlocal & set "PYTHONIOENCODING=utf-8" & goto #_undefined_# 2>nul || title %COMSPEC% & "%~dp0.venv\Scripts\python.exe" "%~dp0main.py" --cwd "%CALLER_DIR%" %*
