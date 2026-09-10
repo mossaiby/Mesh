@@ -3,6 +3,7 @@ import asyncio
 import os
 import sys
 from engine import MeshEngine
+from glyphs import set_ascii_mode
 
 
 def set_terminal_title(title: str) -> None:
@@ -33,9 +34,15 @@ def main():
     parser.add_argument("-l", "--log", nargs="?", const="session.md", help="Enable Markdown session logging to specified file (default: session.md)")
     parser.add_argument("-s", "--session", help="Load or create a named disk session under sessions/")
     parser.add_argument("-r", "--resume", action="store_true", help="Resume the most recently saved disk session")
+    parser.add_argument("--ascii", action="store_true", help="Replace all emoji/Unicode symbols in Mesh's output with plain-ASCII equivalents, for terminals that can't render Unicode")
 
     parsed_args = parser.parse_args()
     script_path = parsed_args.file or parsed_args.script
+
+    # Must happen before anything is printed: every symbol Mesh prints reads
+    # this flag at print time to decide between its Unicode form and its
+    # plain-ASCII fallback (see glyphs.py).
+    set_ascii_mode(parsed_args.ascii)
 
     if parsed_args.cwd:
         target_dir = os.path.abspath(os.path.expanduser(parsed_args.cwd))

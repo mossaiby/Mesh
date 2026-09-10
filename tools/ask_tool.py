@@ -5,6 +5,7 @@ from rich.live import Live
 from rich.text import Text
 from tools.base import BaseTool
 from theme import console
+from glyphs import ANGLE_RIGHT, ARROW_DOWN, ARROW_UP, QUESTION, RADIO_OFF, RADIO_ON
 
 
 def _read_single_key() -> str:
@@ -82,7 +83,7 @@ class AskUserTool(BaseTool):
         return False
 
     async def execute(self, question: str, options: Optional[List[str]] = None, allow_custom: bool = True) -> Dict[str, Any]:
-        console.print(f"\n[label]❓ AI Decision Prompt:[/label] {question}")
+        console.print(f"\n[label]{QUESTION} AI Decision Prompt:[/label] {question}")
 
         # If no options provided, fallback to standard text input
         if not options:
@@ -99,12 +100,12 @@ class AskUserTool(BaseTool):
         current_idx = 0
 
         def render_menu(selected_idx: int) -> Text:
-            lines = ["[dim]Use ↑/↓ Arrow Keys to navigate, Enter to select:[/dim]\n"]
+            lines = [f"[dim]Use {ARROW_UP}/{ARROW_DOWN} Arrow Keys to navigate, Enter to select:[/dim]\n"]
             for idx, choice in enumerate(choices):
                 if idx == selected_idx:
-                    lines.append(f"  [accent]❯ 🔘 {choice}[/accent]")
+                    lines.append(f"  [accent]{ANGLE_RIGHT} {RADIO_ON} {choice}[/accent]")
                 else:
-                    lines.append(f"    [dim]⚪ {choice}[/dim]")
+                    lines.append(f"    [dim]{RADIO_OFF} {choice}[/dim]")
             return Text.from_markup("\n".join(lines))
 
         def interactive_menu() -> str:

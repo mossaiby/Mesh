@@ -4,6 +4,7 @@ from config import ConfigManager
 from providers import get_provider
 from render.stream_renderer import StreamRenderer
 from theme import console
+from glyphs import CHECK_BOX, MAG_LEFT
 
 
 MEMORY_SEARCH_SYSTEM_PROMPT = (
@@ -77,7 +78,7 @@ async def semantic_memory_search(
     renderer = StreamRenderer()
 
     if verbose:
-        console.print(f"[brand]🔍 Searching memory for:[/brand] {query}")
+        console.print(f"[brand]{MAG_LEFT} Searching memory for:[/brand] {query}")
 
     try:
         raw_text, _ = await renderer.render_stream(provider.stream_chat(messages))
@@ -109,6 +110,6 @@ async def semantic_memory_search(
         answer = None
 
     if verbose:
-        console.print(f"[brand]✅ Found {len(clean_matches)} relevant memory entr{'y' if len(clean_matches) == 1 else 'ies'}.[/brand]")
+        console.print(f"[brand]{CHECK_BOX} Found {len(clean_matches)} relevant memory entr{'y' if len(clean_matches) == 1 else 'ies'}.[/brand]")
 
     return {"status": "ok", "matches": clean_matches, "answer": answer}

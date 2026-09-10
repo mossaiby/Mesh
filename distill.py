@@ -5,6 +5,7 @@ from rich.styled import Styled
 from config import ConfigManager
 from providers import get_provider
 from theme import console
+from glyphs import BRAIN, ROBOT
 
 
 class SubAgentDistiller:
@@ -37,7 +38,7 @@ class SubAgentDistiller:
             return raw_str if (raw_str.startswith("{") or raw_str.startswith("[")) else json.dumps({"raw_output": raw_str})
 
         if self.debug_mode:
-            console.print(f"\n[brand]🤖 [SUB-AGENT DISTILLER] Distilling [/brand][tool]{tool_name}[/tool][brand] output for intent:[/brand] [italic]{intent}[/italic]")
+            console.print(f"\n[brand]{ROBOT} [SUB-AGENT DISTILLER] Distilling [/brand][tool]{tool_name}[/tool][brand] output for intent:[/brand] [italic]{intent}[/italic]")
 
         messages = [
             {
@@ -80,12 +81,12 @@ class SubAgentDistiller:
                         console.print(f"[brand]{cval}[/brand]", end="")
 
             if sub_reasoning and self.debug_mode:
-                console.print("\n[brand]🧠 [SUB-AGENT REASONING]:[/brand]")
+                console.print(f"\n[brand]{BRAIN} [SUB-AGENT REASONING]:[/brand]")
                 console.print(Styled(Markdown(sub_reasoning), "dim"))
                 console.print()
 
             if self.debug_mode:
-                console.print("\n[brand]🤖 [SUB-AGENT DISTILLER] Distillation Complete.[/brand]\n")
+                console.print(f"\n[brand]{ROBOT} [SUB-AGENT DISTILLER] Distillation Complete.[/brand]\n")
 
             if distilled.strip():
                 return json.dumps({
@@ -97,7 +98,7 @@ class SubAgentDistiller:
             return raw_str if (raw_str.startswith("{") or raw_str.startswith("[")) else json.dumps({"raw_output": raw_str})
         except Exception as e:
             if self.debug_mode:
-                console.print(f"\n[error]🤖 [SUB-AGENT DISTILLER] Distillation Failed:[/error] {e}\n")
+                console.print(f"\n[error]{ROBOT} [SUB-AGENT DISTILLER] Distillation Failed:[/error] {e}\n")
             return json.dumps({
                 "status": "partial_fallback",
                 "intent": intent,

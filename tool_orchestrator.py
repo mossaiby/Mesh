@@ -3,6 +3,7 @@ from typing import List, Dict, Any, Tuple
 from rich.markup import escape
 import reflexion
 from theme import console
+from glyphs import LIGHTNING, WRENCH
 
 
 class ToolOrchestrator:
@@ -70,9 +71,9 @@ class ToolOrchestrator:
                 name_escaped = escape(str(tool_call.get("name", "")))
                 args_escaped = escape(str(tool_call.get("args", "")))
                 if self.debug_mode:
-                    console.print(f"[brand]🔧 DEBUG - Tool Request:[/brand] [tool]{name_escaped}[/tool]([dim]{args_escaped}[/dim])")
+                    console.print(f"[brand]{WRENCH} DEBUG - Tool Request:[/brand] [tool]{name_escaped}[/tool]([dim]{args_escaped}[/dim])")
                 else:
-                    console.print(f"[accent]⚡ Tool Request:[/accent] [tool]{name_escaped}[/tool]([dim]{args_escaped}[/dim])")
+                    console.print(f"[accent]{LIGHTNING} Tool Request:[/accent] [tool]{name_escaped}[/tool]([dim]{args_escaped}[/dim])")
 
             if is_readonly and len(call_batch) > 1:
                 results = await asyncio.gather(*(self.tool_registry.execute(tc["name"], tc["args"]) for tc in call_batch))
@@ -84,7 +85,7 @@ class ToolOrchestrator:
 
                 if self.debug_mode:
                     name_escaped = escape(str(tool_call.get("name", "")))
-                    console.print(f"[brand]🔧 DEBUG - Tool Result ([tool]{name_escaped}[/tool]):[/brand]")
+                    console.print(f"[brand]{WRENCH} DEBUG - Tool Result ([tool]{name_escaped}[/tool]):[/brand]")
                     console.print(tool_result, markup=False)
 
                 if isinstance(tool_result, str) and '"error":' in tool_result:

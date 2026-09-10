@@ -4,6 +4,7 @@ from openai import AsyncOpenAI
 from config import ModelConfig, ProviderConfig, ConfigManager, default_timeout
 from providers.retry import get_retry_params, compute_backoff_delay, is_transient_error
 from theme import console
+from glyphs import HOURGLASS
 
 
 class OpenAIProvider:
@@ -223,7 +224,7 @@ class OpenAIProvider:
                     jitter=jitter
                 )
                 console.print(
-                    f"[warning]⏳ Provider rate limit/transient error ({exc.__class__.__name__}): "
+                    f"[warning]{HOURGLASS} Provider rate limit/transient error ({exc.__class__.__name__}): "
                     f"retrying in {delay:.1f}s (attempt {attempt}/{max_retries})...[/warning]"
                 )
                 await asyncio.sleep(delay)

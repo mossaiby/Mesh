@@ -5,6 +5,7 @@ from config import ConfigManager
 from providers import get_provider
 from tools.ask_tool import AskUserTool
 from theme import console
+from glyphs import SHIELD, VS16
 
 
 GUARD_SYSTEM_PROMPT = (
@@ -131,11 +132,11 @@ class SafetyGuard:
             return True, assessment
 
         if verdict == "deny":
-            console.print(f"[error]🛡️   Safety Guard BLOCKED tool '[tool]{tool_name}[/tool]':[/error] {reason}")
+            console.print(f"[error]{SHIELD}{VS16}   Safety Guard BLOCKED tool '[tool]{tool_name}[/tool]':[/error] {reason}")
             return False, assessment
 
         if self.config_mgr.config.guard_autonomy == "autonomous":
-            console.print(f"[warning]🛡️   Safety Guard auto-approved tool '[tool]{tool_name}[/tool]' (autonomous mode):[/warning] {reason}")
+            console.print(f"[warning]{SHIELD}{VS16}   Safety Guard auto-approved tool '[tool]{tool_name}[/tool]' (autonomous mode):[/warning] {reason}")
             return True, {**assessment, "resolution": "auto_approved"}
 
         async with self._prompt_lock:

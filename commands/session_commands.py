@@ -18,6 +18,7 @@ import symbol_search
 from file_history import file_history_tracker
 from python_executor import python_executor
 from theme import console
+from glyphs import BRAIN, BULLET, CHECK, EM_DASH, HAMMER_WRENCH, LIGHTNING, MAG_RIGHT, MEMO, NO_ENTRY, POSTBOX, ROCKET, SLEEP, SNAKE, VS16
 
 
 async def cmd_log(engine: Any, args: List[str]):
@@ -72,7 +73,7 @@ async def cmd_session(engine: Any, args: List[str]):
         else:
             for s in sessions:
                 mark = "[accent]*[/accent]" if s["name"] == sm.active_session_name else " "
-                console.print(f"  {mark} [label]{s['name']}[/label] ({s['messages_count']} msgs, Mode: {s['mode']}, Model: {s['model']}) — [dim]{s['saved_at']}[/dim]")
+                console.print(f"  {mark} [label]{s['name']}[/label] ({s['messages_count']} msgs, Mode: {s['mode']}, Model: {s['model']}) {EM_DASH} [dim]{s['saved_at']}[/dim]")
             console.print()
         console.print("Usage: [warning]/session save [<name>][/warning] | [warning]/session load <name>[/warning] | [warning]/session list[/warning] | [warning]/session delete <name>[/warning]\n")
         return
@@ -127,7 +128,7 @@ async def cmd_cd(engine: Any, args: List[str]):
             engine.permission_manager.allowed_dirs.remove(old_cwd)
         engine.permission_manager.add_dir(new_cwd)
 
-        console.print(f"[success]✔ Changed CWD to:[/success] [accent]{new_cwd}[/accent]")
+        console.print(f"[success]{CHECK} Changed CWD to:[/success] [accent]{new_cwd}[/accent]")
         engine.reload_project_context()
 
     except Exception as e:
@@ -140,7 +141,7 @@ async def cmd_shell(engine: Any, args: List[str]):
         return
 
     command = " ".join(args).strip()
-    console.print(f"[brand]⚡ Direct Shell Execution:[/brand] {command}")
+    console.print(f"[brand]{LIGHTNING} Direct Shell Execution:[/brand] {command}")
 
     proc = None
     try:
@@ -158,7 +159,7 @@ async def cmd_shell(engine: Any, args: List[str]):
             console.print("[dim]<no output>[/dim]")
 
     except (KeyboardInterrupt, asyncio.CancelledError):
-        console.print("\n[warning]⛔ Shell command cancelled by user.[/warning]")
+        console.print(f"\n[warning]{NO_ENTRY} Shell command cancelled by user.[/warning]")
         if proc:
             try:
                 if sys.platform == "win32":
@@ -236,7 +237,7 @@ async def cmd_grep(engine: Any, args: List[str]):
     if len(positional) > 1:
         path = " ".join(positional[1:]).strip()
 
-    console.print(f"[brand]🔎 Grep:[/brand] '{pattern}' in '{path}'" + (f" (files: {file_pattern})" if file_pattern else ""))
+    console.print(f"[brand]{MAG_RIGHT} Grep:[/brand] '{pattern}' in '{path}'" + (f" (files: {file_pattern})" if file_pattern else ""))
 
     result = await grep_tool.execute(
         pattern=pattern,
@@ -280,7 +281,7 @@ async def cmd_python(engine: Any, args: List[str]):
         return
 
     code = " ".join(args).strip()
-    console.print(f"[brand]🐍 Direct Python Execution:[/brand] #{code}")
+    console.print(f"[brand]{SNAKE} Direct Python Execution:[/brand] #{code}")
 
     try:
         success, output = python_executor.execute_snippet(code)
@@ -291,7 +292,7 @@ async def cmd_python(engine: Any, args: List[str]):
         else:
             console.print("[dim]<no output>[/dim]")
     except (KeyboardInterrupt, asyncio.CancelledError):
-        console.print("\n[warning]⛔ Python execution cancelled by user.[/warning]")
+        console.print(f"\n[warning]{NO_ENTRY} Python execution cancelled by user.[/warning]")
 
 
 async def cmd_checkpoint(engine: Any, args: List[str]):
@@ -302,7 +303,7 @@ async def cmd_checkpoint(engine: Any, args: List[str]):
             console.print("  [dim]No saved checkpoints.[/dim]\n")
         else:
             for tag, details in info["checkpoints"].items():
-                console.print(f"  • [label]{tag}[/label] (Branch: {details['branch']}, Messages: {details['messages_count']}, Mode: {details['mode']})")
+                console.print(f"  {BULLET} [label]{tag}[/label] (Branch: {details['branch']}, Messages: {details['messages_count']}, Mode: {details['mode']})")
             console.print()
         console.print("Usage: [warning]/checkpoint save <tag>[/warning] | [warning]/checkpoint fork <branch>[/warning] | [warning]/checkpoint restore <tag_or_branch>[/warning] | [warning]/checkpoint list[/warning]\n")
         return
@@ -372,7 +373,7 @@ async def cmd_git(engine: Any, args: List[str]):
             branch = args[1].strip() if len(args) > 1 else "main"
             success, output = git_workflow.run_git_init(initial_branch=branch, root_dir=".")
             if success:
-                console.print(f"[success]✔ {output}[/success]")
+                console.print(f"[success]{CHECK} {output}[/success]")
             else:
                 console.print(f"[error]{output}[/error]")
             return
@@ -390,7 +391,7 @@ async def cmd_git(engine: Any, args: List[str]):
             changes = status.get("changes", [])
             if changes:
                 for c in changes:
-                    console.print(f"  • {c}")
+                    console.print(f"  {BULLET} {c}")
             else:
                 console.print("  [dim]Working tree clean - no modified or untracked files.[/dim]")
                 console.print("\nUsage: [warning]/git init [<branch>][/warning] | [warning]/git status[/warning] | [warning]/git diff[/warning] | [warning]/git commit [<msg>][/warning] | [warning]/git push [<remote>] [<branch>][/warning] | [warning]/git pull [<remote>] [<branch>][/warning] | [warning]/git branch [<name>][/warning]\n")
@@ -424,35 +425,35 @@ async def cmd_git(engine: Any, args: List[str]):
             if len(args) > 1:
                 message = " ".join(args[1:]).strip()
             else:
-                console.print("[brand]🧠 Generating conventional commit message from git diff...[/brand]")
+                console.print(f"[brand]{BRAIN} Generating conventional commit message from git diff...[/brand]")
                 message = await git_workflow.generate_commit_message(engine.config_mgr, ".")
 
             console.print(f"Commit Message: [accent]'{message}'[/accent]")
             success, output = git_workflow.run_git_commit(message=message, add_all=True)
 
             if success:
-                console.print(f"[success]✔ Staged all changes and created commit:[/success] {message}")
+                console.print(f"[success]{CHECK} Staged all changes and created commit:[/success] {message}")
             else:
                 console.print(f"[error]Git commit failed:[/error] {output}")
 
         elif sub == "push":
             remote = args[1] if len(args) > 1 else "origin"
             branch = args[2] if len(args) > 2 else git_workflow.get_git_branch(".")
-            console.print(f"[brand]🚀 Pushing active branch '[accent]{branch}[/accent]' to remote '[accent]{remote}[/accent]'...[/brand]")
+            console.print(f"[brand]{ROCKET} Pushing active branch '[accent]{branch}[/accent]' to remote '[accent]{remote}[/accent]'...[/brand]")
             
             success, output = git_workflow.run_git_push(remote=remote, branch=branch)
             if success:
-                console.print(f"[success]✔ Pushed successfully:[/success] {output}")
+                console.print(f"[success]{CHECK} Pushed successfully:[/success] {output}")
             else:
                 console.print(f"[error]Git push failed:[/error] {output}")
         elif sub == "pull":
             remote = args[1] if len(args) > 1 else "origin"
             branch = args[2] if len(args) > 2 else git_workflow.get_git_branch(".")
-            console.print(f"[brand]📮 Pulling active branch '[accent]{branch}[/accent]' from remote '[accent]{remote}[/accent]'...[/brand]")
+            console.print(f"[brand]{POSTBOX} Pulling active branch '[accent]{branch}[/accent]' from remote '[accent]{remote}[/accent]'...[/brand]")
 
             success, output = git_workflow.run_git_pull(remote=remote, branch=branch)
             if success:
-                console.print(f"[success]✔ Pulled successfully:[/success] {output}")
+                console.print(f"[success]{CHECK} Pulled successfully:[/success] {output}")
             else:
                 console.print(f"[error]Git pull failed:[/error] {output}")
         elif sub == "branch":
@@ -471,7 +472,7 @@ async def cmd_git(engine: Any, args: List[str]):
             console.print("[error]Usage: /git init [<branch>] | /git status | /git diff | /git commit [<msg>] | /git push [<remote>] [<branch>] | /git branch [<name>][/error]")
 
     except (KeyboardInterrupt, asyncio.CancelledError):
-        console.print("\n[warning]⛔ Git operation cancelled by user.[/warning]")
+        console.print(f"\n[warning]{NO_ENTRY} Git operation cancelled by user.[/warning]")
 
 
 async def cmd_goal(engine: Any, args: List[str]):
@@ -600,7 +601,7 @@ async def cmd_memory(engine: Any, args: List[str]):
                 console.print("  [dim]No memory keys saved.[/dim]")
             else:
                 for k, v in mem.items():
-                    console.print(f"  • [label]{k}[/label]: {v}")
+                    console.print(f"  {BULLET} [label]{k}[/label]: {v}")
             console.print("\nUsage: [warning]/memory[/warning], [warning]/memory save <key> <value>[/warning], [warning]/memory get <key>[/warning], [warning]/memory search <query>[/warning], [warning]/memory delete <key>[/warning], or [warning]/memory clear[/warning]\n")
             return
 
@@ -635,7 +636,7 @@ async def cmd_memory(engine: Any, args: List[str]):
                 if matches:
                     console.print("\n[label]Matching memory entries:[/label]")
                     for m in matches:
-                        console.print(f"  • [accent]{m['key']}[/accent]: {m['value']}  [dim]({m['why']})[/dim]")
+                        console.print(f"  {BULLET} [accent]{m['key']}[/accent]: {m['value']}  [dim]({m['why']})[/dim]")
                 elif not result.get("answer"):
                     console.print("[dim]No relevant memory entries found.[/dim]")
 
@@ -655,12 +656,12 @@ async def cmd_memory(engine: Any, args: List[str]):
         else:
             console.print("[error]Usage: /memory save <key> <value> | /memory get <key> | /memory search <query> | /memory delete <key> | /memory clear[/error]")
     except (KeyboardInterrupt, asyncio.CancelledError):
-        console.print("\n[warning]⛔ Memory operation cancelled by user.[/warning]")
+        console.print(f"\n[warning]{NO_ENTRY} Memory operation cancelled by user.[/warning]")
 
 
 async def cmd_dream(engine: Any, args: List[str]):
     try:
-        console.print("[brand]💤 Dreaming...[/brand] [dim]Analyzing the conversation for reusable notes, memories, and skills.[/dim]")
+        console.print(f"[brand]{SLEEP} Dreaming...[/brand] [dim]Analyzing the conversation for reusable notes, memories, and skills.[/dim]")
 
         extraction, error = await dream_extract(engine.messages, engine.config_mgr)
         if error:
@@ -699,7 +700,7 @@ async def cmd_dream(engine: Any, args: List[str]):
         applied_notes = applied_memory = applied_skills = 0
 
         if notes:
-            console.print(f"\n[label]📝 Candidate Notes ({len(notes)}):[/label]")
+            console.print(f"\n[label]{MEMO} Candidate Notes ({len(notes)}):[/label]")
             for i, n in enumerate(notes, 1):
                 console.print(f"  {i}. {n}")
             console.print("[dim]Enter numbers to save (e.g. 1,3), 'all', or 'none':[/dim]")
@@ -710,7 +711,7 @@ async def cmd_dream(engine: Any, args: List[str]):
             applied_notes = len(chosen)
 
         if memory_items:
-            console.print(f"\n[label]🧠 Candidate Memory Facts ({len(memory_items)}):[/label]")
+            console.print(f"\n[label]{BRAIN} Candidate Memory Facts ({len(memory_items)}):[/label]")
             for i, m in enumerate(memory_items, 1):
                 console.print(f"  {i}. [accent]{m['key']}[/accent] = {m['value']}")
             console.print("[dim]Enter numbers to save (e.g. 1,3), 'all', or 'none':[/dim]")
@@ -724,7 +725,7 @@ async def cmd_dream(engine: Any, args: List[str]):
             applied_memory = len(chosen)
 
         if skills:
-            console.print(f"\n[label]🛠️ Candidate Skills ({len(skills)}):[/label]")
+            console.print(f"\n[label]{HAMMER_WRENCH}{VS16} Candidate Skills ({len(skills)}):[/label]")
             existing_names = set(engine.skill_registry.list_skills().keys())
             for i, s in enumerate(skills, 1):
                 dup_tag = " [warning](exists - will be overwritten)[/warning]" if s["name"] in existing_names else ""
@@ -751,7 +752,7 @@ async def cmd_dream(engine: Any, args: List[str]):
             f"{applied_memory} memory fact(s), and {applied_skills} skill(s)."
         )
     except (KeyboardInterrupt, asyncio.CancelledError):
-        console.print("\n[warning]⛔ Dream operation cancelled by user.[/warning]")
+        console.print(f"\n[warning]{NO_ENTRY} Dream operation cancelled by user.[/warning]")
 
 
 async def cmd_script(engine: Any, args: List[str]):
@@ -763,7 +764,7 @@ async def cmd_script(engine: Any, args: List[str]):
     try:
         await engine.run_script_file(filepath)
     except (KeyboardInterrupt, asyncio.CancelledError):
-        console.print("\n[warning]⛔ Script execution cancelled by user.[/warning]")
+        console.print(f"\n[warning]{NO_ENTRY} Script execution cancelled by user.[/warning]")
 
 
 async def cmd_project(engine: Any, args: List[str]):
@@ -840,7 +841,7 @@ async def cmd_reflexion(engine: Any, args: List[str]):
 
         sub = args[0].lower()
         if sub == "distill":
-            console.print("[brand]🧠 Distilling reflexion lessons...[/brand]")
+            console.print(f"[brand]{BRAIN} Distilling reflexion lessons...[/brand]")
             success, msg = await reflexion.distill_reflexion_lessons(engine.config_mgr)
             if success:
                 engine.update_system_message()
@@ -854,7 +855,7 @@ async def cmd_reflexion(engine: Any, args: List[str]):
         else:
             console.print("[error]Usage: /reflexion distill | /reflexion clear[/error]")
     except (KeyboardInterrupt, asyncio.CancelledError):
-        console.print("\n[warning]⛔ Reflexion operation cancelled by user.[/warning]")
+        console.print(f"\n[warning]{NO_ENTRY} Reflexion operation cancelled by user.[/warning]")
 
 
 def register_session_commands(engine: Any):

@@ -9,6 +9,7 @@ from rich.text import Text
 from providers import fetch_models_details
 from tools.ask_tool import _read_single_key
 from theme import console
+from glyphs import ANGLE_RIGHT, ARROW_DOWN, ARROW_UP, BULLET, CHECK, CROSS, EM_DASH, MAG_LEFT, RADIO_OFF, RADIO_ON, SHUFFLE, TRIANGLE_DOWN, TRIANGLE_UP
 
 
 # Canonical context-size ladder offered in menus and CLI completions.
@@ -56,21 +57,21 @@ def _interactive_item_picker(items: List[str], title: str) -> Optional[str]:
             scroll_offset = max(0, min(selected_idx - max_visible // 2, total - max_visible))
             visible_count = max_visible
 
-        lines = [f"\n[success]{title}:[/success]", "[dim]Use ↑/↓ Arrow Keys to navigate, Enter to select:[/dim]\n"]
+        lines = [f"\n[success]{title}:[/success]", f"[dim]Use {ARROW_UP}/{ARROW_DOWN} Arrow Keys to navigate, Enter to select:[/dim]\n"]
 
         if scroll_offset > 0:
-            lines.append(f"  [dim]▲ ... ({scroll_offset} items above)[/dim]")
+            lines.append(f"  [dim]{TRIANGLE_UP} ... ({scroll_offset} items above)[/dim]")
 
         for idx in range(scroll_offset, scroll_offset + visible_count):
             item = items[idx]
             if idx == selected_idx:
-                lines.append(f"  [accent]❯ 🔘 {item}[/accent]")
+                lines.append(f"  [accent]{ANGLE_RIGHT} {RADIO_ON} {item}[/accent]")
             else:
-                lines.append(f"    [dim]⚪ {item}[/dim]")
+                lines.append(f"    [dim]{RADIO_OFF} {item}[/dim]")
 
         remaining = total - (scroll_offset + visible_count)
         if remaining > 0:
-            lines.append(f"  [dim]▼ ... ({remaining} items below)[/dim]")
+            lines.append(f"  [dim]{TRIANGLE_DOWN} ... ({remaining} items below)[/dim]")
 
         return Text.from_markup("\n".join(lines))
 
@@ -191,7 +192,7 @@ async def cmd_providers(engine: Any, args: List[str]):
                 headers_str = f" | [dim]Headers: {', '.join(p_cfg.default_headers.keys())}[/dim]" if p_cfg.default_headers else ""
 
                 console.print(
-                    f"• [label]{p_key}[/label] ([brand]{p_cfg.name}[/brand]) — [dim]{p_cfg.base_url}[/dim]\n"
+                    f"{BULLET} [label]{p_key}[/label] ([brand]{p_cfg.name}[/brand]) {EM_DASH} [dim]{p_cfg.base_url}[/dim]\n"
                     f"  API Key Env: [accent]{p_cfg.api_key_env}[/accent] ({env_status}) | Models: {models_count}{headers_str}"
                 )
             console.print()
@@ -276,7 +277,7 @@ async def cmd_providers(engine: Any, args: List[str]):
             api_key_env=p_env
         )
 
-        console.print(f"\n[success]✔ Successfully added provider '[label]{p_key}[/label]' ({p_name}) -> `{p_url}`[/success]")
+        console.print(f"\n[success]{CHECK} Successfully added provider '[label]{p_key}[/label]' ({p_name}) -> `{p_url}`[/success]")
         console.print(f"[dim]Tip: Discover or add models from this provider with:[/dim] [warning]/models discover {p_key}[/warning] [dim]or[/dim] [warning]/models add {p_key} *[/warning]\n")
         return
 
@@ -292,7 +293,7 @@ async def cmd_providers(engine: Any, args: List[str]):
 
         success, removed_models = engine.config_mgr.remove_provider(target_key, remove_associated_models=True)
         if success:
-            console.print(f"[success]✔ Removed provider '[label]{target_key}[/label]'.[/success]")
+            console.print(f"[success]{CHECK} Removed provider '[label]{target_key}[/label]'.[/success]")
             if removed_models:
                 console.print(f"[dim]Also removed {len(removed_models)} model(s) bound to this provider: {', '.join(removed_models)}[/dim]\n")
         else:
@@ -307,13 +308,13 @@ async def cmd_providers(engine: Any, args: List[str]):
             return
 
         p_cfg = cfg.providers[target_key]
-        console.print(f"[brand]🔍 Testing connection to {p_cfg.name} ({p_cfg.base_url})...[/brand]")
+        console.print(f"[brand]{MAG_LEFT} Testing connection to {p_cfg.name} ({p_cfg.base_url})...[/brand]")
         success, models, err = await fetch_models_details(p_cfg, timeout=engine.config_mgr.config.timeouts.api, config_mgr=engine.config_mgr)
 
         if success:
-            console.print(f"[success]✔ Connection successful! Provider responded and offered {len(models)} model(s).[/success]\n")
+            console.print(f"[success]{CHECK} Connection successful! Provider responded and offered {len(models)} model(s).[/success]\n")
         else:
-            console.print(f"[error]✖ Connection test failed:[/error] {err}\n")
+            console.print(f"[error]{CROSS} Connection test failed:[/error] {err}\n")
         return
 
     if sub == "header":
@@ -337,7 +338,7 @@ async def cmd_providers(engine: Any, args: List[str]):
             h_name = args[3]
             h_val = " ".join(args[4:])
             engine.config_mgr.set_provider_header(p_key, h_name, h_val)
-            console.print(f"[success]✔ Added header `{h_name}: {h_val}` to provider '[label]{p_key}[/label]'.[/success]")
+            console.print(f"[success]{CHECK} Added header `{h_name}: {h_val}` to provider '[label]{p_key}[/label]'.[/success]")
         elif action == "remove" and len(args) >= 4:
             h_name = args[3]
             engine.config_mgr.remove_provider_header(p_key, h_name)
@@ -379,7 +380,7 @@ async def cmd_models(engine: Any, args: List[str]):
 
         p_cfg = engine.config_mgr.config.providers[p_key]
 
-        console.print(f"[brand]🔍 Fetching model metadata from {p_cfg.name} matching pattern '{pattern}'...[/brand]")
+        console.print(f"[brand]{MAG_LEFT} Fetching model metadata from {p_cfg.name} matching pattern '{pattern}'...[/brand]")
         success, model_details, err = await fetch_models_details(p_cfg, timeout=engine.config_mgr.config.timeouts.api, config_mgr=engine.config_mgr)
 
         if not success or not model_details:
@@ -427,7 +428,7 @@ async def cmd_models(engine: Any, args: List[str]):
                 tags=tags,
                 description=desc
             )
-            console.print(f"  [success]✔ Added:[/success] [label]{model_key}[/label] ([dim]{m_id}[/dim] - [accent]{final_ctx:,}[/accent] tokens context)")
+            console.print(f"  [success]{CHECK} Added:[/success] [label]{model_key}[/label] ([dim]{m_id}[/dim] - [accent]{final_ctx:,}[/accent] tokens context)")
             added_count += 1
 
         if added_count > 0:
@@ -455,7 +456,7 @@ async def cmd_models(engine: Any, args: List[str]):
         was_active = (cfg.active_model == target_key)
         success = engine.config_mgr.remove_model(target_key)
         if success:
-            console.print(f"[success]✔ Successfully removed model '[label]{target_key}[/label]' from config.json.[/success]")
+            console.print(f"[success]{CHECK} Successfully removed model '[label]{target_key}[/label]' from config.json.[/success]")
             if was_active:
                 console.print(f"[warning]Active model was reset to: [accent]{engine.config_mgr.config.active_model}[/accent][/warning]")
         else:
@@ -479,7 +480,7 @@ async def cmd_models(engine: Any, args: List[str]):
             console.print("[error]No providers configured in config.json.[/error]")
             return
 
-        console.print("[brand]🔍 Discovering models offered by provider endpoints...[/brand]\n")
+        console.print(f"[brand]{MAG_LEFT} Discovering models offered by provider endpoints...[/brand]\n")
 
         configured_model_ids = {m.model_id for m in engine.config_mgr.config.models.values()}
 
@@ -490,7 +491,7 @@ async def cmd_models(engine: Any, args: List[str]):
         results = await asyncio.gather(*(query_p(k, p) for k, p in providers_to_query.items()))
 
         for p_key, p_cfg, success, model_details, err in results:
-            console.print(f"• [label]{p_cfg.name}[/label] ([brand]{p_key}[/brand]) — [dim]{p_cfg.base_url}[/dim]")
+            console.print(f"{BULLET} [label]{p_cfg.name}[/label] ([brand]{p_key}[/brand]) {EM_DASH} [dim]{p_cfg.base_url}[/dim]")
             if success:
                 if not model_details:
                     console.print("  [dim]No models returned by endpoint.[/dim]\n")
@@ -538,11 +539,11 @@ async def cmd_models(engine: Any, args: List[str]):
         console.print(
             f"{mark} [label]{key}[/label] -> {model_cfg.name} via "
             f"[brand]{provider_name}[/brand] ([dim]{model_cfg.model_id}[/dim]) "
-            f"[dim]— {model_cfg.context_window:,} token context[/dim]{roles_str}{tags_str}{desc_str}"
+            f"[dim]{EM_DASH} {model_cfg.context_window:,} token context[/dim]{roles_str}{tags_str}{desc_str}"
         )
     
     if active == "auto":
-        console.print(f"\n[brand]🔀 Active Mode: AUTO-ROUTING[/brand] (using router model: [accent]{cfg.router_model or 'none'}[/accent])")
+        console.print(f"\n[brand]{SHUFFLE} Active Mode: AUTO-ROUTING[/brand] (using router model: [accent]{cfg.router_model or 'none'}[/accent])")
 
     console.print(
         "\nUsage: [warning]/models[/warning] | "
@@ -636,13 +637,13 @@ async def cmd_switch(engine: Any, args: List[str]):
         current_idx = 0
 
         def render_switch_menu(selected_idx: int):
-            lines = ["\n[success]Select a Model or Mode to Switch to:[/success]", "[dim]Use ↑/↓ Arrow Keys to navigate, Enter to select:[/dim]\n"]
+            lines = ["\n[success]Select a Model or Mode to Switch to:[/success]", f"[dim]Use {ARROW_UP}/{ARROW_DOWN} Arrow Keys to navigate, Enter to select:[/dim]\n"]
             for idx, key in enumerate(model_keys):
                 if key.startswith("auto"):
                     is_active = (active_key == "auto")
                     active_tag = " [accent](active)[/accent]" if is_active else ""
                     router_tag = f" [dim](using router: {cfg.router_model or 'none'})[/dim]"
-                    item_text = f"🔀 Auto-Routing Mode{active_tag}{router_tag}"
+                    item_text = f"{SHUFFLE} Auto-Routing Mode{active_tag}{router_tag}"
                 else:
                     m_cfg = models_dict[key]
                     provider_cfg = cfg.providers.get(m_cfg.provider)
@@ -652,9 +653,9 @@ async def cmd_switch(engine: Any, args: List[str]):
                     item_text = f"{m_cfg.name} ({key}) via {p_name}{active_tag}"
                 
                 if idx == selected_idx:
-                    lines.append(f"  [accent]❯ 🔘 {item_text}[/accent]")
+                    lines.append(f"  [accent]{ANGLE_RIGHT} {RADIO_ON} {item_text}[/accent]")
                 else:
-                    lines.append(f"    [dim]⚪ {item_text}[/dim]")
+                    lines.append(f"    [dim]{RADIO_OFF} {item_text}[/dim]")
             return Text.from_markup("\n".join(lines))
 
         def interactive_switch():

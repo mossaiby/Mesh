@@ -4,6 +4,7 @@ import sys
 import time
 from typing import Dict, Any, List, Optional, Tuple
 from theme import console
+from glyphs import ROCKET
 
 
 class JobEntry:
@@ -99,7 +100,7 @@ class JobManager:
             entry.start_logging_tasks()
             self.jobs[job_id] = entry
 
-            console.print(f"[success]🚀 Background Job #{job_id} Started (PID: {proc.pid}):[/success] {full_cmd}")
+            console.print(f"[success]{ROCKET} Background Job #{job_id} Started (PID: {proc.pid}):[/success] {full_cmd}")
 
             return {
                 "status": "started",

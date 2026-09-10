@@ -1,6 +1,7 @@
 from typing import Dict, Any, List
 from tools.base import BaseTool
 from theme import console
+from glyphs import BLOCKED, CHECK, EM_DASH, PLAY
 
 
 class TodoTool(BaseTool):
@@ -89,13 +90,13 @@ class TodoTool(BaseTool):
             deps_str = f" [dim](depends on: {', '.join(str(d) for d in item['depends_on'])})[/dim]" if item["depends_on"] else ""
 
             if status == "done":
-                console.print(f"  [success]✔[/success] [muted]{item['id']}. {item['task']}[/muted]{deps_str}")
+                console.print(f"  [success]{CHECK}[/success] [muted]{item['id']}. {item['task']}[/muted]{deps_str}")
             elif status == "ready":
-                console.print(f"  [warning]▶[/warning] [text]{item['id']}. {item['task']}[/text]{deps_str}")
+                console.print(f"  [warning]{PLAY}[/warning] [text]{item['id']}. {item['task']}[/text]{deps_str}")
             else:
                 blockers = self._blocking_deps(item)
                 blocked_by = ", ".join(f"#{b['id']}" for b in blockers)
-                console.print(f"  [error]⊘[/error] [dim]{item['id']}. {item['task']} — blocked by {blocked_by}[/dim]")
+                console.print(f"  [error]{BLOCKED}[/error] [dim]{item['id']}. {item['task']} {EM_DASH} blocked by {blocked_by}[/dim]")
 
         total = len(self._todos)
         done = sum(1 for i in self._todos if i["completed"])

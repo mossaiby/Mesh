@@ -3,6 +3,7 @@ from typing import Dict, Any, List, Optional
 from config import ConfigManager
 import delegation
 from theme import console
+from glyphs import PEOPLE, PLAY
 
 
 SQUAD_ROLES = [
@@ -35,7 +36,7 @@ async def run_squad_pipeline(
     Coordinates 4 specialized sub-agent personas (Architect -> Coder -> Test Engineer -> Security Auditor)
     in an automated sequential pipeline to complete a task.
     """
-    console.print(f"\n[brand]👥 Multi-Role Autonomous Task Squad:[/brand] Starting 4-stage pipeline for:\n  [italic]{task}[/italic]\n")
+    console.print(f"\n[brand]{PEOPLE} Multi-Role Autonomous Task Squad:[/brand] Starting 4-stage pipeline for:\n  [italic]{task}[/italic]\n")
 
     pipeline_outputs: List[Dict[str, Any]] = []
     accumulated_context = f"Main Task: {task}\n"
@@ -45,7 +46,7 @@ async def run_squad_pipeline(
         role_name = step["role"]
         role_prompt = step["prompt"]
 
-        console.print(f"  [accent]▶ Stage [{role_name}]:[/accent] Executing stage...")
+        console.print(f"  [accent]{PLAY} Stage [{role_name}]:[/accent] Executing stage...")
 
         stage_task = f"{role_prompt}\n\nPipeline Context So Far:\n{accumulated_context}\n\nDeliverable for {role_name}: Perform your specific role for the task."
 

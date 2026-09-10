@@ -6,6 +6,7 @@ from config import ConfigManager
 from providers import get_provider
 from render.stream_renderer import StreamRenderer
 from theme import console
+from glyphs import ARROW_TIP_RIGHT, CHECK_BOX, OUTBOX, VS16, WARNING
 
 
 DELEGATE_SYSTEM_PROMPT = (
@@ -110,7 +111,7 @@ async def run_delegated_task(
         depth_tag = f"[dim](depth {depth})[/dim] " if depth > 1 else ""
 
         if verbose:
-            console.print(f"[brand]📤 Delegating task to sub-agent:[/brand] {depth_tag}{task}")
+            console.print(f"[brand]{OUTBOX} Delegating task to sub-agent:[/brand] {depth_tag}{task}")
 
         for turn in range(turns_limit):
             turns_used = turn + 1
@@ -158,7 +159,7 @@ async def run_delegated_task(
 
             if not active_calls:
                 if verbose:
-                    console.print(f"[brand]✅ Sub-agent finished after {turns_used} turn(s).[/brand] {depth_tag}")
+                    console.print(f"[brand]{CHECK_BOX} Sub-agent finished after {turns_used} turn(s).[/brand] {depth_tag}")
                 return {
                     "status": "success",
                     "report": content_text.strip() or "(Sub-agent returned no final report.)",
@@ -184,7 +185,7 @@ async def run_delegated_task(
                 for tc in active_calls:
                     name_esc = escape(str(tc.get("name", "")))
                     args_esc = escape(str(tc.get("args", "")))
-                    console.print(f"  [dim]↳ {depth_tag}sub-agent tool call:[/dim] [tool]{name_esc}[/tool]([dim]{args_esc}[/dim])")
+                    console.print(f"  [dim]{ARROW_TIP_RIGHT} {depth_tag}sub-agent tool call:[/dim] [tool]{name_esc}[/tool]([dim]{args_esc}[/dim])")
 
             result_strs = await _execute_turn_tool_calls(tool_registry, active_calls)
 
@@ -199,7 +200,7 @@ async def run_delegated_task(
                 })
 
         if verbose:
-            console.print(f"[warning]⚠️   Sub-agent hit the {turns_limit}-turn limit without finishing.[/warning] {depth_tag}")
+            console.print(f"[warning]{WARNING}{VS16}   Sub-agent hit the {turns_limit}-turn limit without finishing.[/warning] {depth_tag}")
         return {
             "status": "max_turns_reached",
             "report": (

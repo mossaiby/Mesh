@@ -64,6 +64,7 @@ from skills import SkillRegistry, PythonCodingSkill
 from tool_orchestrator import ToolOrchestrator
 from inference_coordinator import InferenceCoordinator
 from theme import console
+from glyphs import LIGHTNING, SCROLL
 
 
 class MeshEngine:
@@ -226,7 +227,7 @@ class MeshEngine:
             console.print(f"[error]Failed to read script file '{filepath}': {e}[/error]")
             return
 
-        console.print(f"[brand]📜 Executing script file:[/brand] [label]{filepath}[/label] ({len(lines)} lines)\n")
+        console.print(f"[brand]{SCROLL} Executing script file:[/brand] [label]{filepath}[/label] ({len(lines)} lines)\n")
 
         for idx, line in enumerate(lines, 1):
             console.print(f"[info]Script [{idx}/{len(lines)}]> [/info] {line}")
@@ -256,7 +257,7 @@ class MeshEngine:
         resume_latest: bool = False
     ):
         console.print(
-            f"[brand]⚡ Mesh: A Modern, Modular and Hackable AI Harness[/brand] "
+            f"[brand]{LIGHTNING} Mesh: A Modern, Modular and Hackable AI Harness[/brand] "
             f"([dim]v{__import__('version').__version__}[/dim])\n"
             f"Developed by [accent]Farshid Mossaiby[/accent] ([accent]https://github.com/mossaiby/Mesh[/accent])\n"
         )

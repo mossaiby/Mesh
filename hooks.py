@@ -5,6 +5,7 @@ import asyncio
 from typing import Dict, Any, Optional, List
 from theme import console
 from config import default_timeout
+from glyphs import LIGHTNING
 
 
 class HookManager:
@@ -64,7 +65,7 @@ class HookManager:
             if res.returncode != 0:
                 output = (res.stdout + "\n" + res.stderr).strip()
                 if output:
-                    console.print(f"[warning]⚡ Post-Edit Hook ({cmd[0]}):[/warning] Found warnings in '{filepath}'")
+                    console.print(f"[warning]{LIGHTNING} Post-Edit Hook ({cmd[0]}):[/warning] Found warnings in '{filepath}'")
                     return f"[Linter/Hook Feedback from {' '.join(cmd)}]:\n{output[:1000]}"
         except Exception:
             pass

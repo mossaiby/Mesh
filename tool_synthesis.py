@@ -6,6 +6,7 @@ from typing import Dict, Any, Tuple
 from tools.base import BaseTool
 from config import APP_ROOT
 from theme import console
+from glyphs import LIGHTNING
 
 CUSTOM_TOOLS_DIR = os.path.join(APP_ROOT, "custom_tools")
 
@@ -85,7 +86,7 @@ def register_synthesized_tool(
             return False, f"Module '{name}.py' did not contain a valid BaseTool subclass instance."
 
         tool_registry.register(instantiated_tool)
-        console.print(f"[success]⚡ Synthesized Tool Registered Live:[/success] [accent]{instantiated_tool.name}[/accent] ({file_path})")
+        console.print(f"[success]{LIGHTNING} Synthesized Tool Registered Live:[/success] [accent]{instantiated_tool.name}[/accent] ({file_path})")
         return True, f"Successfully synthesized and registered tool '{instantiated_tool.name}' dynamically."
 
     except Exception as e:

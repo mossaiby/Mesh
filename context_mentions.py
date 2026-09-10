@@ -2,6 +2,7 @@ import os
 import re
 from typing import Tuple, List
 from theme import console
+from glyphs import PAPERCLIP
 
 
 def process_prompt_context_mentions(prompt: str, root_dir: str = ".") -> Tuple[str, List[str]]:
@@ -39,7 +40,7 @@ def process_prompt_context_mentions(prompt: str, root_dir: str = ".") -> Tuple[s
 
     if attached_files:
         for f_name in attached_files:
-            console.print(f"[success]📎 Attached file context for @{f_name}[/success]")
+            console.print(f"[success]{PAPERCLIP} Attached file context for @{f_name}[/success]")
 
         context_block = "\n\n".join(attachments_markdown)
         updated_prompt = f"{prompt}\n\n{context_block}"

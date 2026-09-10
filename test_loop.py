@@ -3,6 +3,7 @@ from typing import Dict, Any, Optional
 from config import ConfigManager
 import delegation
 from theme import console
+from glyphs import PARTY, REFRESH, VS16, WARNING
 
 
 async def run_iterative_test_loop(
@@ -16,7 +17,7 @@ async def run_iterative_test_loop(
     Runs command -> captures errors -> spawns repair sub-agent -> re-tests -> repeats until green.
     """
     iterations_limit = max_iterations if max_iterations is not None else config_mgr.config.turns.loop
-    console.print(f"\n[brand]🔄 Iterative Test Loop Started:[/brand] Executing '[accent]{test_command}[/accent]' (Max Iterations: {iterations_limit})\n")
+    console.print(f"\n[brand]{REFRESH} Iterative Test Loop Started:[/brand] Executing '[accent]{test_command}[/accent]' (Max Iterations: {iterations_limit})\n")
 
     shell_tool = tool_registry._tools.get("shell")
     if not shell_tool:
@@ -35,7 +36,7 @@ async def run_iterative_test_loop(
         err_msg = exec_res.get("error", "")
 
         if exit_code == 0 and not err_msg:
-            console.print(f"\n[success]🎉 All tests passed green on iteration {iteration}![/success]\n")
+            console.print(f"\n[success]{PARTY} All tests passed green on iteration {iteration}![/success]\n")
             return {
                 "status": "success",
                 "iterations_used": iteration,
@@ -44,7 +45,7 @@ async def run_iterative_test_loop(
             }
 
         error_output = (stdout + "\n" + stderr).strip() or err_msg
-        console.print(f"[warning]⚠️ Tests failed on iteration {iteration} (Exit Code: {exit_code}).[/warning] Spawning repair sub-agent...")
+        console.print(f"[warning]{WARNING}{VS16} Tests failed on iteration {iteration} (Exit Code: {exit_code}).[/warning] Spawning repair sub-agent...")
 
         repair_task = (
             f"The test command '{test_command}' failed with exit code {exit_code}.\n\n"

@@ -6,6 +6,7 @@ from providers import get_provider
 from render.stream_renderer import StreamRenderer
 import delegation
 from theme import console
+from glyphs import BRAIN, PLAY, TREE, WRENCH
 
 
 STRATEGY_GENERATOR_SYSTEM_PROMPT = (
@@ -96,13 +97,13 @@ async def explore_branches(
     turns_limit = max_turns if max_turns is not None else config_mgr.config.turns.agent
 
     if not strategies:
-        console.print(f"[brand]🧠 Strategy Generator:[/brand] Synthesizing {num_branches} custom mission statements for task...")
+        console.print(f"[brand]{BRAIN} Strategy Generator:[/brand] Synthesizing {num_branches} custom mission statements for task...")
         strategies = await generate_dynamic_strategies(task, config_mgr, num_branches=num_branches)
 
-    console.print(f"\n[brand]🌳 Speculative Exploration Swarm:[/brand] Launching {len(strategies)} parallel branches:\n")
+    console.print(f"\n[brand]{TREE} Speculative Exploration Swarm:[/brand] Launching {len(strategies)} parallel branches:\n")
 
     for i, strat in enumerate(strategies, 1):
-        console.print(f"  [accent]▶ Branch {i}:[/accent] {strat}")
+        console.print(f"  [accent]{PLAY} Branch {i}:[/accent] {strat}")
     console.print()
 
     async def run_branch(idx: int, strategy: str) -> Dict[str, Any]:
@@ -119,7 +120,7 @@ async def explore_branches(
         res["branch_id"] = idx + 1
 
         if debug_mode:
-            console.print(f"\n[brand]🔧 DEBUG - Branch {idx + 1} Output:[/brand]")
+            console.print(f"\n[brand]{WRENCH} DEBUG - Branch {idx + 1} Output:[/brand]")
             console.print(f"[dim]Turns Used: {res.get('turns_used', 0)} | Tool Calls: {len(res.get('tool_calls', []))}[/dim]")
             if res.get("report"):
                 console.print(f"[dim]{res['report']}[/dim]\n")

@@ -6,6 +6,7 @@ from pricing import pricing_manager
 from compaction import maybe_auto_compact, estimate_tokens, count_text_tokens
 import router
 from theme import console
+from glyphs import NO_ENTRY, SHUFFLE, TABS
 
 
 class InferenceCoordinator:
@@ -62,7 +63,7 @@ class InferenceCoordinator:
                             config_mgr=self.config_mgr
                         )
                         model_cfg, provider_cfg = self.config_mgr.get_model_and_provider(chosen_key)
-                        console.print(f"[brand]🔀 Auto-routed prompt to [label]{chosen_key}[/label] ({model_cfg.name}):[/brand] [dim]{route_reason}[/dim]")
+                        console.print(f"[brand]{SHUFFLE} Auto-routed prompt to [label]{chosen_key}[/label] ({model_cfg.name}):[/brand] [dim]{route_reason}[/dim]")
                     except Exception as e:
                         console.print(f"[error]Model Routing Error:[/error] {e}")
                         return
@@ -76,7 +77,7 @@ class InferenceCoordinator:
                 # 2. Semantic context auto-compaction
                 self.engine.messages, auto_compacted, compact_details = await maybe_auto_compact(self.engine.messages, self.config_mgr)
                 if auto_compacted:
-                    console.print(f"[warning]📑   {compact_details}[/warning]")
+                    console.print(f"[warning]{TABS}   {compact_details}[/warning]")
                     self.session_logger.log_system_event(compact_details)
                     rollback_count = max(0, len(self.engine.messages) - 1)
 
@@ -235,5 +236,5 @@ class InferenceCoordinator:
                         })
 
         except (KeyboardInterrupt, asyncio.CancelledError):
-            console.print("\n[warning]⛔ Turn cancelled by user.[/warning]\n")
+            console.print(f"\n[warning]{NO_ENTRY} Turn cancelled by user.[/warning]\n")
             self.engine.messages = self.engine.messages[:rollback_count]

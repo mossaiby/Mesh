@@ -1,5 +1,6 @@
 from typing import Dict, Any, List, Optional, Callable
 from tools.base import BaseTool
+from glyphs import CHECK, CIRCLE_OPEN
 
 
 class GoalTool(BaseTool):
@@ -111,9 +112,9 @@ class GoalTool(BaseTool):
             console.print("[label]Success Criteria:[/label]")
             for i, c in enumerate(self._criteria, 1):
                 if c["done"]:
-                    console.print(f"  [success]✔[/success] [muted]{i}. {c['text']}[/muted]")
+                    console.print(f"  [success]{CHECK}[/success] [muted]{i}. {c['text']}[/muted]")
                 else:
-                    console.print(f"  [warning]○[/warning] [text]{i}. {c['text']}[/text]")
+                    console.print(f"  [warning]{CIRCLE_OPEN}[/warning] [text]{i}. {c['text']}[/text]")
             done = sum(1 for c in self._criteria if c["done"])
             console.print(f"[accent]{done}/{len(self._criteria)} criteria met[/accent]\n")
         else:

@@ -10,17 +10,18 @@ import modes
 import test_loop
 import jobs
 from theme import console
+from glyphs import BULLET, CHAT, NO_ENTRY, PEOPLE, SCALES, TREE, VS16
 
 
 async def cmd_agent(engine: Any, args: List[str]):
     try:
         if not args:
             console.print("\n[success]Sub-Agent Swarm Workflows (/agent):[/success]")
-            console.print("  • [label]explore[/label]: Parallel speculative branch exploration (/agent explore [<num>] <task>)")
-            console.print("  • [label]squad[/label]: 4-stage pipeline (Architect -> Coder -> Tester -> Auditor) (/agent squad <task>)")
-            console.print("  • [label]consensus[/label]: Adversarial multi-model audit (/agent consensus <q> | <proposal>)")
-            console.print("  • [label]delegate[/label]: Hand task to an autonomous sub-agent (/agent delegate <task>)")
-            console.print("  • [label]advisor[/label]: Consult second opinion (/agent advisor <question>; configure model via /switch advisor)")
+            console.print(f"  {BULLET} [label]explore[/label]: Parallel speculative branch exploration (/agent explore [<num>] <task>)")
+            console.print(f"  {BULLET} [label]squad[/label]: 4-stage pipeline (Architect -> Coder -> Tester -> Auditor) (/agent squad <task>)")
+            console.print(f"  {BULLET} [label]consensus[/label]: Adversarial multi-model audit (/agent consensus <q> | <proposal>)")
+            console.print(f"  {BULLET} [label]delegate[/label]: Hand task to an autonomous sub-agent (/agent delegate <task>)")
+            console.print(f"  {BULLET} [label]advisor[/label]: Consult second opinion (/agent advisor <question>; configure model via /switch advisor)")
             console.print("\nUsage: [warning]/agent explore <task>[/warning] | [warning]/agent squad <task>[/warning] | [warning]/agent consensus <q> | <p>[/warning] | [warning]/agent delegate <task>[/warning] | [warning]/agent advisor <q>[/warning]\n")
             return
 
@@ -53,7 +54,7 @@ async def cmd_agent(engine: Any, args: List[str]):
             )
 
             if result["status"] == "success":
-                console.print("\n[success]🌳 Exploration Swarm Synthesis:[/success]\n")
+                console.print(f"\n[success]{TREE} Exploration Swarm Synthesis:[/success]\n")
                 console.print(Markdown(result['synthesis']))
                 console.print()
             else:
@@ -73,7 +74,7 @@ async def cmd_agent(engine: Any, args: List[str]):
             )
 
             if result["status"] == "success":
-                console.print("\n[success]👥 Autonomous Task Squad Final Report:[/success]\n")
+                console.print(f"\n[success]{PEOPLE} Autonomous Task Squad Final Report:[/success]\n")
                 console.print(Markdown(result['final_report']))
                 console.print()
             else:
@@ -101,7 +102,7 @@ async def cmd_agent(engine: Any, args: List[str]):
             if result["status"] == "success":
                 console.print(f"\n[label]Auditor Critique ({result['auditor_model']}):[/label]\n")
                 console.print(Markdown(result['critique']))
-                console.print(f"\n[success]⚖️ Verified Consensus Recommendation ({result['proposer_model']}):[/success]\n")
+                console.print(f"\n[success]{SCALES}{VS16} Verified Consensus Recommendation ({result['proposer_model']}):[/success]\n")
                 console.print(Markdown(result['consensus_recommendation']))
                 console.print()
             else:
@@ -172,7 +173,7 @@ async def cmd_agent(engine: Any, args: List[str]):
                 return
 
             question = " ".join(sub_args)
-            console.print(f"[brand]💬 Consulting advisor:[/brand] {question}")
+            console.print(f"[brand]{CHAT} Consulting advisor:[/brand] {question}")
 
             result = await advisor.get_advice(question=question, config_mgr=engine.config_mgr)
             if result["status"] == "error":
@@ -185,7 +186,7 @@ async def cmd_agent(engine: Any, args: List[str]):
         else:
             console.print("[error]Usage: /agent [explore|squad|consensus|delegate|advisor] <args>[/error]")
     except (KeyboardInterrupt, asyncio.CancelledError):
-        console.print("\n[warning]⛔ Agent operation cancelled by user.[/warning]\n")
+        console.print(f"\n[warning]{NO_ENTRY} Agent operation cancelled by user.[/warning]\n")
 
 
 async def cmd_jobs(engine: Any, args: List[str]):
@@ -197,7 +198,7 @@ async def cmd_jobs(engine: Any, args: List[str]):
         else:
             for j in job_list:
                 status_color = "success" if "running" in j["status"] else ("error" if "fail" in j["status"] else "dim")
-                console.print(f"  • [label]Job #{j['job_id']}[/label] (PID: {j['pid']}, Runtime: {j['runtime']}) [{status_color}]{j['status']}[/{status_color}]: [dim]{j['command']}[/dim]")
+                console.print(f"  {BULLET} [label]Job #{j['job_id']}[/label] (PID: {j['pid']}, Runtime: {j['runtime']}) [{status_color}]{j['status']}[/{status_color}]: [dim]{j['command']}[/dim]")
             console.print()
         console.print("Usage: [warning]/jobs[/warning] | [warning]/jobs log <job_id>[/warning] | [warning]/jobs stop <job_id>[/warning] | [warning]/jobs clear[/warning]\n")
         return
@@ -260,7 +261,7 @@ async def cmd_loop(engine: Any, args: List[str]):
         else:
             console.print(f"[error]{result.get('message', 'Test loop failed.')}[/error]")
     except (KeyboardInterrupt, asyncio.CancelledError):
-        console.print("\n[warning]⛔ Test loop cancelled by user.[/warning]")
+        console.print(f"\n[warning]{NO_ENTRY} Test loop cancelled by user.[/warning]")
 
 
 async def cmd_guard(engine: Any, args: List[str]):

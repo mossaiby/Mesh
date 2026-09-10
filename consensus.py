@@ -3,6 +3,7 @@ from config import ConfigManager
 from providers import get_provider
 from render.stream_renderer import StreamRenderer
 from theme import console
+from glyphs import SCALES, VS16
 
 
 AUDITOR_SYSTEM_PROMPT = (
@@ -36,7 +37,7 @@ async def get_consensus(
     if not p_model or not a_model:
         return {"status": "error", "error": "Model resolution failed for consensus workflow."}
 
-    console.print(f"\n[brand]⚖️  Multi-Model Consensus Loop:[/brand] Auditing proposal using [accent]{a_model}[/accent]...")
+    console.print(f"\n[brand]{SCALES}{VS16}  Multi-Model Consensus Loop:[/brand] Auditing proposal using [accent]{a_model}[/accent]...")
 
     renderer = StreamRenderer()
 

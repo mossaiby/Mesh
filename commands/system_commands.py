@@ -10,6 +10,7 @@ import hooks
 import jobs
 from theme import console
 from version import __version__
+from glyphs import BULLET, CHECK, EM_DASH, SMALL_TRIANGLE_RIGHT
 
 
 CONFIG_SET_MAP = {
@@ -68,7 +69,7 @@ async def cmd_help(engine: Any, args: List[str]):
         if target in commands:
             desc = commands[target]
             console.print(f"\n[success]Help for {target}:[/success]")
-            console.print(f"  [label]{target}[/label] — {escape(desc)}\n")
+            console.print(f"  [label]{target}[/label] {EM_DASH} {escape(desc)}\n")
             return
         else:
             console.print(f"[error]Unknown command '{target}'. Type /help to see available commands.[/error]\n")
@@ -79,7 +80,7 @@ async def cmd_help(engine: Any, args: List[str]):
     categorized = engine.cmd_registry.list_commands_by_category()
 
     for category, cmds in categorized.items():
-        console.print(f"[brand]▸ {category}[/brand]")
+        console.print(f"[brand]{SMALL_TRIANGLE_RIGHT} {category}[/brand]")
         cmd_labels = [f"[label]{cmd}[/label]" for cmd, _ in cmds]
         console.print(f"  {', '.join(cmd_labels)}\n")
 
@@ -132,7 +133,7 @@ async def cmd_status(engine: Any, args: List[str]):
 
     console.print(f"\n[success]=== MESH STATUS (v{__version__}) ===[/success]")
     console.print("[dim]Developed by Farshid Mossaiby | https://github.com/mossaiby/Mesh[/dim]\n")
-    console.print(f"• [label]Active Model:[/label] {model_str}")
+    console.print(f"{BULLET} [label]Active Model:[/label] {model_str}")
     console.print(f"  [dim]Provider: {p_str}[/dim]")
 
     tools_state = "[success]ENABLED[/success]" if engine.tools_enabled else "[error]DISABLED[/error]"
@@ -142,83 +143,83 @@ async def cmd_status(engine: Any, args: List[str]):
     debug_state = "[success]ON[/success]" if engine.debug_mode else "[error]OFF[/error]"
 
     schemas = engine.tool_registry.get_schemas()
-    console.print(f"• [label]Tools:[/label] {tools_state} ({len(schemas)} active schemas)")
+    console.print(f"{BULLET} [label]Tools:[/label] {tools_state} ({len(schemas)} active schemas)")
 
     indexing_tag = " [accent](indexing in background...)[/accent]" if symbol_search.symbol_indexer.is_indexing else ""
-    console.print(f"• [label]Indexed AST Symbols:[/label] {len(symbol_search.symbol_indexer.symbol_index)} codebase symbols (cache: .mesh/symbols.cache.json){indexing_tag}")
-    console.print(f"• [label]Active Branch:[/label] [accent]{engine.checkpoint_mgr.active_branch}[/accent] ({len(engine.checkpoint_mgr.checkpoints)} saved checkpoints)")
+    console.print(f"{BULLET} [label]Indexed AST Symbols:[/label] {len(symbol_search.symbol_indexer.symbol_index)} codebase symbols (cache: .mesh/symbols.cache.json){indexing_tag}")
+    console.print(f"{BULLET} [label]Active Branch:[/label] [accent]{engine.checkpoint_mgr.active_branch}[/accent] ({len(engine.checkpoint_mgr.checkpoints)} saved checkpoints)")
 
     filename, _ = project_rules.find_and_read_project_rules(".")
     proj_rules_str = f"[success]{filename}[/success]" if filename else "[dim]none[/dim]"
-    console.print(f"• [label]Project Rules:[/label] {proj_rules_str}")
+    console.print(f"{BULLET} [label]Project Rules:[/label] {proj_rules_str}")
 
-    console.print(f"• [label]Sub-Agent Tool Distillation:[/label] {distill_state}")
-    console.print(f"• [label]Repair Engine:[/label] {repair_state}")
-    console.print(f"• [label]Post-Edit Linter Hooks:[/label] {hooks_state}")
+    console.print(f"{BULLET} [label]Sub-Agent Tool Distillation:[/label] {distill_state}")
+    console.print(f"{BULLET} [label]Repair Engine:[/label] {repair_state}")
+    console.print(f"{BULLET} [label]Post-Edit Linter Hooks:[/label] {hooks_state}")
     fuzzy_state = "[success]ON[/success]" if cfg.edit_settings.fuzzy_enabled else "[error]OFF[/error]"
-    console.print(f"• [label]Fuzzy Edit Matching:[/label] {fuzzy_state} (threshold: {cfg.edit_settings.fuzzy_threshold:.2f})")
-    console.print(f"• [label]Delegation Recursion Depth:[/label] {cfg.max_delegation_depth}")
+    console.print(f"{BULLET} [label]Fuzzy Edit Matching:[/label] {fuzzy_state} (threshold: {cfg.edit_settings.fuzzy_threshold:.2f})")
+    console.print(f"{BULLET} [label]Delegation Recursion Depth:[/label] {cfg.max_delegation_depth}")
     guard_state = "[success]ON[/success]" if engine.safety_guard.enabled else "[error]OFF[/error]"
     guard_model_str = cfg.guard_model or f"{cfg.active_model} (active)"
     console.print(
-        f"• [label]Safety Guard:[/label] {guard_state} "
+        f"{BULLET} [label]Safety Guard:[/label] {guard_state} "
         f"(mode: {cfg.guard_autonomy}, model: {guard_model_str})"
     )
     advisor_model_str = cfg.advisor_model or f"{cfg.active_model} (active)"
-    console.print(f"• [label]Advisor Model:[/label] {advisor_model_str}")
+    console.print(f"{BULLET} [label]Advisor Model:[/label] {advisor_model_str}")
     router_model_str = cfg.router_model or "[dim]none set[/dim]"
-    console.print(f"• [label]Router Model:[/label] {router_model_str}")
+    console.print(f"{BULLET} [label]Router Model:[/label] {router_model_str}")
 
     proxy_url_str = cfg.network_proxy or "[dim]disabled (direct)[/dim]"
-    console.print(f"• [label]Network Proxy:[/label] {proxy_url_str}")
+    console.print(f"{BULLET} [label]Network Proxy:[/label] {proxy_url_str}")
 
     thinking_s = "[success]ON[/success]" if cfg.thinking else "[error]OFF[/error]"
-    console.print(f"• [label]Thinking / Reasoning:[/label] {thinking_s} (effort: [accent]{cfg.effort}[/accent])")
+    console.print(f"{BULLET} [label]Thinking / Reasoning:[/label] {thinking_s} (effort: [accent]{cfg.effort}[/accent])")
 
     tokens_s = "[success]ON[/success]" if cfg.show_tokens else "[error]OFF[/error]"
     cost_s = "[success]ON[/success]" if cfg.show_cost else "[error]OFF[/error]"
     stats_s = "[success]ON[/success]" if cfg.show_statistics else "[error]OFF[/error]"
-    console.print(f"• [label]Metrics Display:[/label] tokens ({tokens_s}), cost ({cost_s}), statistics ({stats_s})")
+    console.print(f"{BULLET} [label]Metrics Display:[/label] tokens ({tokens_s}), cost ({cost_s}), statistics ({stats_s})")
 
-    console.print(f"• [label]Mode:[/label] {__import__('modes').MODES[engine.current_mode].label}")
-    console.print(f"• [label]Debug Mode:[/label] {debug_state}")
+    console.print(f"{BULLET} [label]Mode:[/label] {__import__('modes').MODES[engine.current_mode].label}")
+    console.print(f"{BULLET} [label]Debug Mode:[/label] {debug_state}")
 
     skills = engine.skill_registry.list_skills()
     active_skills_count = sum(1 for s in skills.values() if s.enabled)
-    console.print(f"• [label]Skills:[/label] {active_skills_count}/{len(skills)} active")
+    console.print(f"{BULLET} [label]Skills:[/label] {active_skills_count}/{len(skills)} active")
 
     mcp_info = engine.mcp_manager.get_server_info()
     connected_mcp_count = sum(1 for details in mcp_info.values() if details["connected"])
     global_mcp_state = "[success]ENABLED[/success]" if engine.mcp_manager.global_enabled else "[error]DISABLED[/error]"
-    console.print(f"• [label]MCP Servers:[/label] {global_mcp_state} ({connected_mcp_count}/{len(mcp_info)} connected)")
+    console.print(f"{BULLET} [label]MCP Servers:[/label] {global_mcp_state} ({connected_mcp_count}/{len(mcp_info)} connected)")
 
-    console.print(f"• [label]Allowed Directories:[/label] {len(engine.permission_manager.allowed_dirs)} directories")
+    console.print(f"{BULLET} [label]Allowed Directories:[/label] {len(engine.permission_manager.allowed_dirs)} directories")
 
     est_tokens = estimate_tokens(engine.messages)
     window = max(1, cfg.models.get(cfg.active_model, cfg.models.get(cfg.router_model, list(cfg.models.values())[0])).context_window) if cfg.models else 8192
     usage_pct = int((est_tokens / window) * 100)
     autocompact_state = "[success]ON[/success]" if cfg.auto_compact else "[error]OFF[/error]"
     console.print(
-        f"• [label]Context Window:[/label] {len(engine.messages)} messages, "
+        f"{BULLET} [label]Context Window:[/label] {len(engine.messages)} messages, "
         f"~{est_tokens}/{window} est. tokens ({usage_pct}%)"
     )
     cached_str = f" ({engine.session_cached_tokens} cached)" if getattr(engine, "session_cached_tokens", 0) > 0 else ""
     console.print(
-        f"• [label]Session Usage & Cost:[/label] {engine.session_prompt_tokens} in{cached_str}, {engine.session_completion_tokens} out "
+        f"{BULLET} [label]Session Usage & Cost:[/label] {engine.session_prompt_tokens} in{cached_str}, {engine.session_completion_tokens} out "
         f"([accent]${engine.session_cost_usd:.4f} USD total[/accent])"
     )
     console.print(
-        f"• [label]Auto-Compaction:[/label] {autocompact_state} "
+        f"{BULLET} [label]Auto-Compaction:[/label] {autocompact_state} "
         f"(triggers at {int(cfg.auto_compact_threshold * 100)}%)"
     )
-    console.print(f"• [label]System Prompt Length:[/label] {len(sys_prompt)} chars (~{len(sys_prompt.split())} words)")
+    console.print(f"{BULLET} [label]System Prompt Length:[/label] {len(sys_prompt)} chars (~{len(sys_prompt.split())} words)")
 
     if engine.goal_tool.has_goal():
         snapshot = engine.goal_tool.snapshot()
         crit_str = f", {snapshot['criteria_complete']}/{snapshot['criteria_total']} criteria met" if snapshot["criteria_total"] else ""
-        console.print(f"• [label]Goal:[/label] {snapshot['goal']}{crit_str}\n")
+        console.print(f"{BULLET} [label]Goal:[/label] {snapshot['goal']}{crit_str}\n")
     else:
-        console.print("• [label]Goal:[/label] [muted]none set[/muted]\n")
+        console.print(f"{BULLET} [label]Goal:[/label] [muted]none set[/muted]\n")
 
 
 async def _handle_config_set(engine: Any, set_args: List[str]):
@@ -227,7 +228,7 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
     if not set_args:
         console.print("\n[success]Configurable System Parameters (/config set):[/success]\n")
         for cat, params in CONFIG_SET_MAP.items():
-            console.print(f"[brand]▸ Category: {cat}[/brand]")
+            console.print(f"[brand]{SMALL_TRIANGLE_RIGHT} Category: {cat}[/brand]")
             for p_name, (container_attr, sub_attr, val_type, desc) in params.items():
                 if sub_attr:
                     curr_val = getattr(getattr(cfg, container_attr), sub_attr)
@@ -235,7 +236,7 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
                     curr_val = getattr(cfg, container_attr)
                     if cat == "compact" and p_name == "threshold":
                         curr_val = f"{int(curr_val * 100)}%"
-                console.print(f"  • [label]{cat} {p_name}[/label]: [accent]{curr_val}[/accent] — [dim]{desc}[/dim]")
+                console.print(f"  {BULLET} [label]{cat} {p_name}[/label]: [accent]{curr_val}[/accent] {EM_DASH} [dim]{desc}[/dim]")
             console.print()
         console.print("Usage: [warning]/config set <category> <param> <value>[/warning] (e.g. [warning]/config set timeout web 120[/warning] or [warning]/config set retry retries 5[/warning])\n")
         return
@@ -257,7 +258,7 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
                 curr_val = getattr(cfg, container_attr)
                 if category == "compact" and p_name == "threshold":
                     curr_val = f"{int(curr_val * 100)}%"
-            console.print(f"  • [label]{category} {p_name}[/label]: [accent]{curr_val}[/accent] — [dim]{desc}[/dim]")
+            console.print(f"  {BULLET} [label]{category} {p_name}[/label]: [accent]{curr_val}[/accent] {EM_DASH} [dim]{desc}[/dim]")
         console.print(f"\nUsage: [warning]/config set {category} <param> <value>[/warning]\n")
         return
 
@@ -349,7 +350,7 @@ async def _handle_config_set(engine: Any, set_args: List[str]):
     else:
         display_val = f"{typed_val}"
 
-    console.print(f"[success]✔ Successfully set [label]{category} {param}[/label] to [accent]{display_val}[/accent].[/success]")
+    console.print(f"[success]{CHECK} Successfully set [label]{category} {param}[/label] to [accent]{display_val}[/accent].[/success]")
 
 
 async def cmd_config(engine: Any, args: List[str]):
@@ -368,18 +369,18 @@ async def cmd_config(engine: Any, args: List[str]):
         stats_s = "[success]ON[/success]" if cfg.show_statistics else "[error]OFF[/error]"
 
         console.print("\n[success]Mesh System Configuration:[/success]")
-        console.print(f"  • [label]distill[/label]: {distill_s}")
-        console.print(f"  • [label]proxy[/label]: {proxy_s}")
-        console.print(f"  • [label]repair[/label]: {repair_s}")
-        console.print(f"  • [label]hooks[/label]: {hooks_s}")
-        console.print(f"  • [label]compact[/label]: {compact_s} (threshold: {int(cfg.auto_compact_threshold * 100)}%)")
-        console.print(f"  • [label]thinking[/label]: {thinking_s}")
-        console.print(f"  • [label]effort[/label]: {effort_s}")
-        console.print(f"  • [label]tokens[/label]: {tokens_s}")
-        console.print(f"  • [label]cost[/label]: {cost_s}")
-        console.print(f"  • [label]statistics[/label]: {stats_s}")
-        console.print("  • [label]schema[/label]: Generate or update config.schema.json for IDE autocompletion")
-        console.print("  • [label]set[/label]: Fine-tune timeouts, budgets, turns, repair, retry, compaction, & edit parameters")
+        console.print(f"  {BULLET} [label]distill[/label]: {distill_s}")
+        console.print(f"  {BULLET} [label]proxy[/label]: {proxy_s}")
+        console.print(f"  {BULLET} [label]repair[/label]: {repair_s}")
+        console.print(f"  {BULLET} [label]hooks[/label]: {hooks_s}")
+        console.print(f"  {BULLET} [label]compact[/label]: {compact_s} (threshold: {int(cfg.auto_compact_threshold * 100)}%)")
+        console.print(f"  {BULLET} [label]thinking[/label]: {thinking_s}")
+        console.print(f"  {BULLET} [label]effort[/label]: {effort_s}")
+        console.print(f"  {BULLET} [label]tokens[/label]: {tokens_s}")
+        console.print(f"  {BULLET} [label]cost[/label]: {cost_s}")
+        console.print(f"  {BULLET} [label]statistics[/label]: {stats_s}")
+        console.print(f"  {BULLET} [label]schema[/label]: Generate or update config.schema.json for IDE autocompletion")
+        console.print(f"  {BULLET} [label]set[/label]: Fine-tune timeouts, budgets, turns, repair, retry, compaction, & edit parameters")
         console.print("    [dim](Usage: /config set <category> <param> <value>, e.g. /config set timeout web 120 or /config set retry retries 5)[/dim]\n")
         console.print("Usage: [warning]/config distill|proxy|repair|hooks|compact|thinking|effort|tokens|cost|statistics|schema|set [args][/warning]\n")
         return
@@ -394,7 +395,7 @@ async def cmd_config(engine: Any, args: List[str]):
         target_path = sub_args[0] if sub_args else "config.schema.json"
         from config import generate_config_schema
         generate_config_schema(target_path)
-        console.print(f"[success]✔ Generated IDE JSON Schema for Mesh config -> `{target_path}`[/success]")
+        console.print(f"[success]{CHECK} Generated IDE JSON Schema for Mesh config -> `{target_path}`[/success]")
 
     elif sub == "distill":
         if not sub_args:
@@ -579,7 +580,7 @@ async def cmd_context(engine: Any, args: List[str]):
         schemas = engine.tool_registry.get_schemas()
         if schemas:
             tool_names = [s.get("function", {}).get("name", "unnamed") for s in schemas]
-            console.print(f"  • [label]Registered ({len(tool_names)}):[/label] {', '.join(tool_names)}")
+            console.print(f"  {BULLET} [label]Registered ({len(tool_names)}):[/label] {', '.join(tool_names)}")
         else:
             console.print("  [dim]No tools currently registered.[/dim]")
     else:
@@ -600,21 +601,21 @@ async def cmd_context(engine: Any, args: List[str]):
             else:
                 target_str = "N/A"
 
-            console.print(f"• [label]{name}[/label] ({status}) ({enabled_str}) — [dim]{escape(target_str)}[/dim]")
+            console.print(f"{BULLET} [label]{name}[/label] ({status}) ({enabled_str}) {EM_DASH} [dim]{escape(target_str)}[/dim]")
 
             if details["error"]:
                 console.print(f"  [error]Error: {details['error']}[/error]")
 
             tools = details.get("tools", [])
             if not details["enabled"]:
-                console.print("  [dim](Server disabled — tools are inactive and hidden from the model)[/dim]\n")
+                console.print(f"  [dim](Server disabled {EM_DASH} tools are inactive and hidden from the model)[/dim]\n")
             elif tools:
                 console.print("  [accent]Exposed Tools:[/accent]")
                 for t in tools:
                     desc = t.get("description", "No description").strip()
                     properties = t.get("inputSchema", {}).get("properties", {})
                     args_summary = ", ".join(properties.keys()) if properties else "none"
-                    console.print(f"\n    • [text]{t['name']}[/text] [dim](arguments: {args_summary})[/dim]:")
+                    console.print(f"\n    {BULLET} [text]{t['name']}[/text] [dim](arguments: {args_summary})[/dim]:")
                     if desc:
                         console.print(Markdown(desc))
                 console.print()
@@ -653,7 +654,7 @@ async def cmd_tools(engine: Any, args: List[str]):
             fn = s.get("function", {})
             name = fn.get("name", "unnamed")
             desc = fn.get("description", "No description")
-            console.print(f"  • [label]{name}[/label]: {desc}")
+            console.print(f"  {BULLET} [label]{name}[/label]: {desc}")
         console.print("\nUsage: [warning]/tools on[/warning] | [warning]/tools off[/warning]\n")
         return
 
@@ -674,7 +675,7 @@ async def cmd_skills(engine: Any, args: List[str]):
         console.print(f"\n[success]Registered Skills ({len(skills)}):[/success]\n")
         for name, skill in skills.items():
             state_str = "[success]ENABLED[/success]" if skill.enabled else "[error]DISABLED[/error]"
-            console.print(f"  • [label]{name}[/label] ({state_str}): {skill.description}")
+            console.print(f"  {BULLET} [label]{name}[/label] ({state_str}): {skill.description}")
         console.print("\nUsage: [warning]/skills enable <name>[/warning] | [warning]/skills disable <name>[/warning]\n")
         return
 
@@ -699,7 +700,7 @@ async def cmd_dirs(engine: Any, args: List[str]):
     if not args:
         console.print(f"\n[success]Allowed Working Directories ({len(pm.allowed_dirs)}):[/success]\n")
         for d in pm.allowed_dirs:
-            console.print(f"  • [accent]{d}[/accent]")
+            console.print(f"  {BULLET} [accent]{d}[/accent]")
         console.print("\nUsage: [warning]/dirs add <path>[/warning] | [warning]/dirs remove <path>[/warning] | [warning]/dirs clear[/warning]\n")
         return
 
@@ -765,21 +766,21 @@ async def cmd_mcps(engine: Any, args: List[str]):
         else:
             target_str = "N/A"
 
-        console.print(f"• [label]{name}[/label] ({status}) ({enabled_str}) — [dim]{escape(target_str)}[/dim]")
+        console.print(f"{BULLET} [label]{name}[/label] ({status}) ({enabled_str}) {EM_DASH} [dim]{escape(target_str)}[/dim]")
 
         if details["error"]:
             console.print(f"  [error]Error: {details['error']}[/error]")
 
         tools = details.get("tools", [])
         if not details["enabled"]:
-            console.print("  [dim](Server disabled — tools are inactive and hidden from the model)[/dim]\n")
+            console.print(f"  [dim](Server disabled {EM_DASH} tools are inactive and hidden from the model)[/dim]\n")
         elif tools:
             console.print("  [accent]Exposed Tools:[/accent]")
             for t in tools:
                 desc = t.get("description", "No description").strip()
                 properties = t.get("inputSchema", {}).get("properties", {})
                 args_summary = ", ".join(properties.keys()) if properties else "none"
-                console.print(f"\n    • [text]{t['name']}[/text] [dim](arguments: {args_summary})[/dim]:")
+                console.print(f"\n    {BULLET} [text]{t['name']}[/text] [dim](arguments: {args_summary})[/dim]:")
                 if desc:
                     console.print(Markdown(desc))
             console.print()

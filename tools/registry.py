@@ -5,6 +5,7 @@ from typing import Dict, List, Any, Optional
 from tools.base import BaseTool
 import repair
 from theme import console
+from glyphs import BANDAGE, REFRESH
 
 
 def _extract_error(raw_result: Any) -> Optional[str]:
@@ -109,7 +110,7 @@ class ToolRegistry:
             for attempt in range(1, engine.mechanical_retries + 1):
                 await asyncio.sleep(engine.mechanical_delay * attempt)
                 console.print(
-                    f"[warning]🔄 Repair:[/warning] transient error from "
+                    f"[warning]{REFRESH} Repair:[/warning] transient error from "
                     f"'{tool_name}', retrying ({attempt}/{engine.mechanical_retries})..."
                 )
                 result, err = await self._run_tool_once(tool, tool_name, kwargs)
@@ -125,7 +126,7 @@ class ToolRegistry:
             error_message=err
         )
         if corrected is not None and corrected != kwargs:
-            console.print(f"[warning]🩹 Repair:[/warning] retrying '{tool_name}' with auto-corrected arguments.")
+            console.print(f"[warning]{BANDAGE} Repair:[/warning] retrying '{tool_name}' with auto-corrected arguments.")
             new_result, new_err = await self._run_tool_once(tool, tool_name, corrected)
             if new_err is None:
                 notes.append("Auto-repaired the failed arguments and succeeded on retry.")
@@ -150,7 +151,7 @@ class ToolRegistry:
             if close:
                 resolved_name = close[0]
                 repair_notes.append(f"Tool '{tool_name}' not found - auto-corrected to '{resolved_name}'.")
-                console.print(f"[warning]🔄 Repair:[/warning] unknown tool '{tool_name}', using closest match '{resolved_name}'.")
+                console.print(f"[warning]{REFRESH} Repair:[/warning] unknown tool '{tool_name}', using closest match '{resolved_name}'.")
             else:
                 return json.dumps({"error": f"Tool '{tool_name}' not registered."})
 
@@ -175,7 +176,7 @@ class ToolRegistry:
                 if corrected is not None:
                     kwargs = corrected
                     repair_notes.append("Malformed tool arguments were auto-repaired before execution.")
-                    console.print(f"[warning]🩹 Repair:[/warning] repaired malformed arguments for '{resolved_name}'.")
+                    console.print(f"[warning]{BANDAGE} Repair:[/warning] repaired malformed arguments for '{resolved_name}'.")
                 else:
                     return json.dumps({"error": f"Error executing tool '{resolved_name}': {parse_error}"})
             else:

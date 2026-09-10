@@ -1,6 +1,7 @@
 import os
 import time
 from typing import Optional
+from glyphs import INFO, LIGHTNING, PERSON, ROBOT, VS16
 
 
 class SessionLogger:
@@ -51,13 +52,13 @@ class SessionLogger:
 
     def log_user_prompt(self, prompt: str):
         timestamp = time.strftime("%H:%M:%S")
-        entry = f"## 👤 User Prompt (`{timestamp}`)\n\n{prompt.strip()}"
+        entry = f"## {PERSON} User Prompt (`{timestamp}`)\n\n{prompt.strip()}"
         self._write_entry(entry)
 
     def log_assistant_response(self, response: str, model_name: str = ""):
         timestamp = time.strftime("%H:%M:%S")
         model_str = f" (`{model_name}`)" if model_name else ""
-        entry = f"## 🤖 Assistant Response{model_str} (`{timestamp}`)\n\n{response.strip()}"
+        entry = f"## {ROBOT} Assistant Response{model_str} (`{timestamp}`)\n\n{response.strip()}"
         self._write_entry(entry)
 
     def log_tool_call(self, tool_name: str, arguments_json: str, result_str: str):
@@ -72,7 +73,7 @@ class SessionLogger:
             res_display = res_display[:10000] + "\n... (truncated log output)"
 
         entry = (
-            f"### ⚡ Tool Execution: **`{tool_name}`** (`{timestamp}`)\n\n"
+            f"### {LIGHTNING} Tool Execution: **`{tool_name}`** (`{timestamp}`)\n\n"
             f"**Arguments**:\n```json\n{args_formatted}\n```\n\n"
             f"**Result**:\n```json\n{res_display}\n```"
         )
@@ -80,5 +81,5 @@ class SessionLogger:
 
     def log_system_event(self, event_text: str):
         timestamp = time.strftime("%H:%M:%S")
-        entry = f"> ℹ️ **System Event** (`{timestamp}`): {event_text.strip()}"
+        entry = f"> {INFO}{VS16} **System Event** (`{timestamp}`): {event_text.strip()}"
         self._write_entry(entry)
