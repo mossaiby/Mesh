@@ -7,6 +7,7 @@ import asyncio
 import threading
 from typing import Dict, Any, List, Optional, Tuple, Callable
 from theme import console
+from ignored_dirs import IGNORED_DIRS, filter_dirs
 
 
 LANGUAGE_EXTENSIONS: Dict[str, str] = {
@@ -49,11 +50,9 @@ CACHE_DIR = ".mesh"
 CACHE_FILE = "symbols.cache.json"
 CACHE_VERSION = 1
 
-IGNORED_DIRS = frozenset({
-    ".git", "__pycache__", ".venv", "venv", "custom_tools",
-    "node_modules", "target", "build", ".mesh", "dist", ".tox",
-    ".pytest_cache", ".hypothesis"
-})
+# IGNORED_DIRS now lives in ignored_dirs.py as the single shared source of
+# truth for every directory-walking tool; re-imported here for backwards
+# compatibility with anything that still does `from symbol_search import IGNORED_DIRS`.
 
 
 def get_tree_sitter_parser(lang_name: str) -> Optional[Any]:
@@ -286,7 +285,7 @@ class SymbolIndexer:
         cache_modified = False
 
         for root, dirs, files in os.walk(root_dir):
-            dirs[:] = [d for d in dirs if d not in IGNORED_DIRS and not d.startswith(".")]
+            dirs[:] = filter_dirs(dirs)
             for file in files:
                 ext = os.path.splitext(file)[1].lower()
                 if ext in LANGUAGE_EXTENSIONS:

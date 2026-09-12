@@ -1,5 +1,6 @@
 import asyncio
 import json
+import re
 from typing import Dict, Any, Optional, Tuple
 from config import ConfigManager
 from providers import get_provider
@@ -57,6 +58,98 @@ def _safe_parse_json(raw: str) -> Dict[str, Any]:
             return {}
 
     return data if isinstance(data, dict) else {}
+
+
+# --- Deterministic pre-filter -----------------------------------------------
+#
+# The LLM-backed assessment below is the primary safety mechanism, but it has
+# two real weaknesses: it can be wrong or manipulated (a jailbroken or just
+# mistaken guard-model verdict is the only thing standing between a bad tool
+# call and execution), and it's off entirely by default (`guard_enabled:
+# false`), at which point `SafetyGuard.assess()` is never even called - see
+# `tools/registry.py`. Neither of those should be able to let through a
+# genuinely catastrophic action.
+#
+# This is a small, dependency-free, regex-based safety net for the handful of
+# command patterns that have essentially no legitimate everyday use and are
+# unambiguous enough to hardcode: recursive deletes of broad paths, piping a
+# remote script straight into a shell, disk-formatting/fork-bomb style
+# commands, and so on. It runs unconditionally in `SafetyGuard.check()`,
+# before the `enabled` flag is even consulted - see there for how the two
+# layers combine.
+#
+# This is deliberately narrow. It is not a substitute for the LLM guard (it
+# has no situational judgment at all) and it is not meant to catch "medium"
+# risk - just the handful of things that should never be automated no matter
+# what.
+
+_DENY_COMMAND_PATTERNS = [
+    (re.compile(r"\brm\s+(?:-\w*r\w*f\w*|-\w*f\w*r\w*)\s+(?:/|/\*|~|~/\*|\$HOME)\s*(?:$|[;&|])", re.IGNORECASE),
+     "a recursive force-delete targeting the root, home directory, or an entire drive"),
+    (re.compile(r"\brm\b[^\n]*--no-preserve-root", re.IGNORECASE),
+     "a recursive delete with --no-preserve-root"),
+    (re.compile(r"\b(?:curl|wget)\b[^\n|]*\|\s*(?:sudo\s+)?(?:bash|sh|zsh|python[0-9.]*)\b", re.IGNORECASE),
+     "piping a remotely-downloaded script straight into a shell/interpreter"),
+    (re.compile(r"\b(?:iwr|invoke-webrequest|curl)\b[^\n|]*\|\s*iex\b", re.IGNORECASE),
+     "downloading and executing a remote script via PowerShell (`| iex`)"),
+    (re.compile(r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;\s*:", re.IGNORECASE),
+     "a classic shell fork bomb"),
+    (re.compile(r"\bmkfs(?:\.\w+)?\b", re.IGNORECASE),
+     "formatting a filesystem/device"),
+    (re.compile(r"\bdd\b[^\n]*\bof=/dev/(?:sd|nvme|hd|disk)", re.IGNORECASE),
+     "writing raw data directly onto a physical disk device"),
+    (re.compile(r"\bchmod\b\s+(?:-R\s+)?777\s+/(?:\s|$)", re.IGNORECASE),
+     "recursively opening permissions on the root filesystem"),
+    (re.compile(r"\b(?:shutdown\b.*-h\s+now|reboot\s+--force|halt\s+--force)\b", re.IGNORECASE),
+     "forcing an immediate system shutdown/reboot"),
+]
+
+_ASK_COMMAND_PATTERNS = [
+    (re.compile(r"\bgit\s+push\b[^\n]*(?:--force(?!-with-lease)\b|(?<!\S)-f\b)", re.IGNORECASE),
+     "a hard force-push (not --force-with-lease) that can silently overwrite a collaborator's history"),
+]
+
+_PROTECTED_BRANCHES = {"main", "master", "prod", "production", "release"}
+
+
+def static_precheck(tool_name: str, arguments: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    """Checks a tool call against the hardcoded rules above.
+
+    Returns a guard-result dict (same shape as `SafetyGuard.assess()`'s
+    return value, plus `"source": "static"`) if a rule matched, or None if
+    nothing fired - in which case the caller falls through to the LLM guard
+    (if enabled) or to a plain allow (if not).
+    """
+    command = arguments.get("command") if tool_name in ("shell", "job") else None
+    if isinstance(command, str) and command.strip():
+        for pattern, description in _DENY_COMMAND_PATTERNS:
+            if pattern.search(command):
+                return {
+                    "risk": "high",
+                    "verdict": "deny",
+                    "reason": f"Static safety rule matched: {description}.",
+                    "source": "static",
+                }
+        for pattern, description in _ASK_COMMAND_PATTERNS:
+            if pattern.search(command):
+                return {
+                    "risk": "medium",
+                    "verdict": "ask",
+                    "reason": f"Static safety rule matched: {description}.",
+                    "source": "static",
+                }
+
+    if tool_name == "git_push" and arguments.get("force"):
+        branch = str(arguments.get("branch") or "").strip().lower()
+        if branch in _PROTECTED_BRANCHES:
+            return {
+                "risk": "medium",
+                "verdict": "ask",
+                "reason": f"Static safety rule matched: force-pushing over the protected branch '{branch}'.",
+                "source": "static",
+            }
+
+    return None
 
 
 class SafetyGuard:
@@ -120,10 +213,37 @@ class SafetyGuard:
         }
 
     async def check(self, tool_name: str, arguments: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
+        # The static safety net always runs, regardless of `self.enabled` or
+        # of session-level trust - see the module-level docstring above
+        # `static_precheck` for why. A hard "deny" here is final.
+        static_hit = static_precheck(tool_name, arguments)
+        if static_hit is not None and static_hit["verdict"] == "deny":
+            console.print(
+                f"[error]{SHIELD}{VS16}   Safety Guard BLOCKED tool '[tool]{tool_name}[/tool]' "
+                f"(static rule):[/error] {static_hit['reason']}"
+            )
+            return False, static_hit
+
         if tool_name in self._session_trusted_tools:
             return True, {"risk": "low", "verdict": "allow", "reason": "Trusted for this session by the user."}
 
+        if static_hit is not None:
+            # A static "ask" rule fired - resolve it the same way an LLM
+            # "ask" verdict would be, even if the LLM guard itself is
+            # disabled or configured with a different model.
+            return await self._resolve_verdict(tool_name, arguments, static_hit)
+
+        if not self.enabled:
+            return True, {
+                "risk": "unknown",
+                "verdict": "allow",
+                "reason": "Safety Guard (LLM layer) is disabled; no static rule matched.",
+            }
+
         assessment = await self.assess(tool_name, arguments)
+        return await self._resolve_verdict(tool_name, arguments, assessment)
+
+    async def _resolve_verdict(self, tool_name: str, arguments: Dict[str, Any], assessment: Dict[str, Any]) -> Tuple[bool, Dict[str, Any]]:
         risk = assessment.get("risk", "unknown")
         verdict = assessment.get("verdict")
         reason = assessment.get("reason", "")

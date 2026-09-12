@@ -14,6 +14,7 @@ from file_history import file_history_tracker
 from hooks import hook_manager
 from config import default_timeout
 import symbol_search
+from ignored_dirs import IGNORED_DIRS, filter_dirs, path_is_ignored
 
 
 def compute_line_hash(line: str) -> str:
@@ -582,6 +583,11 @@ class GlobTool(BaseTool):
         try:
             search_pattern = os.path.join(root_dir, pattern)
             matches = glob.glob(search_pattern, recursive=True)
+            # glob.glob() has no way to prune a directory mid-walk, so a
+            # pattern like '**/*.py' still descends into .venv/node_modules
+            # internally - filter those out of the results here so callers
+            # never see (or spend tokens reading) dependency-tree noise.
+            matches = [m for m in matches if not path_is_ignored(m)]
             return {"pattern": pattern, "matches": matches[:100], "count": len(matches)}
         except Exception as e:
             return {"error": f"Glob search failed: {str(e)}"}
@@ -625,11 +631,7 @@ class GrepTool(BaseTool):
         "required": ["pattern"]
     }
 
-    IGNORED_DIRS = frozenset({
-        ".git", "__pycache__", ".venv", "venv", "node_modules",
-        "target", "build", ".mesh", "dist", ".tox", ".pytest_cache",
-        ".hypothesis", ".idea", ".vscode"
-    })
+    IGNORED_DIRS = IGNORED_DIRS  # re-exported from ignored_dirs.py, the shared source of truth
 
     def __init__(self, permission_manager: Optional[PermissionManager] = None):
         self.permission_manager = permission_manager or default_permission_manager
@@ -695,7 +697,7 @@ class GrepTool(BaseTool):
             files_to_search.append((target_path, rel_name))
         else:
             for root, dirs, files in os.walk(target_path):
-                dirs[:] = [d for d in dirs if d not in self.IGNORED_DIRS and not d.startswith(".")]
+                dirs[:] = filter_dirs(dirs)
                 for file in files:
                     if file_pattern and not fnmatch.fnmatch(file, file_pattern):
                         continue

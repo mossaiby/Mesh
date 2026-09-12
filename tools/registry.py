@@ -187,7 +187,7 @@ class ToolRegistry:
         # Safety Guard
         guard = self.safety_guard
         guard_info: Optional[Dict[str, Any]] = None
-        if getattr(tool, "requires_guard", False) and guard is not None and guard.enabled:
+        if getattr(tool, "requires_guard", False) and guard is not None:
             allowed, guard_info = await guard.check(resolved_name, kwargs)
             if not allowed:
                 return json.dumps({
