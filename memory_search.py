@@ -5,6 +5,7 @@ from providers import get_provider
 from render.stream_renderer import StreamRenderer
 from theme import console
 from glyphs import CHECK_BOX, MAG_LEFT
+from local_search import embedding_search, DEFAULT_MIN_SCORE
 
 
 MEMORY_SEARCH_SYSTEM_PROMPT = (
@@ -56,10 +57,10 @@ async def semantic_memory_search(
     verbose: bool = False
 ) -> Dict[str, Any]:
     if not memory:
-        return {"status": "empty", "matches": [], "answer": None}
+        return {"status": "empty", "method": "llm", "matches": [], "answer": None}
 
     if not query or not query.strip():
-        return {"status": "error", "matches": [], "answer": None, "error": "Query is required."}
+        return {"status": "error", "method": "llm", "matches": [], "answer": None, "error": "Query is required."}
 
     messages = [
         {"role": "system", "content": MEMORY_SEARCH_SYSTEM_PROMPT},
@@ -72,7 +73,7 @@ async def semantic_memory_search(
     try:
         model_cfg, provider_cfg = config_mgr.get_active_model_and_provider()
     except Exception as e:
-        return {"status": "error", "matches": [], "answer": None, "error": f"Configuration error: {e}"}
+        return {"status": "error", "method": "llm", "matches": [], "answer": None, "error": f"Configuration error: {e}"}
 
     provider = get_provider(model_cfg, provider_cfg, config_mgr)
     renderer = StreamRenderer()
@@ -83,12 +84,13 @@ async def semantic_memory_search(
     try:
         raw_text, _ = await renderer.render_stream(provider.stream_chat(messages))
     except Exception as e:
-        return {"status": "error", "matches": [], "answer": None, "error": f"Memory search failed: {e}"}
+        return {"status": "error", "method": "llm", "matches": [], "answer": None, "error": f"Memory search failed: {e}"}
 
     data = _safe_parse_json(raw_text)
     if not data:
         return {
             "status": "error",
+            "method": "llm",
             "matches": [],
             "answer": None,
             "error": "Could not parse a structured result from the model's response."
@@ -112,4 +114,28 @@ async def semantic_memory_search(
     if verbose:
         console.print(f"[brand]{CHECK_BOX} Found {len(clean_matches)} relevant memory entr{'y' if len(clean_matches) == 1 else 'ies'}.[/brand]")
 
-    return {"status": "ok", "matches": clean_matches, "answer": answer}
+    return {"status": "ok", "method": "llm", "matches": clean_matches, "answer": answer}
+
+
+def local_memory_search(query: str, memory: Dict[str, Any], verbose: bool = False) -> Dict[str, Any]:
+    """The fast, free, offline alternative to `semantic_memory_search()` above -
+    see `local_search.py` for what it actually does and its trade-offs versus
+    the LLM approach. Synchronous and side-effect free (no network, no model
+    call), so it's cheap enough to always try first if desired."""
+    if not memory:
+        return {"status": "empty", "method": "embedding", "matches": [], "answer": None}
+
+    if not query or not query.strip():
+        return {"status": "error", "method": "embedding", "matches": [], "answer": None, "error": "Query is required."}
+
+    if verbose:
+        console.print(f"[brand]{MAG_LEFT} Searching memory locally (embedding) for:[/brand] {query}")
+
+    matches = embedding_search(query, memory)
+
+    if verbose:
+        console.print(f"[brand]{CHECK_BOX} Found {len(matches)} relevant memory entr{'y' if len(matches) == 1 else 'ies'} locally.[/brand]")
+
+    # No LLM involved, so there's no synthesized natural-language answer -
+    # just the ranked matches themselves.
+    return {"status": "ok", "method": "embedding", "matches": matches, "answer": None}

@@ -73,3 +73,12 @@ data.db
 
 # Mesh internal cache & storage
 .mesh/
+
+# Mesh runtime artifacts (created by actually running/testing the CLI, not
+# part of the source tree - memory.json/notes.md/session.md are the default
+# filenames for the memory, note, and session-logging tools; sessions/ holds
+# saved/resumable disk sessions from -r/--resume)
+memory.json
+notes.md
+session.md
+sessions/
