@@ -21,15 +21,15 @@ A modern, modular and hackable AI CLI harness written in Python. Mesh connects t
 - **Disk-Backed Session Save & Resume (`/session`)** — Save full conversation state, goals, todo graph, notes, memory, active mode, metrics, and checkpoints to disk under `sessions/<name>.json`. Resume anytime with `/session load <name>`, `python main.py --session <name>`, or `python main.py --resume`.
 - **Markdown Session Logging (`/log`)** — Stream clean, structured Markdown transcripts of user prompts, assistant responses, and tool executions to a log file (`session.md` or custom path) via CLI `--log` or `/log on <path>`.
 - **Operating Modes (`/mode`)** — `build` (full access, default), `plan` and `review` (read-only workspace inspection, no writes/shell/delegation/MCP), `chat` (conversational Q&A, brainstorming, and research with web search, fetch, calculator, advisor, and memory), and `yolo` (full access, no confirmation prompts for ambiguous-risk actions — high-risk actions are still always blocked).
-- **Safety Guard (`/guard`)** — An LLM-backed risk assessor that reviews tool calls before execution, can run in `supervised` or `autonomous` mode, supports per-session tool trust, and always blocks genuinely high-risk actions regardless of mode.
+- **Safety Guard (`/guard`)** — A two-layer defense: a small, dependency-free static rule set (`rm -rf /`, piping a remote script into a shell, disk-formatting commands, force-pushing a protected branch, etc.) always runs first and blocks unambiguously catastrophic actions even if the LLM layer below is disabled, plus an LLM-backed risk assessor that reviews everything else, can run in `supervised` or `autonomous` mode, and supports per-session tool trust.
 - **Directory Permissions (`/dirs`)** — A `PermissionManager` enforces a working-directory allow-list for every file/shell tool. Out-of-bounds access triggers an interactive Allow Once / Always Allow / Deny prompt.
 - **Sub-Agent & Multi-Agent Workflows (`/agent`)** — Spin up focused sub-agents for task delegation (`delegate`), branching exploration (`explore`), parallel task squads (`squad`), multi-model consensus (`consensus`), and second-opinion advisory review (`advisor`).
 - **Autonomous Test/Fix Loop (`/loop`)** — Runs a test or build command, and on failure automatically delegates a repair sub-agent to fix the code and retries, up to a configurable number of iterations.
 - **Declarative Skills (`/skills`)** — Package specialized system prompts and tools into reusable skills, loaded from `skills.json` or custom Python classes (see `skills/code_skill.py`).
-- **Persistent Memory & Notes** — A key-value `memory` store with semantic search (`/memory`), a running Markdown `notes.md` (`/note`), pinned session goals with completion criteria (`/goal`), and multi-step task tracking (`todo`).
-- **Native Tool Suite** — File ops (`read_file`, `write_file`, `edit_file`, `hash_edit`, `glob_files`), shell execution, key-less web search/fetch, Git tools (`git_init`, `git_status`, `git_diff`, `git_commit`, `git_push`, `git_branch`), a calculator, and an `ask_user` tool for human-in-the-loop decisions.
+- **Persistent Memory & Notes** — A key-value `memory` store with dual-engine search (`/memory`) — a free, instant local embedding/lexical search tried first, falling back to a semantic LLM search for heavy paraphrases, with the calling model able to pick either explicitly — a running Markdown `notes.md` (`/note`), pinned session goals with completion criteria (`/goal`), and multi-step task tracking (`todo`).
+- **Native Tool Suite** — File ops (`read_file`, `write_file`, `edit_file`, `hash_edit`, `glob_files`), shell execution, key-less web search/fetch (with a short-lived in-session cache and a `force_refresh` override), Git tools (`git_init`, `git_status`, `git_diff`, `git_commit`, `git_push`, `git_branch`), a calculator, and an `ask_user` tool for human-in-the-loop decisions.
 - **Test-Driven Reliability** — Automated `pytest` test suite verifying concurrency partitioning, tool safety, dependency DAGs, file hash drift protection, permission isolation, and session roundtrip persistence.
-- **Rich Terminal UI** — Real-time Markdown streaming with syntax highlighting, toggleable Chain-of-Thought display (`/debug`), and an interactive arrow-key model/menu switcher with context-aware tab completion.
+- **Rich Terminal UI** — Real-time Markdown streaming with syntax highlighting, toggleable Chain-of-Thought display (`/debug`), and an interactive arrow-key model/menu switcher with context-aware tab completion. Pass `--ascii` at launch to replace every emoji/Unicode symbol Mesh prints with a plain-ASCII equivalent, for terminals that can't render Unicode.
 
 ---
 
@@ -117,6 +117,9 @@ python main.py --session my-feature
 
 # Run a script file non-interactively
 python main.py path/to/script.txt --non-interactive
+
+# Replace emoji/Unicode output with plain-ASCII equivalents (for terminals that can't render Unicode)
+python main.py --ascii
 ```
 
 ---
@@ -198,7 +201,7 @@ python main.py path/to/script.txt --non-interactive
   "auto_compact_threshold": 0.75,
   "max_delegation_depth": 2,
   "advisor_model": null,
-  "guard_enabled": true,
+  "guard_enabled": false,
   "guard_model": null,
   "guard_autonomy": "supervised",
   "router_model": null,

@@ -102,6 +102,9 @@ Start Mesh:
 ```bash
 ./mesh          # Linux / macOS
 mesh.bat        # Windows
+
+# Terminal can't render Unicode? Replace emoji/symbols with plain ASCII:
+python main.py --ascii
 ```
 
 ---
@@ -147,7 +150,7 @@ Understanding these ideas covers most of what you need to use Mesh effectively:
 
 **Persistent History (`.mesh/history.txt`).** Input history persists across CLI launches so you can navigate prior commands using the `↑` and `↓` arrow keys or manage entries via `/history`.
 
-**Modes & Safety Guard.** Blanket tool policies (`build`, `plan`, `review`, `chat`, `yolo`) combine with the LLM-backed `SafetyGuard` to prevent accidental damage.
+**Modes & Safety Guard.** Blanket tool policies (`build`, `plan`, `review`, `chat`, `yolo`) combine with a static rule-based safety net (always on) and the LLM-backed `SafetyGuard` (optional) to prevent accidental damage — see [Section 8](#8-operating-modes-safety-model).
 
 ---
 
@@ -242,7 +245,7 @@ Type `/help` any time for a live categorized list, or `/help <command>` for deta
 
 ## 8. Operating Modes (Safety Model)
 
-Mesh has two independent safety layers: **mode** (what tools are allowed) and **Safety Guard** (risk assessment before execution).
+Mesh has three independent safety layers: **mode** (what tools are allowed), a **static safety net** (a small, dependency-free rule set that always runs), and the **Safety Guard** (LLM-backed risk assessment).
 
 ### Modes
 
@@ -254,6 +257,14 @@ Mesh has two independent safety layers: **mode** (what tools are allowed) and **
 | **chat** | Conversation only (`calculator`, `web_search`, `web_fetch`, `advisor`, `memory`) | General Q&A and research. |
 | **yolo** | Full access, no confirmation prompts for ambiguous-risk actions | Fast iterative work. High-risk actions are still blocked. |
 
+### Static Safety Net
+
+Before any risk assessment runs at all, a hardcoded regex rule set checks shell/job commands and `git_push` calls for a short list of unambiguously catastrophic patterns — recursive deletes of the root/home directory, piping a remotely-downloaded script straight into a shell, disk-formatting commands, fork bombs, and force-pushing over a protected branch (`main`, `master`, `prod`, `production`, `release`). A hard match is blocked immediately, before the LLM Safety Guard is even consulted — this is what still protects you when `guard_enabled` is `false` (the shipped default) or the guard model itself is unavailable. It's deliberately narrow: it has no situational judgment and isn't a substitute for the Safety Guard below, just a floor beneath it.
+
+### Safety Guard
+
+When enabled (`guard_enabled: true`, or `/guard on`), every remaining shell command, background job, file write/edit, and MCP tool call is sent to a model for a `low`/`medium`/`high` risk assessment before it runs. `supervised` mode prompts you on anything above low risk; `autonomous` mode auto-approves medium-risk actions and only prompts (or, for the static layer's hard denies, always blocks) on genuinely high-risk ones. `/guard trust <tool>` skips the LLM check for a specific tool for the rest of the session — this never bypasses the static safety net above.
+
 ---
 
 ## 9. Tools & Concurrency Model
@@ -262,6 +273,9 @@ Mesh has two independent safety layers: **mode** (what tools are allowed) and **
 When the model requests multiple tool calls in a single turn, `ToolOrchestrator` partitions them:
 - **Read-Only Batches** (`read_file`, `glob_files`, `web_search`, `web_fetch`, `search_symbols`, `calculator`, `git_status`, `git_diff`, `memory` read): execute concurrently via `asyncio.gather()`.
 - **Mutating Tools** (`write_file`, `edit_file`, `hash_edit`, `shell`, `job`, `git_init`, `git_commit`, `git_push`, `git_branch`, MCP tools): execute sequentially in order.
+
+### Web Tool Caching
+`web_search` and `web_fetch` keep a short-lived in-session cache (15 minutes for search, 30 for fetch, capped at 200 entries) keyed on the call's arguments, so repeated identical lookups — common when a squad/explore/delegate workflow has several branches independently re-deriving the same research — don't re-hit the network. Pass `force_refresh: true` to bypass it when the result may have changed.
 
 ### Editing Strategies
 - **`hash_edit`**: Uses 4-character line hashes (`show_hashes: true` in `read_file`) to guarantee drift-free replacement.
@@ -389,7 +403,7 @@ Fine-tune system settings live from the CLI:
 
 | Mechanism | Command | Best for |
 |---|---|---|
-| **Memory** | `/memory` | Structured key-value facts with semantic natural-language recall |
+| **Memory** | `/memory` | Structured key-value facts, searched with either a free/instant local embedding search or a semantic LLM search for heavy paraphrases (`method: auto\|embedding\|llm`) |
 | **Notes** | `/note` | Free-form running Markdown notes (`notes.md`) |
 | **Goal** | `/goal` | Pinned objective and criteria preserved across compactions |
 | **Reflexion** | `/reflexion` | Cross-session lessons distilled from past tool errors |
@@ -418,6 +432,7 @@ LAUNCH
   mesh.bat             # Windows
   python main.py --session <name>
   python main.py --resume
+  python main.py --ascii   # plain-ASCII output for non-Unicode terminals
 
 SHORTCUTS
   <message>            normal chat turn
