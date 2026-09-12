@@ -84,7 +84,7 @@ async def test_edit_file_exact_and_fuzzy(temp_workspace):
     # Exact match replace
     res1 = await editor.execute(path=test_file, old_str="banana", new_str="blueberry")
     assert res1["status"] == "success"
-    with open(test_file, "r") as f:
+    with open(test_file, "r", encoding="utf-8") as f:
         assert f.read() == "apple\nblueberry\ncherry\n"
 
     # Fuzzy match replace
@@ -126,7 +126,7 @@ async def test_hash_edit_tool_line_splice_and_drift_detection(temp_workspace):
     )
     assert res_edit["status"] == "success"
 
-    with open(test_file, "r") as f:
+    with open(test_file, "r", encoding="utf-8") as f:
         updated = f.read()
     assert updated == "line 1\nnew line 2\nline 3\n"
 
@@ -413,7 +413,7 @@ async def test_edit_file_fuzzy_disabled_by_config(temp_workspace):
     assert "Fuzzy fallback matching is disabled" in res_fuzzy["error"]
 
     # File content untouched by the rejected near-miss edit.
-    with open(test_file, "r", newline="") as f:
+    with open(test_file, "r", encoding="utf-8", newline="") as f:
         assert f.read() == "apple\nblackberry\ncherry\n"
 
 
@@ -440,7 +440,7 @@ async def test_edit_file_fuzzy_threshold_from_config(temp_workspace):
     res_lenient = await lenient_editor.execute(path=test_file, old_str=near_miss_old, new_str="apricot\nplum\n")
     assert res_lenient["status"] == "success"
     assert "fuzzy" in res_lenient["message"]
-    with open(test_file, "r", newline="") as f:
+    with open(test_file, "r", encoding="utf-8", newline="") as f:
         assert f.read() == "apricot\nplum\ncherry\n"
 
     # Per-call fuzzy_threshold override beats the configured default.
@@ -460,7 +460,7 @@ async def test_edit_file_fuzzy_threshold_from_config(temp_workspace):
     )
     assert res_default["status"] == "success"
     assert res_default["status"] == "success"
-    with open(test_file, "r", newline="") as f:
+    with open(test_file, "r", encoding="utf-8", newline="") as f:
         assert f.read() == "x\ncherry\n"
 
 
