@@ -151,7 +151,21 @@ def _build_bubblewrap_command(command: str, write_dirs: List[str], allow_network
     # directories the caller said should be writable, plus the usual
     # pseudo-filesystems a normal process needs live access to.
     args += ["--ro-bind", "/", "/"]
-    args += ["--dev", "/dev", "--proc", "/proc", "--tmpfs", "/tmp"]
+    args += ["--dev", "/dev", "--proc", "/proc"]
+
+    # A writable scratch /tmp is convenient for tools that expect one, but
+    # bwrap processes --tmpfs/--bind arguments as an ordered overlay: a
+    # fresh, fully-writable tmpfs at /tmp would make EVERYTHING under /tmp
+    # writable, not just the explicitly bound write_dirs - including any
+    # sibling path that happens to live there too (pytest's tmp_path fixture,
+    # most tools' default scratch directories, etc. all do). Only add the
+    # generic scratch tmpfs when nothing the caller asked to keep writable
+    # depends on /tmp's real contents; see the identical reasoning in
+    # `_build_unshare_script` below, which had this same bug fixed first.
+    any_write_dir_under_tmp = any(d == "/tmp" or d.startswith("/tmp/") for d in write_dirs)
+    if not any_write_dir_under_tmp:
+        args += ["--tmpfs", "/tmp"]
+
     for d in write_dirs:
         args += ["--bind", d, d]
 

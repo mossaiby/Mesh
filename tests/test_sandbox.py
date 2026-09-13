@@ -54,6 +54,29 @@ def test_bubblewrap_argv_allows_network_when_requested():
         sandbox._DETECTED_BACKEND = None
 
 
+def test_bubblewrap_skips_tmp_scratch_when_write_dir_under_tmp():
+    """Regression test: --tmpfs /tmp used to be unconditional, which made
+    ALL of /tmp fully writable (not just the requested write dir) whenever
+    a write dir happened to live under /tmp - which pytest's own tmp_path
+    fixture, and most tools' default scratch directories, always do."""
+    sandbox._DETECTED_BACKEND = "bubblewrap"
+    try:
+        argv = sandbox.wrap_command("echo hi", ["/tmp/some/nested/workdir"], allow_network=False, cwd="/tmp/some/nested/workdir")
+        assert "--tmpfs" not in argv
+    finally:
+        sandbox._DETECTED_BACKEND = None
+
+
+def test_bubblewrap_adds_tmp_scratch_when_write_dir_elsewhere():
+    sandbox._DETECTED_BACKEND = "bubblewrap"
+    try:
+        argv = sandbox.wrap_command("echo hi", ["/home/user/project"], allow_network=False, cwd="/home/user/project")
+        assert "--tmpfs" in argv
+        assert argv[argv.index("--tmpfs") + 1] == "/tmp"
+    finally:
+        sandbox._DETECTED_BACKEND = None
+
+
 def test_seatbelt_profile_denies_writes_and_network_by_default(tmp_path):
     sandbox._DETECTED_BACKEND = "seatbelt"
     try:
