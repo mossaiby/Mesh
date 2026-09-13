@@ -9,6 +9,7 @@ import squad
 import modes
 import test_loop
 import jobs
+import sandbox
 from theme import console
 from glyphs import BULLET, CHAT, NO_ENTRY, PEOPLE, SCALES, TREE, VS16
 
@@ -327,6 +328,48 @@ async def cmd_guard(engine: Any, args: List[str]):
         )
 
 
+async def cmd_sandbox(engine: Any, args: List[str]):
+    cfg = engine.config_mgr.config
+
+    if not args:
+        backend = sandbox.detect_backend()
+        state_str = "[success]ON[/success]" if cfg.sandbox_enabled else "[error]OFF[/error]"
+        active = backend != "none" and cfg.sandbox_enabled
+        active_str = "[success]ACTIVE[/success]" if active else "[warning]NOT ACTIVE (falling back to unsandboxed execution)[/warning]"
+        console.print(
+            f"OS-level sandboxing is currently {state_str} in config, backend detected: "
+            f"[accent]{sandbox.describe_status()}[/accent].\n"
+            f"Effective status for shell/job/execute_python: {active_str}\n"
+            f"When active, commands can only write to directories in the permission allow-list "
+            f"(/dirs) and have no network access unless the tool call sets network: true.\n"
+            f"Usage: [warning]/sandbox on[/warning] | [warning]/sandbox off[/warning] | "
+            f"[warning]/sandbox status[/warning]"
+        )
+        return
+
+    sub = args[0].lower()
+
+    if sub in ("on", "off"):
+        cfg.sandbox_enabled = (sub == "on")
+        engine.config_mgr.save()
+        if sub == "on":
+            backend = sandbox.detect_backend()
+            if backend == "none":
+                console.print(
+                    "[warning]Sandboxing ENABLED in config, but no backend is available on this "
+                    "machine (bubblewrap/unshare on Linux, sandbox-exec on macOS) - commands will "
+                    "still run unsandboxed until one is installed.[/warning]"
+                )
+            else:
+                console.print(f"[success]Sandboxing ENABLED (backend: {backend}).[/success]")
+        else:
+            console.print("[warning]Sandboxing DISABLED - shell/job/execute_python will run unsandboxed at the OS level.[/warning]")
+    elif sub == "status":
+        console.print(f"Backend: [accent]{sandbox.describe_status()}[/accent]")
+    else:
+        console.print("[error]Usage: /sandbox [on|off|status][/error]")
+
+
 async def cmd_mode(engine: Any, args: List[str]):
     if not args:
         current = modes.MODES[engine.current_mode]
@@ -380,4 +423,5 @@ def register_agent_commands(engine: Any):
     engine.cmd_registry.register("loop", "Run iterative auto-test and repair loop: /loop <test_or_build_command>", lambda args: cmd_loop(engine, args), category="Agents & Workflows")
     engine.cmd_registry.register("jobs", "View or manage background job processes: /jobs [log|stop|clear] [<job_id>]", lambda args: cmd_jobs(engine, args), category="Agents & Workflows")
     engine.cmd_registry.register("guard", "View or configure safety guard settings: /guard [on|off|mode|model|trust] <args>", lambda args: cmd_guard(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("sandbox", "View or configure OS-level command sandboxing: /sandbox [on|off|status]", lambda args: cmd_sandbox(engine, args), category="Models & Settings")
     engine.cmd_registry.register("mode", "View or switch operating mode: /mode [plan|build|review|chat|yolo]", lambda args: cmd_mode(engine, args), category="Models & Settings")

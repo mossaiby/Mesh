@@ -180,6 +180,7 @@ class MeshEngine:
         self.tool_registry.register(GrepTool(self.permission_manager))
         self.tool_registry.register(ShellTool(self.permission_manager, self.config_mgr))
         self.tool_registry.register(BackgroundShellTool())
+        jobs.job_manager.configure(self.permission_manager, self.config_mgr)
         self.tool_registry.register(GitInitTool())
         self.tool_registry.register(GitStatusTool())
         self.tool_registry.register(GitDiffTool())
@@ -199,7 +200,7 @@ class MeshEngine:
         symbol_search.symbol_indexer.load_cache(".")
 
         # 2. Register Skills
-        self.skill_registry.register(PythonCodingSkill(self.config_mgr))
+        self.skill_registry.register(PythonCodingSkill(self.config_mgr, self.permission_manager))
         self.skill_registry.load_from_file()
 
         # 3. Register Commands

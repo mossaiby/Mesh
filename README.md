@@ -22,6 +22,7 @@ A modern, modular and hackable AI CLI harness written in Python. Mesh connects t
 - **Markdown Session Logging (`/log`)** — Stream clean, structured Markdown transcripts of user prompts, assistant responses, and tool executions to a log file (`session.md` or custom path) via CLI `--log` or `/log on <path>`.
 - **Operating Modes (`/mode`)** — `build` (full access, default), `plan` and `review` (read-only workspace inspection, no writes/shell/delegation/MCP), `chat` (conversational Q&A, brainstorming, and research with web search, fetch, calculator, advisor, and memory), and `yolo` (full access, no confirmation prompts for ambiguous-risk actions — high-risk actions are still always blocked).
 - **Safety Guard (`/guard`)** — A two-layer defense: a small, dependency-free static rule set (`rm -rf /`, piping a remote script into a shell, disk-formatting commands, force-pushing a protected branch, etc.) always runs first and blocks unambiguously catastrophic actions even if the LLM layer below is disabled, plus an LLM-backed risk assessor that reviews everything else, can run in `supervised` or `autonomous` mode, and supports per-session tool trust.
+- **OS-Level Sandboxing (`/sandbox`)** — Beneath the Safety Guard, `shell`, `job`, and `execute_python` calls (plus the `/shell`/`!` commands) run inside a kernel-enforced sandbox where available (bubblewrap or unshare/mount namespaces on Linux, Seatbelt on macOS): filesystem writes are confined to the permission allow-list and network access is denied unless a call explicitly requests it. This holds even if a command was mistakenly approved by everything above it - see `/sandbox status` for the active backend on your machine.
 - **Directory Permissions (`/dirs`)** — A `PermissionManager` enforces a working-directory allow-list for every file/shell tool. Out-of-bounds access triggers an interactive Allow Once / Always Allow / Deny prompt.
 - **Sub-Agent & Multi-Agent Workflows (`/agent`)** — Spin up focused sub-agents for task delegation (`delegate`), branching exploration (`explore`), parallel task squads (`squad`), multi-model consensus (`consensus`), and second-opinion advisory review (`advisor`).
 - **Autonomous Test/Fix Loop (`/loop`)** — Runs a test or build command, and on failure automatically delegates a repair sub-agent to fix the code and retries, up to a configurable number of iterations.
@@ -204,6 +205,7 @@ python main.py --ascii
   "guard_enabled": false,
   "guard_model": null,
   "guard_autonomy": "supervised",
+  "sandbox_enabled": true,
   "router_model": null,
   "network_proxy": null,
   "thinking": true,

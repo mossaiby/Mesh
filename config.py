@@ -179,6 +179,10 @@ class MeshConfig(BaseModel):
         default="supervised",
         description="Autonomy mode for Safety Guard: 'supervised' (interactive approval) or 'autonomous' (auto-approve low/medium risk)."
     )
+    sandbox_enabled: bool = Field(
+        default=True,
+        description="Whether shell/job/execute_python commands are wrapped in an OS-level sandbox (bubblewrap/unshare on Linux, Seatbelt on macOS) restricting filesystem writes to the permission allow-list and denying network access by default. Falls back to unsandboxed execution with a logged warning if no backend is available on this machine (see sandbox.py / `/sandbox status`)."
+    )
     router_model: Optional[str] = Field(
         default=None,
         description="Dedicated model key used for prompt auto-routing when active_model is set to 'auto'."

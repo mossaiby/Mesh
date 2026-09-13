@@ -5,6 +5,7 @@ import time
 from typing import Dict, Any, List, Optional, Tuple
 from theme import console
 from glyphs import ROCKET
+import sandbox
 
 
 class JobEntry:
@@ -80,19 +81,45 @@ class JobEntry:
 
 class JobManager:
     """Manages spawning, logging, querying, and terminating background subprocesses."""
-    def __init__(self):
+    def __init__(self, permission_manager: Optional[Any] = None, config_mgr: Optional[Any] = None):
         self.jobs: Dict[int, JobEntry] = {}
         self._next_id = 1
+        self._permission_manager = permission_manager
+        self._config_mgr = config_mgr
 
-    async def start_job(self, command: str, shell_prefix: Optional[str] = None) -> Dict[str, Any]:
+    def configure(self, permission_manager: Optional[Any] = None, config_mgr: Optional[Any] = None) -> None:
+        """`job_manager` below is a module-level singleton constructed at
+        import time, before an engine (and its PermissionManager/ConfigManager)
+        exists - `engine.py` calls this once at startup to wire them in so
+        sandboxing has the real allow-list and config to work from."""
+        if permission_manager is not None:
+            self._permission_manager = permission_manager
+        if config_mgr is not None:
+            self._config_mgr = config_mgr
+
+    def _sandboxed(self) -> bool:
+        return (self._config_mgr is None or self._config_mgr.config.sandbox_enabled) and sandbox.detect_backend() != "none"
+
+    async def start_job(self, command: str, shell_prefix: Optional[str] = None, network: bool = False) -> Dict[str, Any]:
         full_cmd = f"{shell_prefix} {command}" if shell_prefix else command
 
+        sandboxed = self._sandboxed()
+
         try:
-            proc = await asyncio.create_subprocess_shell(
-                full_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+            if sandboxed:
+                allowed_dirs = self._permission_manager.allowed_dirs if self._permission_manager else [os.getcwd()]
+                argv = sandbox.wrap_command(full_cmd, allowed_dirs, allow_network=network, cwd=os.getcwd())
+                proc = await asyncio.create_subprocess_exec(
+                    *argv,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            else:
+                proc = await asyncio.create_subprocess_shell(
+                    full_cmd,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
             job_id = self._next_id
             self._next_id += 1
 
@@ -107,7 +134,8 @@ class JobManager:
                 "job_id": job_id,
                 "pid": proc.pid,
                 "command": full_cmd,
-                "message": f"Job #{job_id} running in background. Use /jobs to check status or logs."
+                "message": f"Job #{job_id} running in background. Use /jobs to check status or logs.",
+                "_sandbox": sandbox.detect_backend() if sandboxed else "none"
             }
         except Exception as e:
             return {"status": "error", "error": f"Failed to start background job: {str(e)}"}

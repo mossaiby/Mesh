@@ -400,6 +400,12 @@
       "title": "Guard Autonomy",
       "type": "string"
     },
+    "sandbox_enabled": {
+      "default": true,
+      "description": "Whether shell/job/execute_python commands are wrapped in an OS-level sandbox (bubblewrap/unshare on Linux, Seatbelt on macOS) restricting filesystem writes to the permission allow-list and denying network access by default. Falls back to unsandboxed execution with a logged warning if no backend is available on this machine (see sandbox.py / `/sandbox status`).",
+      "title": "Sandbox Enabled",
+      "type": "boolean"
+    },
     "router_model": {
       "anyOf": [
         {

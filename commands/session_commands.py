@@ -17,6 +17,7 @@ import git_workflow
 import symbol_search
 from file_history import file_history_tracker
 from python_executor import python_executor
+import sandbox
 from theme import console
 from glyphs import BRAIN, BULLET, CHECK, EM_DASH, HAMMER_WRENCH, LIGHTNING, MAG_RIGHT, MEMO, NO_ENTRY, POSTBOX, ROCKET, SLEEP, SNAKE, VS16
 
@@ -137,19 +138,40 @@ async def cmd_cd(engine: Any, args: List[str]):
 
 async def cmd_shell(engine: Any, args: List[str]):
     if not args:
-        console.print("[error]Usage: /shell <command> | ! <command>[/error]")
+        console.print("[error]Usage: /shell [--network] <command> | ! [--network] <command>[/error]")
         return
+
+    allow_network = False
+    if args[0] == "--network":
+        allow_network = True
+        args = args[1:]
+        if not args:
+            console.print("[error]Usage: /shell [--network] <command> | ! [--network] <command>[/error]")
+            return
 
     command = " ".join(args).strip()
     console.print(f"[brand]{LIGHTNING} Direct Shell Execution:[/brand] {command}")
 
+    sandboxed = engine.config_mgr.config.sandbox_enabled and sandbox.detect_backend() != "none"
+    if sandboxed:
+        argv = sandbox.wrap_command(command, engine.permission_manager.allowed_dirs, allow_network=allow_network, cwd=os.getcwd())
+    else:
+        argv = None
+
     proc = None
     try:
-        proc = await asyncio.create_subprocess_shell(
-            command,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE
-        )
+        if argv is not None:
+            proc = await asyncio.create_subprocess_exec(
+                *argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
+        else:
+            proc = await asyncio.create_subprocess_shell(
+                command,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE
+            )
         stdout, stderr = await proc.communicate()
         output = (stdout.decode('utf-8', errors='replace') + "\n" + stderr.decode('utf-8', errors='replace')).strip()
 

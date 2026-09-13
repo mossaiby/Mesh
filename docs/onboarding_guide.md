@@ -150,7 +150,7 @@ Understanding these ideas covers most of what you need to use Mesh effectively:
 
 **Persistent History (`.mesh/history.txt`).** Input history persists across CLI launches so you can navigate prior commands using the `↑` and `↓` arrow keys or manage entries via `/history`.
 
-**Modes & Safety Guard.** Blanket tool policies (`build`, `plan`, `review`, `chat`, `yolo`) combine with a static rule-based safety net (always on) and the LLM-backed `SafetyGuard` (optional) to prevent accidental damage — see [Section 8](#8-operating-modes-safety-model).
+**Modes & Safety Guard.** Blanket tool policies (`build`, `plan`, `review`, `chat`, `yolo`) combine with a static rule-based safety net (always on), the LLM-backed `SafetyGuard` (optional), and OS-level sandboxing of anything actually executed (`/sandbox`) to prevent accidental damage — see [Section 8](#8-operating-modes-safety-model).
 
 ---
 
@@ -245,7 +245,7 @@ Type `/help` any time for a live categorized list, or `/help <command>` for deta
 
 ## 8. Operating Modes (Safety Model)
 
-Mesh has three independent safety layers: **mode** (what tools are allowed), a **static safety net** (a small, dependency-free rule set that always runs), and the **Safety Guard** (LLM-backed risk assessment).
+Mesh has four independent safety layers: **mode** (what tools are allowed), a **static safety net** (a small, dependency-free rule set that always runs), the **Safety Guard** (LLM-backed risk assessment), and, innermost, **OS-level sandboxing** of anything actually executed.
 
 ### Modes
 
@@ -264,6 +264,17 @@ Before any risk assessment runs at all, a hardcoded regex rule set checks shell/
 ### Safety Guard
 
 When enabled (`guard_enabled: true`, or `/guard on`), every remaining shell command, background job, file write/edit, and MCP tool call is sent to a model for a `low`/`medium`/`high` risk assessment before it runs. `supervised` mode prompts you on anything above low risk; `autonomous` mode auto-approves medium-risk actions and only prompts (or, for the static layer's hard denies, always blocks) on genuinely high-risk ones. `/guard trust <tool>` skips the LLM check for a specific tool for the rest of the session — this never bypasses the static safety net above.
+
+### OS-Level Sandboxing
+
+Everything above decides whether to *launch* a `shell`, `job`, or `execute_python` call (and the `/shell`/`!` commands). None of it constrains what that process can actually touch once it's running — that's what this layer is for. When `sandbox_enabled` is `true` (the default) and a backend is available, the command runs inside a kernel-enforced sandbox:
+
+- **Linux with bubblewrap (`bwrap`) installed**: full user/mount/pid/net namespace isolation — the strongest backend.
+- **Linux without bubblewrap**: an equivalent built from `unshare`/`mount` — real kernel enforcement, with a documented rough edge on unusual multi-mount-point layouts (install `bwrap` for the fully robust version).
+- **macOS**: a generated Seatbelt profile via `sandbox-exec`.
+- **Windows, or no backend found**: commands run unsandboxed, as Mesh always has — this is a visible, logged state rather than an implicit one.
+
+Filesystem writes are confined to the same directory allow-list `/dirs` already governs at the application level, now enforced by the kernel too. Network access is denied by default; a tool call sets `network: true` (or `/shell --network <command>` / `! --network <command>` interactively) to opt in for commands that genuinely need it (`curl`, `pip install`, `git fetch`, etc.). Run `/sandbox status` to see which backend is active on your machine, and `/sandbox on|off` to toggle the feature.
 
 ---
 

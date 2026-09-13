@@ -15,6 +15,7 @@ from hooks import hook_manager
 from config import default_timeout
 import symbol_search
 from ignored_dirs import IGNORED_DIRS, filter_dirs, path_is_ignored
+import sandbox
 
 
 def compute_line_hash(line: str) -> str:
@@ -753,7 +754,13 @@ class GrepTool(BaseTool):
 
 class ShellTool(BaseTool):
     name = "shell"
-    description = "Runs a shell command in the system environment and returns stdout/stderr."
+    description = (
+        "Runs a shell command in the system environment and returns stdout/stderr. "
+        "When sandboxing is available (see /sandbox status), the command can only write to "
+        "directories in the permission allow-list and has no network access unless network: true "
+        "is set - request network access explicitly for commands that need it (curl, pip install, "
+        "npm install, git fetch, etc.); leave it false for everything else."
+    )
     is_proxied = True
     requires_guard = True
     parameters = {
@@ -767,6 +774,10 @@ class ShellTool(BaseTool):
             "shell_prefix": {
                 "type": "string",
                 "description": "Optional shell processor wrapper (e.g. 'powershell -Command', 'cmd /c', 'wsl')."
+            },
+            "network": {
+                "type": "boolean",
+                "description": "Whether this command needs network access. Default: false (denied) when the OS-level sandbox is active. Set true for commands like curl, pip install, npm install, or git fetch/pull/push."
             }
         },
         "required": ["command"]
@@ -776,7 +787,11 @@ class ShellTool(BaseTool):
         self.permission_manager = permission_manager or default_permission_manager
         self._config_mgr = config_mgr
 
-    async def execute(self, command: str, timeout: Optional[float] = None, shell_prefix: Optional[str] = None) -> Dict[str, Any]:
+    def _sandboxed(self) -> bool:
+        return (self._config_mgr is None or self._config_mgr.config.sandbox_enabled) and sandbox.detect_backend() != "none"
+
+    async def execute(self, command: str, timeout: Optional[float] = None, shell_prefix: Optional[str] = None,
+                       network: bool = False) -> Dict[str, Any]:
         if not await self.permission_manager.check_and_request_permission(self.name, os.getcwd()):
             return {"error": "Permission denied for command execution in current working directory."}
 
@@ -785,13 +800,26 @@ class ShellTool(BaseTool):
 
         full_command = f"{shell_prefix} {command}" if shell_prefix else command
 
+        sandboxed = self._sandboxed()
+        if sandboxed:
+            argv = sandbox.wrap_command(full_command, self.permission_manager.allowed_dirs, allow_network=network, cwd=os.getcwd())
+        else:
+            argv = None
+
         proc = None
         try:
-            proc = await asyncio.create_subprocess_shell(
-                full_command,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
+            if argv is not None:
+                proc = await asyncio.create_subprocess_exec(
+                    *argv,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
+            else:
+                proc = await asyncio.create_subprocess_shell(
+                    full_command,
+                    stdout=asyncio.subprocess.PIPE,
+                    stderr=asyncio.subprocess.PIPE
+                )
 
             if timeout and timeout > 0:
                 stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=timeout)
@@ -802,7 +830,8 @@ class ShellTool(BaseTool):
                 "command": full_command,
                 "exit_code": proc.returncode,
                 "stdout": stdout.decode('utf-8', errors='replace').strip(),
-                "stderr": stderr.decode('utf-8', errors='replace').strip()
+                "stderr": stderr.decode('utf-8', errors='replace').strip(),
+                "_sandbox": sandbox.detect_backend() if sandboxed else "none"
             }
         except (KeyboardInterrupt, asyncio.CancelledError):
             if proc:
