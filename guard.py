@@ -111,6 +111,72 @@ _ASK_COMMAND_PATTERNS = [
 
 _PROTECTED_BRANCHES = {"main", "master", "prod", "production", "release"}
 
+# Python-native equivalents of the shell patterns above, for the
+# `execute_python` tool. Arbitrary Python code has no fixed grammar for
+# "run a command" the way a shell string does, so this is inherently more
+# limited than the shell rules: it catches literal, unobfuscated calls
+# (`shutil.rmtree('/')`, `os.system("rm -rf /")`) but not anything built up
+# dynamically (string concatenation, base64, a variable holding the path) -
+# static analysis of arbitrary code can never be complete. This is still
+# worth having as the same kind of floor the shell rules are: free,
+# instant, and catches the unobfuscated case, which is the overwhelming
+# majority of what a model actually generates.
+_PY_RMTREE_DENY_RE = re.compile(
+    r"shutil\.rmtree\s*\(\s*(?:r|rb|br|b)?(['\"])(?:/|/\*|~|~/|~/\*|\$HOME|[A-Za-z]:[\\/]{1,2})\1",
+    re.IGNORECASE,
+)
+
+# Matches os.system(...) and the common subprocess entry points when given a
+# single quoted string (i.e. effectively a shell command), so the shell-level
+# deny/ask rules can be re-applied to whatever string they're handed. This
+# deliberately does NOT try to parse list-argument calls like
+# subprocess.run(["rm", "-rf", "/"]) - matching that robustly without a lot
+# of false positives/negatives would need real parsing, not a regex; the
+# quoted-string form covers os.system entirely (which only ever takes a
+# string) and the very common shell=True usage of subprocess.
+_PY_SHELL_CALL_RE = re.compile(
+    r"(?:os\.system|subprocess\.(?:run|Popen|call|check_call|check_output))\s*\(\s*(?:r|rb|br|b)?(['\"])(.*?)\1",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def _static_precheck_python(code: str) -> Optional[Dict[str, Any]]:
+    """Static rules specific to `execute_python`'s `code` argument. Returns
+    the same guard-result shape as `static_precheck()`'s shell rules, or
+    None if nothing fired."""
+    if _PY_RMTREE_DENY_RE.search(code):
+        return {
+            "risk": "high",
+            "verdict": "deny",
+            "reason": "Static safety rule matched: a recursive delete (shutil.rmtree) targeting the root, home directory, or a drive root.",
+            "source": "static",
+        }
+
+    # Code that shells out (os.system, or subprocess with a plain command
+    # string) is checked against the exact same shell-level rules above -
+    # `curl ... | bash` is just as dangerous whether a human typed it into
+    # `shell` directly or a Python script handed it to os.system().
+    for match in _PY_SHELL_CALL_RE.finditer(code):
+        shell_str = match.group(2)
+        for pattern, description in _DENY_COMMAND_PATTERNS:
+            if pattern.search(shell_str):
+                return {
+                    "risk": "high",
+                    "verdict": "deny",
+                    "reason": f"Static safety rule matched (via Python code shelling out): {description}.",
+                    "source": "static",
+                }
+        for pattern, description in _ASK_COMMAND_PATTERNS:
+            if pattern.search(shell_str):
+                return {
+                    "risk": "medium",
+                    "verdict": "ask",
+                    "reason": f"Static safety rule matched (via Python code shelling out): {description}.",
+                    "source": "static",
+                }
+
+    return None
+
 
 def static_precheck(tool_name: str, arguments: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Checks a tool call against the hardcoded rules above.
@@ -138,6 +204,13 @@ def static_precheck(tool_name: str, arguments: Dict[str, Any]) -> Optional[Dict[
                     "reason": f"Static safety rule matched: {description}.",
                     "source": "static",
                 }
+
+    if tool_name == "execute_python":
+        code = arguments.get("code")
+        if isinstance(code, str) and code.strip():
+            hit = _static_precheck_python(code)
+            if hit is not None:
+                return hit
 
     if tool_name == "git_push" and arguments.get("force"):
         branch = str(arguments.get("branch") or "").strip().lower()
