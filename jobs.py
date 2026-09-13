@@ -100,6 +100,16 @@ class JobManager:
     def _sandboxed(self) -> bool:
         return (self._config_mgr is None or self._config_mgr.config.sandbox_enabled) and sandbox.detect_backend() != "none"
 
+    # Note: the experimental Windows write-restricted-token backend
+    # (windows_sandbox.py) is deliberately NOT wired in here. It's designed
+    # around "run a command to completion, get back one result" - background
+    # jobs are the opposite: a long-lived process whose output is streamed
+    # continuously (see JobEntry.start_logging_tasks()) and which can be
+    # queried or stopped by job_id long after start_job() returns. Adapting
+    # windows_sandbox's design to that shape would need real new work
+    # (returning a live handle rather than a completed result), not a
+    # bolt-on - see ShellTool and execute_python for where it does apply.
+
     async def start_job(self, command: str, shell_prefix: Optional[str] = None, network: bool = False) -> Dict[str, Any]:
         full_cmd = f"{shell_prefix} {command}" if shell_prefix else command
 

@@ -406,6 +406,12 @@
       "title": "Sandbox Enabled",
       "type": "boolean"
     },
+    "sandbox_windows_experimental": {
+      "default": false,
+      "description": "EXPERIMENTAL, opt-in, filesystem-only sandboxing on Windows via a write-restricted process token and a synthetic ACL SID (see windows_sandbox.py). Unlike the Linux/macOS backends, this has not been validated against a real Windows machine by its author - it is off by default on purpose. Does not attempt network restriction (Windows has no clean per-invocation primitive for that without a much larger dedicated-user-account architecture; see windows_sandbox.py's module docstring). Enable only if you're willing to test it and report issues.",
+      "title": "Sandbox Windows Experimental",
+      "type": "boolean"
+    },
     "router_model": {
       "anyOf": [
         {

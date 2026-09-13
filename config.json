@@ -11,6 +11,7 @@
   "guard_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
   "guard_autonomy": "supervised",
   "sandbox_enabled": true,
+  "sandbox_windows_experimental": false,
   "router_model": "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
   "network_proxy": null,
   "thinking": true,

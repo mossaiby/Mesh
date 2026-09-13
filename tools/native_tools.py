@@ -16,6 +16,7 @@ from config import default_timeout
 import symbol_search
 from ignored_dirs import IGNORED_DIRS, filter_dirs, path_is_ignored
 import sandbox
+import windows_sandbox
 
 
 def compute_line_hash(line: str) -> str:
@@ -790,6 +791,13 @@ class ShellTool(BaseTool):
     def _sandboxed(self) -> bool:
         return (self._config_mgr is None or self._config_mgr.config.sandbox_enabled) and sandbox.detect_backend() != "none"
 
+    def _windows_experimental(self) -> bool:
+        return (
+            windows_sandbox.is_available()
+            and self._config_mgr is not None
+            and getattr(self._config_mgr.config, "sandbox_windows_experimental", False)
+        )
+
     async def execute(self, command: str, timeout: Optional[float] = None, shell_prefix: Optional[str] = None,
                        network: bool = False) -> Dict[str, Any]:
         if not await self.permission_manager.check_and_request_permission(self.name, os.getcwd()):
@@ -799,6 +807,17 @@ class ShellTool(BaseTool):
             timeout = self._config_mgr.config.timeouts.shell if self._config_mgr is not None else default_timeout("shell")
 
         full_command = f"{shell_prefix} {command}" if shell_prefix else command
+
+        if self._windows_experimental():
+            # EXPERIMENTAL, opt-in, filesystem-only - see windows_sandbox.py's
+            # module docstring. Deliberately bypasses the normal
+            # asyncio.create_subprocess_exec() path below entirely, since
+            # CreateProcessAsUserW with a custom token can't be expressed as
+            # a plain argv list the way every other backend here is.
+            result = await windows_sandbox.run_write_restricted(
+                full_command, self.permission_manager.allowed_dirs, cwd=os.getcwd(), timeout=timeout
+            )
+            return result
 
         sandboxed = self._sandboxed()
         if sandboxed:

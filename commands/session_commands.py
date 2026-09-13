@@ -18,6 +18,7 @@ import symbol_search
 from file_history import file_history_tracker
 from python_executor import python_executor
 import sandbox
+import windows_sandbox
 from theme import console
 from glyphs import BRAIN, BULLET, CHECK, EM_DASH, HAMMER_WRENCH, LIGHTNING, MAG_RIGHT, MEMO, NO_ENTRY, POSTBOX, ROCKET, SLEEP, SNAKE, VS16
 
@@ -151,6 +152,17 @@ async def cmd_shell(engine: Any, args: List[str]):
 
     command = " ".join(args).strip()
     console.print(f"[brand]{LIGHTNING} Direct Shell Execution:[/brand] {command}")
+
+    if windows_sandbox.is_available() and getattr(engine.config_mgr.config, "sandbox_windows_experimental", False):
+        result = await windows_sandbox.run_write_restricted(
+            command, engine.permission_manager.allowed_dirs, cwd=os.getcwd(), timeout=None
+        )
+        if "error" in result:
+            console.print(f"[error]{result['error']}[/error]")
+        else:
+            output = (result.get("stdout", "") + "\n" + result.get("stderr", "")).strip()
+            console.print(output if output else "[dim]<no output>[/dim]")
+        return
 
     sandboxed = engine.config_mgr.config.sandbox_enabled and sandbox.detect_backend() != "none"
     if sandboxed:

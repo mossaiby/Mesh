@@ -10,6 +10,7 @@ import modes
 import test_loop
 import jobs
 import sandbox
+import windows_sandbox
 from theme import console
 from glyphs import BULLET, CHAT, NO_ENTRY, PEOPLE, SCALES, TREE, VS16
 
@@ -330,18 +331,21 @@ async def cmd_guard(engine: Any, args: List[str]):
 
 async def cmd_sandbox(engine: Any, args: List[str]):
     cfg = engine.config_mgr.config
+    win_experimental = getattr(cfg, "sandbox_windows_experimental", False) and windows_sandbox.is_available()
 
     if not args:
         backend = sandbox.detect_backend()
         state_str = "[success]ON[/success]" if cfg.sandbox_enabled else "[error]OFF[/error]"
-        active = backend != "none" and cfg.sandbox_enabled
+        active = (backend != "none" and cfg.sandbox_enabled) or win_experimental
         active_str = "[success]ACTIVE[/success]" if active else "[warning]NOT ACTIVE (falling back to unsandboxed execution)[/warning]"
+        backend_desc = "windows-restricted-token (EXPERIMENTAL, filesystem-only, network unaffected)" if win_experimental else sandbox.describe_status()
         console.print(
             f"OS-level sandboxing is currently {state_str} in config, backend detected: "
-            f"[accent]{sandbox.describe_status()}[/accent].\n"
+            f"[accent]{backend_desc}[/accent].\n"
             f"Effective status for shell/job/execute_python: {active_str}\n"
             f"When active, commands can only write to directories in the permission allow-list "
-            f"(/dirs) and have no network access unless the tool call sets network: true.\n"
+            f"(/dirs) and have no network access unless the tool call sets network: true "
+            f"({'except under the Windows experimental backend, which does not restrict network at all' if win_experimental else 'note: job (background) is not covered by the Windows experimental backend either way'}).\n"
             f"Usage: [warning]/sandbox on[/warning] | [warning]/sandbox off[/warning] | "
             f"[warning]/sandbox status[/warning]"
         )
@@ -354,18 +358,20 @@ async def cmd_sandbox(engine: Any, args: List[str]):
         engine.config_mgr.save()
         if sub == "on":
             backend = sandbox.detect_backend()
-            if backend == "none":
+            if backend == "none" and not win_experimental:
                 console.print(
                     "[warning]Sandboxing ENABLED in config, but no backend is available on this "
                     "machine (bubblewrap/unshare on Linux, sandbox-exec on macOS) - commands will "
-                    "still run unsandboxed until one is installed.[/warning]"
+                    "still run unsandboxed until one is installed. (Windows: see "
+                    "sandbox_windows_experimental in config.json if you want to try the "
+                    "experimental filesystem-only backend.)[/warning]"
                 )
             else:
-                console.print(f"[success]Sandboxing ENABLED (backend: {backend}).[/success]")
+                console.print(f"[success]Sandboxing ENABLED (backend: {backend if not win_experimental else 'windows-restricted-token (EXPERIMENTAL)'}).[/success]")
         else:
             console.print("[warning]Sandboxing DISABLED - shell/job/execute_python will run unsandboxed at the OS level.[/warning]")
     elif sub == "status":
-        console.print(f"Backend: [accent]{sandbox.describe_status()}[/accent]")
+        console.print(f"Backend: [accent]{'windows-restricted-token (EXPERIMENTAL, filesystem-only)' if win_experimental else sandbox.describe_status()}[/accent]")
     else:
         console.print("[error]Usage: /sandbox [on|off|status][/error]")
 

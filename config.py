@@ -183,6 +183,10 @@ class MeshConfig(BaseModel):
         default=True,
         description="Whether shell/job/execute_python commands are wrapped in an OS-level sandbox (bubblewrap/unshare on Linux, Seatbelt on macOS) restricting filesystem writes to the permission allow-list and denying network access by default. Falls back to unsandboxed execution with a logged warning if no backend is available on this machine (see sandbox.py / `/sandbox status`)."
     )
+    sandbox_windows_experimental: bool = Field(
+        default=False,
+        description="EXPERIMENTAL, opt-in, filesystem-only sandboxing on Windows via a write-restricted process token and a synthetic ACL SID (see windows_sandbox.py). Unlike the Linux/macOS backends, this has not been validated against a real Windows machine by its author - it is off by default on purpose. Does not attempt network restriction (Windows has no clean per-invocation primitive for that without a much larger dedicated-user-account architecture; see windows_sandbox.py's module docstring). Enable only if you're willing to test it and report issues."
+    )
     router_model: Optional[str] = Field(
         default=None,
         description="Dedicated model key used for prompt auto-routing when active_model is set to 'auto'."
