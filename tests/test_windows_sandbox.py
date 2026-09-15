@@ -104,3 +104,70 @@ async def test_run_write_restricted_fails_closed_on_token_setup_error():
         result = await ws.run_write_restricted("echo hi", ["C:\\a"], cwd="C:\\a")
         assert "error" in result
         assert "CreateRestrictedToken" in result["error"]
+
+
+def test_build_restricted_token_fails_closed_when_quota_privilege_unavailable():
+    """Regression test for the actual bug found on a real Windows machine:
+    CreateProcessAsUserW's SE_ASSIGNPRIMARYTOKEN_NAME requirement is
+    exempted for a restricted version of the caller's own token, but its
+    SEPARATE SE_INCREASE_QUOTA_NAME requirement is NOT exempted by that -
+    it's always required, and is commonly present-but-disabled by default.
+    _build_restricted_token() must fail with a clear, specific error if it
+    can't be enabled, rather than proceeding and hitting a much more
+    confusing failure three calls later inside CreateProcessAsUserW."""
+    fake_advapi32 = mock.Mock()
+    fake_advapi32.OpenProcessToken.return_value = True
+    with mock.patch.object(ws, "advapi32", fake_advapi32, create=True), \
+         mock.patch.object(ws, "kernel32", mock.Mock(), create=True), \
+         mock.patch.object(ws, "TOKEN_DUPLICATE", 0x2, create=True), \
+         mock.patch.object(ws, "TOKEN_QUERY", 0x8, create=True), \
+         mock.patch.object(ws, "TOKEN_ADJUST_PRIVILEGES", 0x20, create=True), \
+         mock.patch.object(ws, "_enable_privilege", return_value=False):
+        with pytest.raises(ws.WindowsSandboxError, match="SeIncreaseQuotaPrivilege"):
+            ws._build_restricted_token()
+
+
+def test_build_restricted_token_checks_quota_privilege_before_duplicating():
+    """The quota-privilege check must happen (and be allowed to fail
+    closed) BEFORE DuplicateTokenEx runs - not after - so a missing
+    privilege is reported clearly instead of surfacing as a confusing
+    failure several calls later."""
+    fake_advapi32 = mock.Mock()
+    fake_advapi32.OpenProcessToken.return_value = True
+    with mock.patch.object(ws, "advapi32", fake_advapi32, create=True), \
+         mock.patch.object(ws, "kernel32", mock.Mock(), create=True), \
+         mock.patch.object(ws, "TOKEN_DUPLICATE", 0x2, create=True), \
+         mock.patch.object(ws, "TOKEN_QUERY", 0x8, create=True), \
+         mock.patch.object(ws, "TOKEN_ADJUST_PRIVILEGES", 0x20, create=True), \
+         mock.patch.object(ws, "_enable_privilege", return_value=False):
+        with pytest.raises(ws.WindowsSandboxError):
+            ws._build_restricted_token()
+        fake_advapi32.DuplicateTokenEx.assert_not_called()
+
+
+def test_build_restricted_token_checks_both_required_privileges():
+    """Regression test for the actual second wall hit on a real machine:
+    granting only SeIncreaseQuotaPrivilege still left CreateProcessAsUserW
+    failing with ERROR_PRIVILEGE_NOT_HELD, so both privileges must actually
+    be checked/enabled here, not just one."""
+    fake_advapi32 = mock.Mock()
+    fake_advapi32.OpenProcessToken.return_value = True
+    checked = []
+
+    def fake_enable(token, name):
+        checked.append(name)
+        return True  # let it proceed past the check for both
+
+    with mock.patch.object(ws, "advapi32", fake_advapi32, create=True), \
+         mock.patch.object(ws, "kernel32", mock.Mock(), create=True), \
+         mock.patch.object(ws, "TOKEN_DUPLICATE", 0x2, create=True), \
+         mock.patch.object(ws, "TOKEN_QUERY", 0x8, create=True), \
+         mock.patch.object(ws, "TOKEN_ADJUST_PRIVILEGES", 0x20, create=True), \
+         mock.patch.object(ws, "_enable_privilege", side_effect=fake_enable):
+        try:
+            ws._build_restricted_token()
+        except Exception:
+            pass  # unrelated mocking gaps past this point aren't the point of this test
+
+    assert "SeIncreaseQuotaPrivilege" in checked
+    assert "SeAssignPrimaryTokenPrivilege" in checked

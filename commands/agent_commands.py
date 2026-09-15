@@ -11,6 +11,7 @@ import test_loop
 import jobs
 import sandbox
 import windows_sandbox
+import windows_sandbox_setup
 from theme import console
 from glyphs import BULLET, CHAT, NO_ENTRY, PEOPLE, SCALES, TREE, VS16
 
@@ -339,15 +340,19 @@ async def cmd_sandbox(engine: Any, args: List[str]):
         active = (backend != "none" and cfg.sandbox_enabled) or win_experimental
         active_str = "[success]ACTIVE[/success]" if active else "[warning]NOT ACTIVE (falling back to unsandboxed execution)[/warning]"
         backend_desc = "windows-restricted-token (EXPERIMENTAL, filesystem-only, network unaffected)" if win_experimental else sandbox.describe_status()
+        setup_hint = ""
+        if windows_sandbox.is_available() and getattr(cfg, "sandbox_windows_experimental", False) and windows_sandbox_setup.is_available() and not windows_sandbox_setup.has_required_privilege():
+            setup_hint = "\n[warning]sandbox_windows_experimental is on, but your account is missing a privilege it needs - run [/warning][accent]/sandbox setup[/accent][warning] to fix that.[/warning]"
         console.print(
             f"OS-level sandboxing is currently {state_str} in config, backend detected: "
             f"[accent]{backend_desc}[/accent].\n"
             f"Effective status for shell/job/execute_python: {active_str}\n"
             f"When active, commands can only write to directories in the permission allow-list "
             f"(/dirs) and have no network access unless the tool call sets network: true "
-            f"({'except under the Windows experimental backend, which does not restrict network at all' if win_experimental else 'note: job (background) is not covered by the Windows experimental backend either way'}).\n"
+            f"({'except under the Windows experimental backend, which does not restrict network at all' if win_experimental else 'note: job (background) is not covered by the Windows experimental backend either way'})."
+            f"{setup_hint}\n"
             f"Usage: [warning]/sandbox on[/warning] | [warning]/sandbox off[/warning] | "
-            f"[warning]/sandbox status[/warning]"
+            f"[warning]/sandbox status[/warning] | [warning]/sandbox setup[/warning]"
         )
         return
 
@@ -372,8 +377,35 @@ async def cmd_sandbox(engine: Any, args: List[str]):
             console.print("[warning]Sandboxing DISABLED - shell/job/execute_python will run unsandboxed at the OS level.[/warning]")
     elif sub == "status":
         console.print(f"Backend: [accent]{'windows-restricted-token (EXPERIMENTAL, filesystem-only)' if win_experimental else sandbox.describe_status()}[/accent]")
+    elif sub == "setup":
+        if not windows_sandbox_setup.is_available():
+            console.print("[error]/sandbox setup is only relevant on Windows.[/error]")
+            return
+        if windows_sandbox_setup.has_required_privilege():
+            console.print("[success]Your account already holds the required privileges - no setup needed.[/success]")
+            return
+        console.print(
+            "[warning]This will request administrator approval (a UAC prompt) to grant your "
+            "Windows account two user rights - 'Adjust memory quotas for a process' and "
+            "'Replace a process level token' - both of which CreateProcessAsUserW requires for "
+            "windows_sandbox.py's write-restricted-token approach, even for same-user "
+            "sandboxing.[/warning]\n"
+            "The elevated script that will run is short and self-contained - it grants exactly "
+            "these two rights to your account and nothing else. You'll see its console window "
+            "run to completion; it isn't hidden.\n\n"
+            f"{windows_sandbox_setup.build_manual_instructions()}\n\n"
+            "[warning]Proceed with the automated elevated setup? Re-run '/sandbox setup confirm' to continue.[/warning]"
+        )
+        if len(args) < 2 or args[1].lower() != "confirm":
+            return
+        console.print("[brand]Requesting administrator approval...[/brand]")
+        success, message = await windows_sandbox_setup.run_elevated_setup()
+        if success:
+            console.print(f"[success]{message}[/success]")
+        else:
+            console.print(f"[error]{message}[/error]\n{windows_sandbox_setup.build_manual_instructions()}")
     else:
-        console.print("[error]Usage: /sandbox [on|off|status][/error]")
+        console.print("[error]Usage: /sandbox [on|off|status|setup][/error]")
 
 
 async def cmd_mode(engine: Any, args: List[str]):
@@ -429,5 +461,5 @@ def register_agent_commands(engine: Any):
     engine.cmd_registry.register("loop", "Run iterative auto-test and repair loop: /loop <test_or_build_command>", lambda args: cmd_loop(engine, args), category="Agents & Workflows")
     engine.cmd_registry.register("jobs", "View or manage background job processes: /jobs [log|stop|clear] [<job_id>]", lambda args: cmd_jobs(engine, args), category="Agents & Workflows")
     engine.cmd_registry.register("guard", "View or configure safety guard settings: /guard [on|off|mode|model|trust] <args>", lambda args: cmd_guard(engine, args), category="Models & Settings")
-    engine.cmd_registry.register("sandbox", "View or configure OS-level command sandboxing: /sandbox [on|off|status]", lambda args: cmd_sandbox(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("sandbox", "View or configure OS-level command sandboxing: /sandbox [on|off|status|setup]", lambda args: cmd_sandbox(engine, args), category="Models & Settings")
     engine.cmd_registry.register("mode", "View or switch operating mode: /mode [plan|build|review|chat|yolo]", lambda args: cmd_mode(engine, args), category="Models & Settings")
