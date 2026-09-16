@@ -16,6 +16,7 @@ can have real bugs independent of whether the Win32 calls themselves are
 correct.
 """
 
+import inspect
 import subprocess
 from unittest import mock
 
@@ -63,17 +64,62 @@ async def test_run_write_restricted_returns_error_when_not_windows():
 
 
 @pytest.mark.asyncio
-async def test_run_write_restricted_calls_ensure_write_acl_for_every_dir():
-    """Orchestration check: every requested write dir must actually get
-    ACL'd before the sandboxed process runs - the whole security model
-    depends on this happening for each one, not just the first."""
+async def test_run_write_restricted_calls_sync_write_acls():
+    """run_write_restricted must go through sync_write_acls (which handles
+    revocation - see its own tests below), not call ensure_write_acl
+    directly anymore."""
     with mock.patch.object(ws, "IS_WINDOWS", True), \
-         mock.patch.object(ws, "ensure_write_acl") as mock_acl, \
+         mock.patch.object(ws, "sync_write_acls") as mock_sync, \
          mock.patch("asyncio.to_thread", new=mock.AsyncMock(return_value={"stdout": "", "stderr": "", "exit_code": 0})):
         await ws.run_write_restricted("echo hi", ["C:\\a", "C:\\b", "C:\\c"], cwd="C:\\a")
-        assert mock_acl.call_count == 3
-        called_dirs = {call.args[0] for call in mock_acl.call_args_list}
-        assert called_dirs == {"C:\\a", "C:\\b", "C:\\c"}
+        mock_sync.assert_called_once_with(["C:\\a", "C:\\b", "C:\\c"])
+
+
+def test_sync_write_acls_grants_every_current_dir():
+    with mock.patch.object(ws, "_load_previously_granted_dirs", return_value=set()), \
+         mock.patch.object(ws, "_save_granted_dirs") as mock_save, \
+         mock.patch.object(ws, "ensure_write_acl") as mock_grant, \
+         mock.patch.object(ws, "revoke_write_acl") as mock_revoke, \
+         mock.patch("os.path.abspath", side_effect=lambda p: p):  # avoid host-OS path-semantics differences
+        ws.sync_write_acls(["/a", "/b"])
+
+    granted = {call.args[0] for call in mock_grant.call_args_list}
+    assert granted == {"/a", "/b"}
+    mock_revoke.assert_not_called()
+    mock_save.assert_called_once_with({"/a", "/b"})
+
+
+def test_sync_write_acls_revokes_directories_no_longer_in_allow_list():
+    """Regression test for the actual confinement gap found in practice: a
+    directory granted access in an earlier session (e.g. /Temp, once in
+    /dirs) remained writable indefinitely after being removed from /dirs,
+    because nothing had ever revoked the earlier ACL grant - ACL grants are
+    permanent, on-disk changes, unlike everything else this sandbox relies
+    on."""
+    with mock.patch.object(ws, "_load_previously_granted_dirs", return_value={"/old", "/still-current"}), \
+         mock.patch.object(ws, "_save_granted_dirs"), \
+         mock.patch.object(ws, "ensure_write_acl"), \
+         mock.patch.object(ws, "revoke_write_acl") as mock_revoke, \
+         mock.patch("os.path.isdir", return_value=True), \
+         mock.patch("os.path.abspath", side_effect=lambda p: p):
+        ws.sync_write_acls(["/still-current"])
+
+    mock_revoke.assert_called_once_with("/old")
+
+
+def test_sync_write_acls_does_not_revoke_a_directory_that_no_longer_exists():
+    """Best-effort by design (see revoke_write_acl's docstring) - if the
+    directory was deleted entirely, there's nothing to revoke and no
+    PowerShell call should even be attempted against a nonexistent path."""
+    with mock.patch.object(ws, "_load_previously_granted_dirs", return_value={"/deleted"}), \
+         mock.patch.object(ws, "_save_granted_dirs"), \
+         mock.patch.object(ws, "ensure_write_acl"), \
+         mock.patch.object(ws, "revoke_write_acl") as mock_revoke, \
+         mock.patch("os.path.isdir", return_value=False), \
+         mock.patch("os.path.abspath", side_effect=lambda p: p):
+        ws.sync_write_acls([])
+
+    mock_revoke.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -171,3 +217,23 @@ def test_build_restricted_token_checks_both_required_privileges():
 
     assert "SeIncreaseQuotaPrivilege" in checked
     assert "SeAssignPrimaryTokenPrivilege" in checked
+
+
+def test_create_process_does_not_request_a_new_hidden_console():
+    """Regression test for the actual bug found on a real Windows machine:
+    CREATE_NO_WINDOW doesn't skip console creation, it creates a NEW,
+    hidden console - which requires the launching token to have access to
+    a Window Station/Desktop object that a write-restricted token
+    typically lacks, killing the child during bootstrap with
+    STATUS_DLL_INIT_FAILED (0xC0000142) before it runs anything. The
+    window must be hidden via STARTUPINFO (STARTF_USESHOWWINDOW + SW_HIDE)
+    instead, which doesn't require creating a new console at all.
+
+    Checks the flag's actual value/definition rather than the bare string
+    "CREATE_NO_WINDOW", since the module's own explanatory comment on this
+    (deliberately) mentions it by name."""
+    source = inspect.getsource(ws)
+    assert "CREATE_NO_WINDOW = 0x08000000" not in source
+    assert "0x08000000" not in source
+    assert "STARTF_USESHOWWINDOW" in source
+    assert "SW_HIDE" in source

@@ -55,6 +55,8 @@ granted access there.
 
 import asyncio
 import ctypes
+import json
+import os
 import platform
 import subprocess
 import uuid
@@ -97,9 +99,23 @@ if IS_WINDOWS:
     WRITE_RESTRICTED = 0x8  # CreateRestrictedToken flag: this is the whole mechanism
     SE_GROUP_LOGON_ID = 0xC0000000
 
-    CREATE_NO_WINDOW = 0x08000000
+    # CREATE_NO_WINDOW is deliberately NOT used, despite the name suggesting
+    # exactly what we want (a console command with no visible window). It
+    # doesn't skip console creation - it creates a new, hidden console -
+    # and creating a new console requires the launching token to have
+    # access to a Window Station/Desktop object, which a write-restricted
+    # token typically does not have. The result is the child dying during
+    # process bootstrap with STATUS_DLL_INIT_FAILED (0xC0000142) before it
+    # executes a single instruction of the actual command - exactly the
+    # failure this was built to avoid, and the actual bug found testing
+    # this against a real Windows machine. STARTF_USESHOWWINDOW + SW_HIDE
+    # in STARTUPINFO hides the window without requiring new console
+    # creation at all - dwCreationFlags is left at 0 for the console
+    # aspect, letting the child inherit/attach normally.
     CREATE_UNICODE_ENVIRONMENT = 0x00000400
     STARTF_USESTDHANDLES = 0x00000100
+    STARTF_USESHOWWINDOW = 0x00000001
+    SW_HIDE = 0
     HANDLE_FLAG_INHERIT = 0x00000001
 
     class SID_AND_ATTRIBUTES(ctypes.Structure):
@@ -293,6 +309,81 @@ def ensure_write_acl(directory: str) -> None:
             f"PowerShell ACL grant failed for {directory!r}: "
             f"{result.stderr.strip() or result.stdout.strip()}"
         )
+
+
+def revoke_write_acl(directory: str) -> None:
+    """Removes our synthetic SID's access rule from `directory`, undoing
+    exactly what ensure_write_acl granted. Best-effort and non-fatal on
+    failure (unlike ensure_write_acl, which fails closed) - see
+    sync_write_acls's docstring for why: a directory that no longer exists,
+    or a removal that fails for some other reason, shouldn't block the
+    command that's actually being run right now over cleaning up a grant
+    from an unrelated, earlier one."""
+    escaped_dir = directory.replace('"', '""')
+    ps_script = (
+        '$ErrorActionPreference = "Stop"; '
+        f'$sid = New-Object System.Security.Principal.SecurityIdentifier("{MESH_SANDBOX_WRITE_SID}"); '
+        f'$acl = Get-Acl -LiteralPath "{escaped_dir}"; '
+        '$acl.PurgeAccessRules($sid); '
+        f'Set-Acl -LiteralPath "{escaped_dir}" -AclObject $acl'
+    )
+    subprocess.run(
+        ["powershell", "-NoProfile", "-NonInteractive", "-Command", ps_script],
+        capture_output=True,
+        text=True,
+    )
+
+
+def _acl_state_path() -> str:
+    base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+    return os.path.join(base, "Mesh", "sandbox_acl_state.json")
+
+
+def _load_previously_granted_dirs() -> set:
+    try:
+        with open(_acl_state_path(), "r", encoding="utf-8") as f:
+            return set(json.load(f))
+    except (OSError, ValueError):
+        return set()
+
+
+def _save_granted_dirs(dirs) -> None:
+    path = _acl_state_path()
+    try:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(sorted(dirs), f)
+    except OSError:
+        pass  # best-effort bookkeeping; see sync_write_acls
+
+
+def sync_write_acls(current_write_dirs) -> None:
+    """The single entry point for keeping ACL grants in sync with the
+    CURRENT allow-list: grants access to exactly `current_write_dirs`, and
+    revokes it from every directory previously granted access that isn't
+    in this set anymore.
+
+    This exists because of a real confinement gap found in practice: an
+    ACL grant is a permanent, on-disk change, unlike everything else this
+    sandbox relies on (a restricted token vanishes when its process exits;
+    an in-memory allow-list resets every session). Without this sync step,
+    a directory granted access once - e.g. because it was in `/dirs`
+    during an earlier session - remains writable by the sandbox forever,
+    even after being removed from `/dirs`. Every call to
+    `run_write_restricted` now reconciles against the full history of
+    everything ever granted, not just adding to it.
+    """
+    current_set = {os.path.abspath(d) for d in current_write_dirs}
+    previously_granted = _load_previously_granted_dirs()
+
+    for d in previously_granted - current_set:
+        if os.path.isdir(d):
+            revoke_write_acl(d)
+
+    for d in current_set:
+        ensure_write_acl(d)
+
+    _save_granted_dirs(current_set)
 
 
 def _check(ok, call_name: str):
@@ -491,8 +582,7 @@ async def run_write_restricted(command: str, write_dirs: List[str], cwd: str,
         return {"error": "windows_sandbox.run_write_restricted() called on a non-Windows platform."}
 
     try:
-        for d in write_dirs:
-            ensure_write_acl(d)
+        sync_write_acls(write_dirs)
 
         return await asyncio.to_thread(_run_write_restricted_sync, command, cwd, timeout)
     except WindowsSandboxError as e:
@@ -520,7 +610,8 @@ def _run_write_restricted_sync(command: str, cwd: str, timeout: Optional[float])
 
         startup_info = STARTUPINFOW()
         startup_info.cb = ctypes.sizeof(STARTUPINFOW)
-        startup_info.dwFlags = STARTF_USESTDHANDLES
+        startup_info.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW
+        startup_info.wShowWindow = SW_HIDE
         startup_info.hStdOutput = stdout_write
         startup_info.hStdError = stderr_write
         startup_info.hStdInput = wintypes.HANDLE(0)
@@ -540,7 +631,7 @@ def _run_write_restricted_sync(command: str, cwd: str, timeout: Optional[float])
 
         ok = advapi32.CreateProcessAsUserW(
             hRestricted, None, cmdline, None, None, True,
-            CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
+            CREATE_UNICODE_ENVIRONMENT,
             None, cwd, ctypes.byref(startup_info), ctypes.byref(proc_info),
         )
         _check(ok, "CreateProcessAsUserW")

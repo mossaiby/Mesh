@@ -161,7 +161,15 @@ async def cmd_shell(engine: Any, args: List[str]):
             console.print(f"[error]{result['error']}[/error]")
         else:
             output = (result.get("stdout", "") + "\n" + result.get("stderr", "")).strip()
+            exit_code = result.get("exit_code")
             console.print(output if output else "[dim]<no output>[/dim]")
+            # Surfaced unconditionally while this backend is experimental -
+            # a non-zero exit with no output is a materially different
+            # situation ("the process ran and reported failure") from a
+            # zero exit with no output ("nothing to say"), and until now
+            # neither was ever shown, which is exactly how a real failure
+            # here could look identical to a benign empty-output success.
+            console.print(f"[dim](exit code: {exit_code}, sandbox: {result.get('_sandbox', 'n/a')})[/dim]")
         return
 
     sandboxed = engine.config_mgr.config.sandbox_enabled and sandbox.detect_backend() != "none"
