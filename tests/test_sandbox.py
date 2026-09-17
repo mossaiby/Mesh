@@ -1,5 +1,6 @@
 import os
 import subprocess
+import sys
 from unittest import mock
 
 import pytest
@@ -146,7 +147,7 @@ async def test_shell_tool_runs_unsandboxed_on_windows(tmp_path):
         cwd = os.getcwd()
         try:
             os.chdir(tmp_path)
-            res = await tool.execute(command="python3 -c \"print('hello')\"")
+            res = await tool.execute(command=f'"{sys.executable}" -c "print(\'hello\')"')
             assert res["exit_code"] == 0
             assert "hello" in res["stdout"]
             assert res["_sandbox"] == "none"

@@ -58,8 +58,16 @@ def test_ensure_write_acl_failure_raises_with_diagnostic():
 
 @pytest.mark.asyncio
 async def test_run_write_restricted_returns_error_when_not_windows():
-    # Real behavior on this (non-Windows) machine, no mocking needed.
-    result = await ws.run_write_restricted("echo hi", ["/tmp"], cwd="/tmp")
+    """Must explicitly force IS_WINDOWS False rather than rely on the real
+    platform value - the same class of bug found and fixed in
+    test_windows_sandbox_setup.py: relying on the ambient platform means
+    this test's intended early-exit branch is skipped entirely when the
+    suite runs on a real Windows machine, falling through into a REAL (if
+    ultimately failing) PowerShell ACL call against a literal '/tmp' path -
+    an unintended side effect from merely running pytest, not a
+    meaningful test of anything."""
+    with mock.patch.object(ws, "IS_WINDOWS", False):
+        result = await ws.run_write_restricted("echo hi", ["/tmp"], cwd="/tmp")
     assert "error" in result
 
 

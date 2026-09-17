@@ -76,7 +76,18 @@ def test_success_path_source_mentions_the_relogin_caveat():
 
 @pytest.mark.asyncio
 async def test_run_elevated_setup_returns_error_when_not_windows():
-    result = await wss.run_elevated_setup()
+    """This must explicitly force IS_WINDOWS False rather than rely on the
+    real platform value: on an actual Windows machine (exactly where a
+    contributor to this file would run the full suite), relying on the
+    ambient platform meant this test skipped its intended early-exit
+    branch entirely and fell through into the REAL elevation flow -
+    genuinely calling ShellExecuteExW with the "runas" verb, which can
+    trigger a live UAC prompt purely as a side effect of running pytest.
+    That's a correctness bug and a safety bug: no test in this file should
+    ever be able to trigger real UAC/LSA activity regardless of which OS
+    actually runs the suite."""
+    with mock.patch.object(wss, "IS_WINDOWS", False):
+        result = await wss.run_elevated_setup()
     assert result[0] is False
 
 
