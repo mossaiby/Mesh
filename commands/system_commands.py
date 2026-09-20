@@ -439,14 +439,32 @@ async def cmd_config(engine: Any, args: List[str]):
     elif sub == "hooks":
         if not sub_args:
             state_str = "[success]ON[/success]" if hooks.hook_manager.enabled else "[error]OFF[/error]"
-            console.print(f"Post-edit hooks are {state_str}.")
+            lifecycle = hooks.hook_manager.describe_lifecycle_hooks()
+            console.print(f"Hooks are {state_str} (this gates both the built-in post-edit linter and hooks.json).")
+            if lifecycle:
+                console.print("[label]Lifecycle hooks configured (hooks.json):[/label]")
+                for event, count in lifecycle.items():
+                    console.print(f"  {BULLET} {event}: {count}")
+            else:
+                console.print("[dim]No lifecycle hooks configured - see hooks.json.example, or /config hooks reload after creating hooks.json.[/dim]")
+            console.print("Usage: [warning]/config hooks on|off|reload[/warning]")
             return
         if sub_args[0].lower() == "on":
             hooks.hook_manager.enabled = True
-            console.print("[success]Post-edit linter hooks ENABLED.[/success]")
+            console.print("[success]Hooks ENABLED (post-edit linter + hooks.json).[/success]")
         elif sub_args[0].lower() == "off":
             hooks.hook_manager.enabled = False
-            console.print("[warning]Post-edit linter hooks DISABLED.[/warning]")
+            console.print("[warning]Hooks DISABLED (post-edit linter + hooks.json).[/warning]")
+        elif sub_args[0].lower() == "reload":
+            error = hooks.hook_manager.reload_lifecycle_hooks()
+            if error:
+                console.print(f"[error]{error}[/error]")
+            else:
+                lifecycle = hooks.hook_manager.describe_lifecycle_hooks()
+                total = sum(lifecycle.values())
+                console.print(f"[success]Reloaded hooks.json - {total} lifecycle hook(s) across {len(lifecycle)} event(s).[/success]")
+        else:
+            console.print("[error]Usage: /config hooks on|off|reload[/error]")
 
     elif sub == "compact":
         if not sub_args:

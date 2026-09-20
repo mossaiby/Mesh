@@ -478,3 +478,18 @@ PERSISTENCE
   /checkpoint save|fork|restore <tag>
   /memory | /note | /goal | /dream | /reflexion
 ```
+
+---
+
+## 17. Lifecycle Hooks
+
+Two distinct mechanisms live under `/config hooks [on|off|reload]`:
+
+- **Built-in post-edit linter** — runs automatically after `write_file`/`edit_file`/`hash_edit`, detecting and running whatever linter/formatter is available for the file's language (`ruff`/`flake8` for Python, `eslint` for JS/TS, `cargo check` for Rust, `gofmt` for Go). No configuration needed; toggled by the same on/off switch as the hooks below.
+- **General lifecycle hooks** (`hooks.json`, copy from `hooks.json.example`) — arbitrary shell commands at five points: `session_start`, `session_end`, `user_prompt_submit`, `pre_tool_use`, `post_tool_use`. Each hook receives a JSON payload on stdin describing the event, and communicates back via stdout/exit code:
+  - Exit code `2` blocks a `pre_tool_use` call, with `stderr` shown to the model as the reason — this mirrors Claude Code's own hook exit-code convention on purpose.
+  - JSON on stdout can set `"feedback"` (merged into the tool result or printed to the console, depending on the event) or, for `user_prompt_submit` only, `"modified_prompt"` to rewrite the prompt before it reaches the model.
+  - Plain non-JSON stdout is used as feedback directly, for simple hooks that just want to print something.
+  - `pre_tool_use`/`post_tool_use` hooks take an optional `"matcher"` (a regex tested against the tool name); omit it to match every tool.
+
+Run `/config hooks reload` after editing `hooks.json` while Mesh is already running.

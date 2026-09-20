@@ -34,6 +34,7 @@ class ToolRegistry:
         self.subagent_distiller: Optional[Any] = None
         self.repair_engine: Optional[Any] = None
         self.safety_guard: Optional[Any] = None
+        self.hook_manager: Optional[Any] = None
         self.mode_blocked_tools: set = set()
 
     def register(self, tool: BaseTool) -> None:
@@ -184,6 +185,22 @@ class ToolRegistry:
 
         intent = kwargs.pop("_intent", "").strip()
 
+        # General lifecycle hooks: pre_tool_use (see hooks.py's HookManager
+        # docstring). Runs before the Safety Guard deliberately - this is
+        # meant to be the earliest possible interception point, the same
+        # position PreToolUse hooks occupy in comparable tools.
+        hook_manager = self.hook_manager
+        hook_info: Optional[Dict[str, Any]] = None
+        if hook_manager is not None:
+            hook_result = await hook_manager.run_event("pre_tool_use", {"tool_name": resolved_name, "arguments": kwargs})
+            if hook_result["block"]:
+                return json.dumps({
+                    "error": f"Blocked by hook: {hook_result['reason']}",
+                    "_hook": {"blocked": True, "reason": hook_result["reason"]}
+                })
+            if hook_result["feedback"]:
+                hook_info = {"pre_tool_use_feedback": hook_result["feedback"]}
+
         # Safety Guard
         guard = self.safety_guard
         guard_info: Optional[Dict[str, Any]] = None
@@ -200,7 +217,15 @@ class ToolRegistry:
 
         result_str = json.dumps(raw_result) if not isinstance(raw_result, str) else raw_result
 
-        if (repair_notes or guard_info) and result_str.startswith("{"):
+        if hook_manager is not None:
+            post_hook_result = await hook_manager.run_event(
+                "post_tool_use", {"tool_name": resolved_name, "arguments": kwargs, "result": raw_result}
+            )
+            if post_hook_result["feedback"]:
+                hook_info = hook_info or {}
+                hook_info["post_tool_use_feedback"] = post_hook_result["feedback"]
+
+        if (repair_notes or guard_info or hook_info) and result_str.startswith("{"):
             try:
                 parsed = json.loads(result_str)
                 if isinstance(parsed, dict):
@@ -208,6 +233,8 @@ class ToolRegistry:
                         parsed["_repaired"] = repair_notes
                     if guard_info:
                         parsed["_guard"] = guard_info
+                    if hook_info:
+                        parsed["_hook"] = hook_info
                     result_str = json.dumps(parsed)
             except Exception:
                 pass

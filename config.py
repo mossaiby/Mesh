@@ -25,6 +25,7 @@ class TimeoutsConfig(BaseModel):
     shell: float = Field(default=30.0, description="Native shell command execution timeout in seconds.")
     mcp: float = Field(default=60.0, description="Model Context Protocol (MCP) client request timeout in seconds.")
     linter: float = Field(default=10.0, description="Post-edit linter hook execution timeout in seconds.")
+    hook: float = Field(default=10.0, description="General lifecycle hook (hooks.json) execution timeout in seconds, per hook command.")
     python: float = Field(default=10.0, description="Direct Python snippet execution tool timeout in seconds.")
     api: float = Field(default=12.0, description="Provider model discovery API call timeout in seconds.")
 

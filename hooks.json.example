@@ -1,0 +1,38 @@
+{
+  "$comment": "Copy this file to hooks.json (in the same directory as config.json) to enable lifecycle hooks. Run /config hooks reload after editing hooks.json while Mesh is running. See hooks.py's HookManager docstring for the full protocol (payload shape, exit-code conventions, JSON response fields).",
+
+  "session_start": [
+    {
+      "command": "echo '{\"feedback\": \"Session started - reminder: run tests before committing.\"}'"
+    }
+  ],
+
+  "session_end": [
+    {
+      "command": "echo 'Mesh session ended.' >> mesh_activity.log"
+    }
+  ],
+
+  "user_prompt_submit": [
+    {
+      "_comment": "Runs on every free-text message before it reaches the model. Can inject feedback and/or rewrite the prompt via 'modified_prompt' in a JSON response on stdout.",
+      "command": "python3 -c \"import sys, json; d = json.load(sys.stdin); print(json.dumps({'feedback': f'Prompt length: {len(d[\\\"prompt\\\"])} chars'}))\""
+    }
+  ],
+
+  "pre_tool_use": [
+    {
+      "_comment": "'matcher' is a regex tested against the tool name (re.fullmatch) - omit it to match every tool. Exit code 2 blocks the tool call; stderr becomes the reason shown to the model.",
+      "matcher": "shell|job|execute_python",
+      "command": "python3 -c \"import sys, json; d = json.load(sys.stdin); print(f'About to run: {d[\\\"arguments\\\"].get(\\\"command\\\") or d[\\\"arguments\\\"].get(\\\"code\\\")}', file=sys.stderr)\""
+    }
+  ],
+
+  "post_tool_use": [
+    {
+      "_comment": "Runs after the tool result is available. 'feedback' gets merged into the result's _hook field, visible to the model.",
+      "matcher": "write_file|edit_file|hash_edit",
+      "command": "echo '{\"feedback\": \"Reminder: consider running the test suite after this edit.\"}'"
+    }
+  ]
+}

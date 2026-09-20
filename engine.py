@@ -96,6 +96,7 @@ class MeshEngine:
         self.cmd_registry = CommandRegistry()
         self.mcp_manager = MCPManager(config_mgr=self.config_mgr)
         hooks.hook_manager._config_mgr = self.config_mgr
+        self.tool_registry.hook_manager = hooks.hook_manager
         self.debug_mode: bool = False
         self.subagent_distiller.debug_mode = self.debug_mode
         self.tools_enabled: bool = True
@@ -244,6 +245,11 @@ class MeshEngine:
                 await self.cmd_registry.dispatch(f"/python {code_text}")
             else:
                 formatted_input, _ = context_mentions.process_prompt_context_mentions(line, ".")
+                prompt_hook_result = await hooks.hook_manager.run_event("user_prompt_submit", {"prompt": formatted_input})
+                if prompt_hook_result["modified_prompt"] is not None:
+                    formatted_input = prompt_hook_result["modified_prompt"]
+                for hook_line in prompt_hook_result["feedback"]:
+                    console.print(f"[dim]{hook_line}[/dim]")
                 pre_prompt_count = len(self.messages)
                 self.messages.append({"role": "user", "content": formatted_input})
                 self.session_logger.log_user_prompt(formatted_input)
@@ -263,102 +269,117 @@ class MeshEngine:
             f"Developed by [accent]Farshid Mossaiby[/accent] ([accent]https://github.com/mossaiby/Mesh[/accent])\n"
         )
 
-        if log_file is not None:
-            self.session_logger.enable(filepath=log_file)
-            console.print(f"[success]Session Markdown logging ENABLED -> `{self.session_logger.filepath}`[/success]")
+        session_start_result = await hooks.hook_manager.run_event("session_start", {})
+        for line in session_start_result["feedback"]:
+            console.print(f"[dim]{line}[/dim]")
 
-        if resume_latest:
-            latest = self.session_manager.get_latest_session_name()
-            if latest:
-                success, msg = self.session_manager.load_session(latest)
-                console.print(f"[{'success' if success else 'error'}]{msg}[/{'success' if success else 'error'}]")
-            else:
-                console.print("[warning]No saved sessions found to resume.[/warning]")
-        elif session_name:
-            if os.path.exists(os.path.join("sessions", f"{session_name}.json")):
-                success, msg = self.session_manager.load_session(session_name)
-                console.print(f"[{'success' if success else 'error'}]{msg}[/{'success' if success else 'error'}]")
-            else:
-                self.session_manager.active_session_name = session_name
-                console.print(f"[success]Active session set to '[accent]{session_name}[/accent]'.[/success]")
+        try:
+            if log_file is not None:
+                self.session_logger.enable(filepath=log_file)
+                console.print(f"[success]Session Markdown logging ENABLED -> `{self.session_logger.filepath}`[/success]")
 
-        console.print("[dim]Initializing MCP servers...[/dim]")
-        await self.mcp_manager.initialize_all(self.tool_registry)
+            if resume_latest:
+                latest = self.session_manager.get_latest_session_name()
+                if latest:
+                    success, msg = self.session_manager.load_session(latest)
+                    console.print(f"[{'success' if success else 'error'}]{msg}[/{'success' if success else 'error'}]")
+                else:
+                    console.print("[warning]No saved sessions found to resume.[/warning]")
+            elif session_name:
+                if os.path.exists(os.path.join("sessions", f"{session_name}.json")):
+                    success, msg = self.session_manager.load_session(session_name)
+                    console.print(f"[{'success' if success else 'error'}]{msg}[/{'success' if success else 'error'}]")
+                else:
+                    self.session_manager.active_session_name = session_name
+                    console.print(f"[success]Active session set to '[accent]{session_name}[/accent]'.[/success]")
 
-        # Start non-blocking background symbol indexing
-        symbol_search.symbol_indexer.start_background_indexing(
-            ".",
-            on_complete=lambda count: self.update_system_message()
-        )
+            console.print("[dim]Initializing MCP servers...[/dim]")
+            await self.mcp_manager.initialize_all(self.tool_registry)
 
-        if script_file:
-            await self.run_script_file(script_file)
-            if non_interactive:
-                console.print("\n[warning]Script execution complete in non-interactive mode. Exiting...[/warning]")
-                if self.session_manager.active_session_name:
-                    self.session_manager.save_session()
-                try:
-                    await jobs.job_manager.stop_all()
-                    await asyncio.wait_for(self.mcp_manager.close_all(), timeout=3.0)
-                except Exception:
-                    pass
-                return
+            # Start non-blocking background symbol indexing
+            symbol_search.symbol_indexer.start_background_indexing(
+                ".",
+                on_complete=lambda count: self.update_system_message()
+            )
 
-        console.print("[brand]Ready.[/brand] Type [warning]/help[/warning] for commands or start chatting.\n")
-        
-        self.is_running = True
-        while self.is_running:
-            try:
-                user_input = await self.prompt_session.get_input_async()
-                if not user_input:
-                    continue
-                if user_input.lower() in ["exit", "quit", "/exit"]:
-                    await self.cmd_registry.dispatch("/exit")
-                    if not self.is_running:
-                        break
-                    continue
-
-                if user_input.startswith("!"):
-                    cmd_text = user_input[1:].strip()
-                    await self.cmd_registry.dispatch(f"/shell {cmd_text}")
-                    continue
-
-                if user_input.startswith("#"):
-                    code_text = user_input[1:].strip()
-                    await self.cmd_registry.dispatch(f"/python {code_text}")
-                    continue
-
-                if self.cmd_registry.is_command(user_input):
-                    handled = await self.cmd_registry.dispatch(user_input)
-                    if not self.is_running:
-                        break
-                    if not handled:
-                        console.print("[error]Unknown command. Type /help for options.[/error]")
-                    continue
-
-                formatted_input, _ = context_mentions.process_prompt_context_mentions(user_input, ".")
-
-                pre_prompt_count = len(self.messages)
-                self.messages.append({"role": "user", "content": formatted_input})
-                self.session_logger.log_user_prompt(formatted_input)
-                await self.process_inference(pre_prompt_count)
-
-            except (KeyboardInterrupt, EOFError):
-                console.print("\n[warning]Exiting...[/warning]")
-                if self.session_manager.active_session_name:
-                    try:
+            if script_file:
+                await self.run_script_file(script_file)
+                if non_interactive:
+                    console.print("\n[warning]Script execution complete in non-interactive mode. Exiting...[/warning]")
+                    if self.session_manager.active_session_name:
                         self.session_manager.save_session()
+                    try:
+                        await jobs.job_manager.stop_all()
+                        await asyncio.wait_for(self.mcp_manager.close_all(), timeout=3.0)
                     except Exception:
                         pass
+                    return
+
+            console.print("[brand]Ready.[/brand] Type [warning]/help[/warning] for commands or start chatting.\n")
+
+            self.is_running = True
+            while self.is_running:
                 try:
-                    await jobs.job_manager.stop_all()
-                    await asyncio.wait_for(self.mcp_manager.close_all(), timeout=2.0)
-                except Exception:
-                    pass
-                except (KeyboardInterrupt, asyncio.CancelledError):
-                    pass
-                self.is_running = False
-                break
+                    user_input = await self.prompt_session.get_input_async()
+                    if not user_input:
+                        continue
+                    if user_input.lower() in ["exit", "quit", "/exit"]:
+                        await self.cmd_registry.dispatch("/exit")
+                        if not self.is_running:
+                            break
+                        continue
+
+                    if user_input.startswith("!"):
+                        cmd_text = user_input[1:].strip()
+                        await self.cmd_registry.dispatch(f"/shell {cmd_text}")
+                        continue
+
+                    if user_input.startswith("#"):
+                        code_text = user_input[1:].strip()
+                        await self.cmd_registry.dispatch(f"/python {code_text}")
+                        continue
+
+                    if self.cmd_registry.is_command(user_input):
+                        handled = await self.cmd_registry.dispatch(user_input)
+                        if not self.is_running:
+                            break
+                        if not handled:
+                            console.print("[error]Unknown command. Type /help for options.[/error]")
+                        continue
+
+                    formatted_input, _ = context_mentions.process_prompt_context_mentions(user_input, ".")
+
+                    prompt_hook_result = await hooks.hook_manager.run_event("user_prompt_submit", {"prompt": formatted_input})
+                    if prompt_hook_result["modified_prompt"] is not None:
+                        formatted_input = prompt_hook_result["modified_prompt"]
+                    for line in prompt_hook_result["feedback"]:
+                        console.print(f"[dim]{line}[/dim]")
+
+                    pre_prompt_count = len(self.messages)
+                    self.messages.append({"role": "user", "content": formatted_input})
+                    self.session_logger.log_user_prompt(formatted_input)
+                    await self.process_inference(pre_prompt_count)
+
+                except (KeyboardInterrupt, EOFError):
+                    console.print("\n[warning]Exiting...[/warning]")
+                    if self.session_manager.active_session_name:
+                        try:
+                            self.session_manager.save_session()
+                        except Exception:
+                            pass
+                    try:
+                        await jobs.job_manager.stop_all()
+                        await asyncio.wait_for(self.mcp_manager.close_all(), timeout=2.0)
+                    except Exception:
+                        pass
+                    except (KeyboardInterrupt, asyncio.CancelledError):
+                        pass
+                    self.is_running = False
+                    break
+        finally:
+            session_end_result = await hooks.hook_manager.run_event("session_end", {})
+            for line in session_end_result["feedback"]:
+                console.print(f"[dim]{line}[/dim]")
 
     async def process_inference(self, pre_prompt_count: Optional[int] = None):
         """Delegates turn inference and multi-step tool execution loop to InferenceCoordinator."""

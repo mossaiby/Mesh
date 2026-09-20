@@ -259,6 +259,12 @@
           "title": "Linter",
           "type": "number"
         },
+        "hook": {
+          "default": 10.0,
+          "description": "General lifecycle hook (hooks.json) execution timeout in seconds, per hook command.",
+          "title": "Hook",
+          "type": "number"
+        },
         "python": {
           "default": 10.0,
           "description": "Direct Python snippet execution tool timeout in seconds.",

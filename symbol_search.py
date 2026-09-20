@@ -15,7 +15,7 @@ LANGUAGE_EXTENSIONS: Dict[str, str] = {
     ".js": "javascript",
     ".jsx": "javascript",
     ".ts": "typescript",
-    ".tsx": "typescript",
+    ".tsx": "tsx",
     ".rs": "rust",
     ".go": "go",
     ".cpp": "cpp",
@@ -27,13 +27,23 @@ LANGUAGE_EXTENSIONS: Dict[str, str] = {
     ".java": "java",
     ".cs": "c_sharp",
     ".php": "php",
-    ".rb": "ruby"
+    ".rb": "ruby",
+    ".kt": "kotlin",
+    ".kts": "kotlin",
+    ".swift": "swift",
+    ".scala": "scala",
+    ".sc": "scala",
+    ".lua": "lua",
+    ".sh": "bash",
+    ".bash": "bash",
+    ".dart": "dart",
 }
 
 LANGUAGE_MODULE_NAMES: Dict[str, str] = {
     "python": "tree_sitter_python",
     "javascript": "tree_sitter_javascript",
     "typescript": "tree_sitter_typescript",
+    "tsx": "tree_sitter_typescript",
     "rust": "tree_sitter_rust",
     "go": "tree_sitter_go",
     "cpp": "tree_sitter_cpp",
@@ -41,7 +51,32 @@ LANGUAGE_MODULE_NAMES: Dict[str, str] = {
     "java": "tree_sitter_java",
     "c_sharp": "tree_sitter_c_sharp",
     "php": "tree_sitter_php",
-    "ruby": "tree_sitter_ruby"
+    "ruby": "tree_sitter_ruby",
+    "kotlin": "tree_sitter_kotlin",
+    "swift": "tree_sitter_swift",
+    "scala": "tree_sitter_scala",
+    "lua": "tree_sitter_lua",
+    "bash": "tree_sitter_bash",
+    "dart": "tree_sitter_dart",
+}
+
+# Most `tree_sitter_<lang>` packages expose a single, generic `language()`
+# function returning their one grammar. A few don't - either because the
+# package ships more than one dialect's grammar (TypeScript ships both
+# .ts and .tsx as separate grammars) or just names things differently.
+# Found by actually installing and testing every package this module
+# claims to support, not by assumption: TWO of the original eleven
+# "supported" languages were silently broken this way before this fix -
+# TypeScript (tree_sitter_typescript has no `.language()` at all, only
+# `language_typescript()`/`language_tsx()`) and PHP (tree_sitter_php has
+# `language_php()`/`language_php_only()`, no plain `.language()`) - both
+# fell through the try/except in get_tree_sitter_parser(), cached `None`,
+# and silently produced zero symbols for every .ts/.tsx/.php file with no
+# error shown anywhere.
+LANGUAGE_ACCESSOR_OVERRIDES: Dict[str, str] = {
+    "typescript": "language_typescript",
+    "tsx": "language_tsx",
+    "php": "language_php",  # the full-file grammar (embedded HTML included), not language_php_only
 }
 
 PARSER_CACHE: Dict[str, Any] = {}
@@ -70,7 +105,9 @@ def get_tree_sitter_parser(lang_name: str) -> Optional[Any]:
         try:
             mod = importlib.import_module(mod_name)
             from tree_sitter import Language, Parser
-            lang_obj = Language(mod.language())
+            accessor_name = LANGUAGE_ACCESSOR_OVERRIDES.get(lang_name, "language")
+            language_fn = getattr(mod, accessor_name)
+            lang_obj = Language(language_fn())
             try:
                 parser = Parser(lang_obj)
             except Exception:
@@ -201,14 +238,50 @@ class SymbolIndexer:
         if node_type in (
             "function_declaration", "function_definition", "method_definition", "method_declaration",
             "class_declaration", "class_definition", "interface_declaration",
-            "struct_item", "impl_item", "type_alias_declaration", "function_item", "type_declaration"
+            "struct_item", "impl_item", "type_alias_declaration", "function_item", "type_declaration",
+            "function_signature", "constructor_signature",
+            "class_specifier", "struct_specifier",
+            "class", "method",
         ):
+            # struct_specifier/class_specifier fire for both a real
+            # definition (struct Foo { ... }) AND a bare type reference
+            # elsewhere (e.g. a parameter typed `struct Foo*`) - the C/C++
+            # grammar uses the identical node type for both, distinguished
+            # only by whether a body is present. Without this check, every
+            # place a struct/class name is merely referenced would produce
+            # a duplicate "definition" of it.
+            if node_type in ("struct_specifier", "class_specifier"):
+                has_body = any(c.type in ("field_declaration_list", "body") for c in node.children)
+                if not has_body:
+                    for child in node.children:
+                        self._traverse_tree_nodes(child, code_bytes, rel_path, symbols)
+                    return
+
             name_node = node.child_by_field_name("name")
             if not name_node:
                 for child in node.children:
-                    if child.type in ("identifier", "type_identifier", "property_identifier", "field_identifier", "name"):
+                    if child.type in ("identifier", "type_identifier", "property_identifier", "field_identifier", "name", "constant"):
                         name_node = child
                         break
+
+            if not name_node:
+                # C-family languages (C, C++, and similar) nest the actual
+                # identifier inside a chain of "declarator" fields rather
+                # than exposing it as a direct child or a "name" field -
+                # e.g. function_definition's own "declarator" field is a
+                # function_declarator, whose OWN "declarator" field is
+                # finally the identifier (the chain gets one layer longer
+                # per pointer/array/reference wrapping it, e.g. `int *foo()`).
+                # Follow it down rather than a blind subtree search, which
+                # risks reaching into the function body instead.
+                declarator = node.child_by_field_name("declarator")
+                depth = 0
+                while declarator is not None and depth < 6:
+                    if declarator.type in ("identifier", "type_identifier", "field_identifier"):
+                        name_node = declarator
+                        break
+                    declarator = declarator.child_by_field_name("declarator")
+                    depth += 1
 
             if name_node:
                 symbol_name = code_bytes[name_node.start_byte:name_node.end_byte].decode("utf-8", errors="replace")
@@ -216,7 +289,9 @@ class SymbolIndexer:
                 first_line = code_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="replace").splitlines()[0]
 
                 kind = "function"
-                if "class" in node_type or "struct" in node_type or "interface" in node_type or "type" in node_type:
+                if "constructor" in node_type:
+                    kind = "method"
+                elif "class" in node_type or "struct" in node_type or "interface" in node_type or "type" in node_type:
                     kind = "class"
                 elif "method" in node_type:
                     kind = "method"
