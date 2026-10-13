@@ -1,2 +1,10 @@
 {
+  "mcpServers": {
+    "connect4": {
+      "command": "python",
+      "args": [
+        "C:\\Users\\Farshid Mossaiby\\source\\repos\\Connect4.Python\\connect4_mcp.py"
+      ]
+    }
+  }
 }

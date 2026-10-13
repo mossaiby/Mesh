@@ -35,6 +35,7 @@ class ToolRegistry:
         self.repair_engine: Optional[Any] = None
         self.safety_guard: Optional[Any] = None
         self.hook_manager: Optional[Any] = None
+        self.event_registry: Optional[Any] = None
         self.mode_blocked_tools: set = set()
 
     def register(self, tool: BaseTool) -> None:
@@ -214,6 +215,22 @@ class ToolRegistry:
 
         raw_result, run_notes = await self._execute_with_repair(tool, resolved_name, kwargs)
         repair_notes.extend(run_notes)
+
+        # A tool can end its turn waiting on something external (an MCP
+        # server asking the user to finish an OAuth flow, a build to
+        # finish, anything outside the chat) by returning
+        # {"status": "pending", "event_id": ..., "message": ...}. This
+        # registers that wait; the model still sees this exact dict as its
+        # tool result (so it can tell the user what's going on) and the
+        # turn ends normally. See turn_queue.py for how the wait gets
+        # resolved and the turn resumed automatically.
+        if self.event_registry is not None and isinstance(raw_result, dict) and raw_result.get("status") == "pending":
+            event_id = raw_result.get("event_id")
+            if event_id:
+                self.event_registry.register(event_id, raw_result.get("message", ""), resolved_name)
+                watch_path = raw_result.get("watch_file")
+                if watch_path:
+                    self.event_registry.watch_file(event_id, watch_path)
 
         result_str = json.dumps(raw_result) if not isinstance(raw_result, str) else raw_result
 

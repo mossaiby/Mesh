@@ -35,6 +35,7 @@ from tools import (
     GitCommitTool,
     GitPushTool,
     GitBranchTool,
+    WaitForEventTool,
 )
 import tool_synthesis
 import symbol_search
@@ -47,6 +48,7 @@ import context_mentions
 import distill
 import repair
 import hooks
+from turn_queue import TurnQueue, EventRegistry
 from session_logger import SessionLogger
 from session_manager import SessionManager
 from checkpoint import CheckpointManager
@@ -97,6 +99,10 @@ class MeshEngine:
         self.mcp_manager = MCPManager(config_mgr=self.config_mgr)
         hooks.hook_manager._config_mgr = self.config_mgr
         self.tool_registry.hook_manager = hooks.hook_manager
+        self.turn_queue = TurnQueue()
+        self.event_registry = EventRegistry(self.turn_queue)
+        self.tool_registry.event_registry = self.event_registry
+        self._current_turn_task = None
         self.debug_mode: bool = False
         self.subagent_distiller.debug_mode = self.debug_mode
         self.tools_enabled: bool = True
@@ -181,6 +187,7 @@ class MeshEngine:
         self.tool_registry.register(GrepTool(self.permission_manager))
         self.tool_registry.register(ShellTool(self.permission_manager, self.config_mgr))
         self.tool_registry.register(BackgroundShellTool())
+        self.tool_registry.register(WaitForEventTool())
         jobs.job_manager.configure(self.permission_manager, self.config_mgr)
         self.tool_registry.register(GitInitTool())
         self.tool_registry.register(GitStatusTool())
@@ -320,7 +327,13 @@ class MeshEngine:
             self.is_running = True
             while self.is_running:
                 try:
-                    user_input = await self.prompt_session.get_input_async()
+                    item = await self._wait_for_next_action()
+
+                    if item.kind == "resume_event":
+                        await self._handle_resume_item(item.payload)
+                        continue
+
+                    user_input = item.payload
                     if not user_input:
                         continue
                     if user_input.lower() in ["exit", "quit", "/exit"]:
@@ -347,18 +360,7 @@ class MeshEngine:
                             console.print("[error]Unknown command. Type /help for options.[/error]")
                         continue
 
-                    formatted_input, _ = context_mentions.process_prompt_context_mentions(user_input, ".")
-
-                    prompt_hook_result = await hooks.hook_manager.run_event("user_prompt_submit", {"prompt": formatted_input})
-                    if prompt_hook_result["modified_prompt"] is not None:
-                        formatted_input = prompt_hook_result["modified_prompt"]
-                    for line in prompt_hook_result["feedback"]:
-                        console.print(f"[dim]{line}[/dim]")
-
-                    pre_prompt_count = len(self.messages)
-                    self.messages.append({"role": "user", "content": formatted_input})
-                    self.session_logger.log_user_prompt(formatted_input)
-                    await self.process_inference(pre_prompt_count)
+                    await self._submit_user_message(user_input)
 
                 except (KeyboardInterrupt, EOFError):
                     console.print("\n[warning]Exiting...[/warning]")
@@ -377,9 +379,93 @@ class MeshEngine:
                     self.is_running = False
                     break
         finally:
+            self.event_registry.shutdown()
             session_end_result = await hooks.hook_manager.run_event("session_end", {})
             for line in session_end_result["feedback"]:
                 console.print(f"[dim]{line}[/dim]")
+
+    async def _wait_for_next_action(self):
+        """Blocks until either the user finishes typing something, or an
+        item becomes available on the turn queue (most importantly, a
+        resume event an MCP server/tool was waiting on firing while Mesh
+        sat idle at the prompt) - whichever happens first. See
+        turn_queue.py for why both go through one queue."""
+        from turn_queue import QueueItem
+
+        if not self.turn_queue.empty():
+            return await self.turn_queue.get()
+
+        input_task = asyncio.create_task(self.prompt_session.get_input_async())
+        queue_task = asyncio.create_task(self.turn_queue.get())
+        try:
+            done, _ = await asyncio.wait({input_task, queue_task}, return_when=asyncio.FIRST_COMPLETED)
+        except asyncio.CancelledError:
+            input_task.cancel()
+            queue_task.cancel()
+            raise
+
+        if queue_task in done:
+            # A resume event won the race - cancel the now-stale prompt
+            # rather than leave it dangling; the prompt simply redraws on
+            # the next loop iteration.
+            input_task.cancel()
+            try:
+                await input_task
+            except (asyncio.CancelledError, KeyboardInterrupt, EOFError, Exception):
+                pass
+            return queue_task.result()
+
+        queue_task.cancel()
+        try:
+            await queue_task
+        except asyncio.CancelledError:
+            pass
+        user_input = input_task.result()  # may raise KeyboardInterrupt/EOFError; let it propagate
+        return QueueItem(kind="user_input", payload=user_input)
+
+    async def _submit_user_message(self, user_input: str) -> None:
+        formatted_input, _ = context_mentions.process_prompt_context_mentions(user_input, ".")
+
+        prompt_hook_result = await hooks.hook_manager.run_event("user_prompt_submit", {"prompt": formatted_input})
+        if prompt_hook_result["modified_prompt"] is not None:
+            formatted_input = prompt_hook_result["modified_prompt"]
+        for line in prompt_hook_result["feedback"]:
+            console.print(f"[dim]{line}[/dim]")
+
+        pre_prompt_count = len(self.messages)
+        self.messages.append({"role": "user", "content": formatted_input})
+        self.session_logger.log_user_prompt(formatted_input)
+        await self._run_turn(pre_prompt_count)
+
+    async def _handle_resume_item(self, payload: dict) -> None:
+        """A pending tool call's event just fired - inject a message
+        describing what happened and resume inference automatically. The
+        user never has to say "continue"."""
+        event_id = payload.get("event_id", "")
+        note = payload.get("note", "")
+        message = f"[Event '{event_id}' fired] {note}".strip()
+        console.print(f"[success]{LIGHTNING} Resuming:[/success] {message}")
+
+        pre_prompt_count = len(self.messages)
+        self.messages.append({"role": "user", "content": message})
+        self.session_logger.log_user_prompt(message)
+        await self._run_turn(pre_prompt_count)
+
+    async def _run_turn(self, pre_prompt_count: int) -> None:
+        """Runs process_inference as a cancellable task, so Ctrl+C during
+        an active turn interrupts just that turn and returns control to
+        the queue, rather than quitting Mesh entirely (see turn_queue.py's
+        docstring for what is and isn't covered)."""
+        self._current_turn_task = asyncio.create_task(self.process_inference(pre_prompt_count))
+        try:
+            await self._current_turn_task
+        except asyncio.CancelledError:
+            console.print("\n[warning]Turn interrupted.[/warning]")
+        except KeyboardInterrupt:
+            self._current_turn_task.cancel()
+            console.print("\n[warning]Turn interrupted.[/warning]")
+        finally:
+            self._current_turn_task = None
 
     async def process_inference(self, pre_prompt_count: Optional[int] = None):
         """Delegates turn inference and multi-step tool execution loop to InferenceCoordinator."""

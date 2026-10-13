@@ -24,6 +24,7 @@ from tools.synthesis_tool import SynthesizeTool
 from tools.consensus_tool import ConsensusTool
 from tools.symbol_tool import SearchSymbolsTool
 from tools.job_tool import BackgroundShellTool
+from tools.wait_for_event_tool import WaitForEventTool
 from tools.git_tool import (
     GitInitTool,
     GitStatusTool,
@@ -60,6 +61,7 @@ __all__ = [
     "ConsensusTool",
     "SearchSymbolsTool",
     "BackgroundShellTool",
+    "WaitForEventTool",
     "GitInitTool",
     "GitStatusTool",
     "GitDiffTool",

@@ -330,6 +330,35 @@ async def cmd_guard(engine: Any, args: List[str]):
         )
 
 
+async def cmd_resume(engine: Any, args: List[str]):
+    if not args:
+        pending = engine.event_registry.list_pending()
+        if not pending:
+            console.print("[dim]No pending events.[/dim]")
+            return
+        console.print("[label]Pending events:[/label]")
+        for event_id, meta in pending.items():
+            console.print(f"  {BULLET} {event_id}: {meta.get('message', '')}")
+        console.print("Usage: /resume <event_id> [note...]")
+        return
+
+    event_id = args[0]
+    note = " ".join(args[1:]) if len(args) > 1 else ""
+    if await engine.event_registry.fire(event_id, note):
+        console.print(f"[success]Fired event '{event_id}'.[/success]")
+    else:
+        console.print(f"[error]No pending event '{event_id}'. Use /resume to list pending events.[/error]")
+
+
+async def cmd_pending(engine: Any, args: List[str]):
+    pending = engine.event_registry.list_pending()
+    if not pending:
+        console.print("[dim]No pending events.[/dim]")
+        return
+    for event_id, meta in pending.items():
+        console.print(f"  {BULLET} [accent]{event_id}[/accent]: {meta.get('message', '')} ([dim]from {meta.get('tool_name', '?')}[/dim])")
+
+
 async def cmd_sandbox(engine: Any, args: List[str]):
     cfg = engine.config_mgr.config
     win_experimental = getattr(cfg, "sandbox_windows_experimental", False) and windows_sandbox.is_available()
@@ -462,4 +491,6 @@ def register_agent_commands(engine: Any):
     engine.cmd_registry.register("jobs", "View or manage background job processes: /jobs [log|stop|clear] [<job_id>]", lambda args: cmd_jobs(engine, args), category="Agents & Workflows")
     engine.cmd_registry.register("guard", "View or configure safety guard settings: /guard [on|off|mode|model|trust] <args>", lambda args: cmd_guard(engine, args), category="Models & Settings")
     engine.cmd_registry.register("sandbox", "View or configure OS-level command sandboxing: /sandbox [on|off|status|setup]", lambda args: cmd_sandbox(engine, args), category="Models & Settings")
+    engine.cmd_registry.register("resume", "Fire a pending event (from wait_for_event or any tool) so Mesh resumes automatically: /resume [<event_id> [note...]]", lambda args: cmd_resume(engine, args), category="Session & System")
+    engine.cmd_registry.register("pending", "List tool calls currently waiting on an external event", lambda args: cmd_pending(engine, args), category="Session & System")
     engine.cmd_registry.register("mode", "View or switch operating mode: /mode [plan|build|review|chat|yolo]", lambda args: cmd_mode(engine, args), category="Models & Settings")
