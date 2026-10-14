@@ -127,6 +127,18 @@
           "default": null,
           "description": "Detailed description of model capabilities and intended use cases.",
           "title": "Description"
+        },
+        "api_type": {
+          "default": "auto",
+          "description": "Endpoint type used for this model: auto (use the provider's api_type, else detect), openai-chat (Chat Completions), openai-responses (Responses API) or anthropic (Messages API).",
+          "enum": [
+            "auto",
+            "openai-chat",
+            "openai-responses",
+            "anthropic"
+          ],
+          "title": "Api Type",
+          "type": "string"
         }
       },
       "required": [
@@ -170,6 +182,18 @@
           "default": null,
           "description": "Optional custom HTTP headers sent with every request.",
           "title": "Default Headers"
+        },
+        "api_type": {
+          "default": "auto",
+          "description": "Default endpoint type for this provider's models: auto, openai-chat (Chat Completions), openai-responses (Responses API) or anthropic (Messages API). A model's own api_type overrides this.",
+          "enum": [
+            "auto",
+            "openai-chat",
+            "openai-responses",
+            "anthropic"
+          ],
+          "title": "Api Type",
+          "type": "string"
         }
       },
       "required": [

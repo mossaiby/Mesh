@@ -14,6 +14,25 @@ except ImportError:
     ANTHROPIC_AVAILABLE = False
 
 
+def anthropic_client_kwargs(provider_config: ProviderConfig) -> Dict[str, Any]:
+    """
+    Builds AsyncAnthropic client kwargs for a provider.
+
+    The Anthropic SDK appends `/v1/messages` itself, so a base URL copied from an
+    OpenAI-style config (`http://localhost:1234/v1`) has its trailing `/v1` removed.
+    """
+    kwargs: Dict[str, Any] = {"api_key": provider_config.api_key}
+    base_url = (provider_config.base_url or "").strip()
+    if base_url and "api.anthropic.com" not in base_url:
+        base_url = base_url.rstrip("/")
+        if base_url.endswith("/v1"):
+            base_url = base_url[:-3]
+        kwargs["base_url"] = base_url
+    if provider_config.default_headers:
+        kwargs["default_headers"] = provider_config.default_headers
+    return kwargs
+
+
 class AnthropicProvider:
     def __init__(self, model_config: ModelConfig, provider_config: ProviderConfig, config_mgr: Optional[ConfigManager] = None):
         if not ANTHROPIC_AVAILABLE:
@@ -23,15 +42,7 @@ class AnthropicProvider:
         self.provider_config = provider_config
         self.config_mgr = config_mgr
 
-        client_kwargs: Dict[str, Any] = {
-            "api_key": provider_config.api_key,
-        }
-        if provider_config.base_url and "api.anthropic.com" not in provider_config.base_url:
-            client_kwargs["base_url"] = provider_config.base_url
-        if provider_config.default_headers:
-            client_kwargs["default_headers"] = provider_config.default_headers
-
-        self.client = AsyncAnthropic(**client_kwargs)
+        self.client = AsyncAnthropic(**anthropic_client_kwargs(provider_config))
 
     @staticmethod
     async def fetch_available_models_details(
@@ -48,15 +59,7 @@ class AnthropicProvider:
         while True:
             attempt += 1
             try:
-                client_kwargs: Dict[str, Any] = {
-                    "api_key": provider_config.api_key,
-                }
-                if provider_config.base_url and "api.anthropic.com" not in provider_config.base_url:
-                    client_kwargs["base_url"] = provider_config.base_url
-                if provider_config.default_headers:
-                    client_kwargs["default_headers"] = provider_config.default_headers
-
-                client = AsyncAnthropic(**client_kwargs)
+                client = AsyncAnthropic(**anthropic_client_kwargs(provider_config))
                 response = await asyncio.wait_for(client.models.list(), timeout=timeout)
                 
                 models_details = []
@@ -67,7 +70,7 @@ class AnthropicProvider:
                         "id": m_id,
                         "name": m_name,
                         "context_window": 200000,
-                        "description": f"{m_name} via Anthropic Official"
+                        "description": f"{m_name} via {provider_config.name}"
                     })
 
                 models_details.sort(key=lambda x: x["id"])

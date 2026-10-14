@@ -3,7 +3,7 @@ import sys
 from typing import List, Optional, Any, Tuple
 from tools.memory_tool import _load_memory
 from commands.model_commands import COMMON_CONTEXT_SIZES
-from config import APP_ROOT
+from config import APP_ROOT, API_TYPES
 import jobs
 from theme import console
 
@@ -212,10 +212,20 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
 
         # --- /providers ---
         if cmd0 == "/providers":
+            # `--api <type>` flag completion (providers add / models add)
+            if typed_words and typed_words[-1] == "--api":
+                for t in API_TYPES:
+                    if t.startswith(current_word.lower()):
+                        yield Completion(t, start_position=-len(current_word), display_meta="API endpoint type")
+                return
+            if current_word.startswith("-") and len(typed_words) >= 2 and typed_words[1].lower() == "add":
+                if "--api".startswith(current_word.lower()):
+                    yield Completion("--api", start_position=-len(current_word), display_meta="Set API endpoint type")
             if current_arg_index == 1:
                 subs = [
                     ("list", "List all configured model providers"),
-                    ("add", "Add provider: /providers add <key> <base_url> [<name>] [<api_key_env>]"),
+                    ("add", "Add provider: /providers add <key> <base_url> [<name>] [<api_key_env>] [--api <type>]"),
+                    ("api", "View or set a provider's API type: /providers api <key> [<type>]"),
                     ("remove", "Remove a configured provider and its models"),
                     ("test", "Test connectivity to provider endpoint"),
                     ("header", "Configure custom default headers for provider")
@@ -225,7 +235,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                         yield Completion(sub, start_position=-len(current_word), display_meta=meta)
             elif current_arg_index == 2:
                 word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
-                if word1 in ("remove", "delete", "test", "check", "header"):
+                if word1 in ("remove", "delete", "test", "check", "header", "api"):
                     providers = list(self.mesh.config_mgr.config.providers.keys())
                     for p in providers:
                         if p.lower().startswith(current_word.lower()):
@@ -236,6 +246,10 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                     for act in ("add", "remove", "clear"):
                         if act.startswith(current_word.lower()):
                             yield Completion(act, start_position=-len(current_word))
+                elif word1 == "api":
+                    for t in API_TYPES:
+                        if t.startswith(current_word.lower()):
+                            yield Completion(t, start_position=-len(current_word), display_meta="API endpoint type")
             return
 
         # --- /log ---
@@ -329,10 +343,20 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
 
         # --- /models ---
         if cmd0 == "/models":
+            # `--api <type>` flag completion (providers add / models add)
+            if typed_words and typed_words[-1] == "--api":
+                for t in API_TYPES:
+                    if t.startswith(current_word.lower()):
+                        yield Completion(t, start_position=-len(current_word), display_meta="API endpoint type")
+                return
+            if current_word.startswith("-") and len(typed_words) >= 2 and typed_words[1].lower() == "add":
+                if "--api".startswith(current_word.lower()):
+                    yield Completion("--api", start_position=-len(current_word), display_meta="Set API endpoint type")
             if current_arg_index == 1:
                 subs = [
                     ("discover", "Query provider endpoints for offered models"),
-                    ("add", "Add models: /models add <provider> [<pattern>] [<context_window>]"),
+                    ("add", "Add models: /models add <provider> [<pattern>] [<context_window>] [--api <type>]"),
+                    ("api", "View or set a model's API type: /models api <model_key> [<type>]"),
                     ("remove", "Remove a configured model: /models remove <model_key>")
                 ]
                 for sub, meta in subs:
@@ -345,14 +369,18 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                     for p in providers:
                         if p.lower().startswith(current_word.lower()):
                             yield Completion(p, start_position=-len(current_word))
-                elif word1 in ("remove", "delete"):
+                elif word1 in ("remove", "delete", "api"):
                     models = list(self.mesh.config_mgr.config.models.keys())
                     for m in models:
                         if m.lower().startswith(current_word.lower()):
                             yield Completion(m, start_position=-len(current_word))
             elif current_arg_index == 3:
                 word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
-                if word1 == "add":
+                if word1 == "api":
+                    for t in API_TYPES:
+                        if t.startswith(current_word.lower()):
+                            yield Completion(t, start_position=-len(current_word), display_meta="API endpoint type")
+                elif word1 == "add":
                     patterns = [
                         ("*", "All available models"),
                         ("*free*", "Free tier models"),

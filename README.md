@@ -127,6 +127,28 @@ python main.py --ascii
 
 ---
 
+## 🔌 Endpoint (API) Types
+
+Each model can use a different wire protocol, set with `api_type` on a model or a provider:
+
+| `api_type` | Endpoint | Use for |
+|---|---|---|
+| `auto` (default) | detected | `anthropic` for Anthropic's own API, otherwise `openai-chat` |
+| `openai-chat` | `/v1/chat/completions` | Classic OpenAI-compatible servers |
+| `openai-responses` | `/v1/responses` | Servers that dropped Chat Completions or where you want the Responses API |
+| `anthropic` | `/v1/messages` | Anthropic, or Anthropic-compatible servers such as LM Studio |
+
+A model's `api_type` wins over its provider's; `auto` on a model follows the provider. Examples:
+
+```
+/providers add lmstudio http://localhost:1234/v1 LMStudio LMSTUDIO_API_KEY --api openai-responses
+/models add lmstudio * --api anthropic        # models added with the Anthropic endpoint
+/models api lmstudio:my-model openai-chat     # change one model later
+/providers api lmstudio anthropic             # change the provider default
+```
+
+For the `anthropic` type a trailing `/v1` on the provider `base_url` is dropped automatically (the Anthropic SDK adds `/v1/messages` itself), so you can keep the same URL as for the OpenAI endpoints. Model discovery uses the provider's `api_type`.
+
 ## ⌨️ Prompt Input Keys
 
 - **Enter** submits the prompt.
@@ -139,8 +161,8 @@ python main.py --ascii
 ### Models & Providers
 | Command | Description |
 | --- | --- |
-| `/providers [list\|add\|remove\|test\|header] <args>` | List, add, remove, test, or configure model providers live from the CLI |
-| `/models [discover\|add\|remove] [<args>]` | List, discover, add, or remove configured models |
+| `/providers [list\|add\|api\|remove\|test\|header] <args>` | List, add, remove, test, or configure model providers live from the CLI (`add ... --api <type>`, `api <key> <type>` set the endpoint type) |
+| `/models [discover\|add\|api\|remove] [<args>]` | List, discover, add, or remove configured models (`add ... --api <type>`, `api <model_key> <type>` set the endpoint type) |
 | `/switch [auto\|router\|<model_key>]` | Switch active model or mode: `/switch [auto\|router\|<model_key>]` |
 | `/config [distill\|proxy\|repair\|hooks\|compact\|thinking\|effort\|tokens\|cost\|statistics\|schema\|set] <args>` | View or configure system settings, retry parameters, and JSON schemas |
 | `/guard [on\|off\|mode\|model\|trust] <args>` | View or configure safety guard settings |

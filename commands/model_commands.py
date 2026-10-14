@@ -6,7 +6,8 @@ import sys
 from typing import List, Optional, Any, Dict
 from rich.live import Live
 from rich.text import Text
-from providers import fetch_models_details
+from config import API_TYPES, normalize_api_type
+from providers import fetch_models_details, resolve_api_type
 from tools.ask_tool import _read_single_key
 from theme import console
 from glyphs import ANGLE_RIGHT, ARROW_DOWN, ARROW_UP, BULLET, CHECK, CROSS, EM_DASH, MAG_LEFT, RADIO_OFF, RADIO_ON, SHUFFLE, TRIANGLE_DOWN, TRIANGLE_UP
@@ -175,6 +176,33 @@ async def infer_context_window(
     return 128000
 
 
+def _extract_api_flag(args: List[str]) -> tuple:
+    """
+    Pulls `--api <type>` / `--api=<type>` out of an argument list.
+
+    Returns (remaining_args, api_type_or_None). Raises ValueError for an unknown type
+    or a missing value so callers can report it.
+    """
+    remaining: List[str] = []
+    api_type = None
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--api":
+            if i + 1 >= len(args):
+                raise ValueError(f"--api needs a value. Valid types: {', '.join(API_TYPES)}")
+            api_type = normalize_api_type(args[i + 1])
+            i += 2
+            continue
+        if a.startswith("--api="):
+            api_type = normalize_api_type(a.split("=", 1)[1])
+            i += 1
+            continue
+        remaining.append(a)
+        i += 1
+    return remaining, api_type
+
+
 async def cmd_providers(engine: Any, args: List[str]):
     cfg = engine.config_mgr.config
     sub = args[0].lower() if args else ""
@@ -193,21 +221,47 @@ async def cmd_providers(engine: Any, args: List[str]):
 
                 console.print(
                     f"{BULLET} [label]{p_key}[/label] ([brand]{p_cfg.name}[/brand]) {EM_DASH} [dim]{p_cfg.base_url}[/dim]\n"
-                    f"  API Key Env: [accent]{p_cfg.api_key_env}[/accent] ({env_status}) | Models: {models_count}{headers_str}"
+                    f"  API Key Env: [accent]{p_cfg.api_key_env}[/accent] ({env_status}) | API: [accent]{p_cfg.api_type}[/accent] | Models: {models_count}{headers_str}"
                 )
             console.print()
 
         console.print(
             "Usage: [warning]/providers[/warning] | "
-            "[warning]/providers add <key> <base_url> [<name>] [<api_key_env>][/warning] | "
+            "[warning]/providers add <key> <base_url> [<name>] [<api_key_env>] [--api <type>][/warning] | "
+            "[warning]/providers api <key> [<type>][/warning] | "
             "[warning]/providers remove <key>[/warning] | "
             "[warning]/providers test <key>[/warning] | "
             "[warning]/providers header <key> add|remove <header>[/warning]\n"
         )
         return
 
+    if sub == "api":
+        if len(args) < 2:
+            console.print(f"[error]Usage: /providers api <key> [<type>]  (types: {', '.join(API_TYPES)})[/error]")
+            return
+        target_key = args[1].lower().strip()
+        if target_key not in cfg.providers:
+            console.print(f"[error]Provider '{target_key}' not found in configuration.[/error]")
+            return
+        if len(args) == 2:
+            console.print(f"Provider '[label]{target_key}[/label]' API type: [accent]{cfg.providers[target_key].api_type}[/accent] (types: {', '.join(API_TYPES)})")
+            return
+        try:
+            new_type = engine.config_mgr.set_provider_api_type(target_key, args[2])
+        except ValueError as e:
+            console.print(f"[error]{e}[/error]")
+            return
+        console.print(f"[success]{CHECK} Provider '[label]{target_key}[/label]' API type set to [accent]{new_type}[/accent].[/success]")
+        console.print("[dim]Models with their own API type keep it; models set to 'auto' follow the provider.[/dim]")
+        return
+
     if sub == "add":
-        sub_args = args[1:]
+        try:
+            sub_args, p_api_type = _extract_api_flag(args[1:])
+        except ValueError as e:
+            console.print(f"[error]{e}[/error]")
+            return
+        p_api_type = p_api_type or "auto"
         
         # Interactive addition if no positional arguments provided
         if not sub_args:
@@ -223,7 +277,8 @@ async def cmd_providers(engine: Any, args: List[str]):
                         return {}
                     default_env = f"{key.upper().replace('-', '_')}_API_KEY"
                     env_var = input(f"API Key Env Variable (default: '{default_env}') > ").strip() or default_env
-                    return {"key": key, "name": name, "url": url, "env": env_var}
+                    api_in = input(f"API type ({', '.join(API_TYPES)}; default: 'auto') > ").strip() or "auto"
+                    return {"key": key, "name": name, "url": url, "env": env_var, "api": api_in}
                 except (KeyboardInterrupt, EOFError):
                     return {}
 
@@ -237,6 +292,11 @@ async def cmd_providers(engine: Any, args: List[str]):
             p_name = details["name"]
             p_url = details["url"]
             p_env = details["env"]
+            try:
+                p_api_type = normalize_api_type(details.get("api"))
+            except ValueError as e:
+                console.print(f"[error]{e}[/error]")
+                return
 
         else:
             p_key = sub_args[0].lower().strip()
@@ -274,10 +334,11 @@ async def cmd_providers(engine: Any, args: List[str]):
             key=p_key,
             name=p_name,
             base_url=p_url,
-            api_key_env=p_env
+            api_key_env=p_env,
+            api_type=p_api_type
         )
 
-        console.print(f"\n[success]{CHECK} Successfully added provider '[label]{p_key}[/label]' ({p_name}) -> `{p_url}`[/success]")
+        console.print(f"\n[success]{CHECK} Successfully added provider '[label]{p_key}[/label]' ({p_name}) -> `{p_url}` (API: {p_api_type})[/success]")
         console.print(f"[dim]Tip: Discover or add models from this provider with:[/dim] [warning]/models discover {p_key}[/warning] [dim]or[/dim] [warning]/models add {p_key} *[/warning]\n")
         return
 
@@ -351,7 +412,7 @@ async def cmd_providers(engine: Any, args: List[str]):
             console.print("[error]Usage: /providers header <provider_key> [add|remove|clear] <args>[/error]")
         return
 
-    console.print("[error]Unknown subcommand. Usage: /providers [list|add|remove|test|header] <args>[/error]")
+    console.print("[error]Unknown subcommand. Usage: /providers [list|add|api|remove|test|header] <args>[/error]")
 
 
 async def cmd_models(engine: Any, args: List[str]):
@@ -362,17 +423,28 @@ async def cmd_models(engine: Any, args: List[str]):
         if len(args) == 1:
             providers_str = ", ".join(engine.config_mgr.config.providers.keys())
             console.print(
-                "[error]Usage: /models add <provider> [<pattern>] [<context_window>][/error]\n"
+                "[error]Usage: /models add <provider> [<pattern>] [<context_window>] [--api <type>][/error]\n"
                 f"Configured providers: [accent]{providers_str}[/accent]\n"
                 "Examples: [warning]/models add grok *[/warning] | "
                 "[warning]/models add openrouter *free*[/warning] | "
-                "[warning]/models add lmstudio google/gemma-4-e4b 32768[/warning]\n"
+                "[warning]/models add lmstudio google/gemma-4-e4b 32768[/warning] | "
+                "[warning]/models add lmstudio * --api anthropic[/warning]\n"
             )
             return
 
-        p_key = args[1].lower()
-        pattern = args[2] if len(args) >= 3 else "*"
-        explicit_ctx = int(args[3]) if len(args) >= 4 and args[3].isdigit() else None
+        try:
+            add_args, m_api_type = _extract_api_flag(args[1:])
+        except ValueError as e:
+            console.print(f"[error]{e}[/error]")
+            return
+        m_api_type = m_api_type or "auto"
+        if not add_args:
+            console.print("[error]Usage: /models add <provider> [<pattern>] [<context_window>] [--api <type>][/error]")
+            return
+
+        p_key = add_args[0].lower()
+        pattern = add_args[1] if len(add_args) >= 2 else "*"
+        explicit_ctx = int(add_args[2]) if len(add_args) >= 3 and add_args[2].isdigit() else None
 
         if p_key not in engine.config_mgr.config.providers:
             console.print(f"[error]Unknown provider '{p_key}'. Configured providers: {', '.join(engine.config_mgr.config.providers.keys())}[/error]")
@@ -426,9 +498,11 @@ async def cmd_models(engine: Any, args: List[str]):
                 name=m_info.get("name"),
                 context_window=final_ctx,
                 tags=tags,
-                description=desc
+                description=desc,
+                api_type=m_api_type
             )
-            console.print(f"  [success]{CHECK} Added:[/success] [label]{model_key}[/label] ([dim]{m_id}[/dim] - [accent]{final_ctx:,}[/accent] tokens context)")
+            api_note = f", API: {m_api_type}" if m_api_type != "auto" else ""
+            console.print(f"  [success]{CHECK} Added:[/success] [label]{model_key}[/label] ([dim]{m_id}[/dim] - [accent]{final_ctx:,}[/accent] tokens context{api_note})")
             added_count += 1
 
         if added_count > 0:
@@ -440,6 +514,32 @@ async def cmd_models(engine: Any, args: List[str]):
         else:
             console.print(f"[warning]No models found matching pattern '{pattern}' from {p_cfg.name}.[/warning]\n")
 
+        return
+
+    elif sub == "api":
+        if len(args) < 2:
+            console.print(f"[error]Usage: /models api <model_key> [<type>]  (types: {', '.join(API_TYPES)})[/error]")
+            return
+        target_key = args[1].strip()
+        if target_key not in cfg.models:
+            console.print(f"[error]Model key '{target_key}' not found in configuration. See /models for valid keys.[/error]")
+            return
+        model_cfg = cfg.models[target_key]
+        provider_cfg = cfg.providers.get(model_cfg.provider)
+        if len(args) == 2:
+            effective = resolve_api_type(model_cfg, provider_cfg) if provider_cfg else model_cfg.api_type
+            console.print(
+                f"Model '[label]{target_key}[/label]' API type: [accent]{model_cfg.api_type}[/accent] "
+                f"(effective: [accent]{effective}[/accent]; types: {', '.join(API_TYPES)})"
+            )
+            return
+        try:
+            new_type = engine.config_mgr.set_model_api_type(target_key, args[2])
+        except ValueError as e:
+            console.print(f"[error]{e}[/error]")
+            return
+        effective = resolve_api_type(model_cfg, provider_cfg) if provider_cfg else new_type
+        console.print(f"[success]{CHECK} Model '[label]{target_key}[/label]' API type set to [accent]{new_type}[/accent] (effective: {effective}).[/success]")
         return
 
     elif sub in ("remove", "delete"):
@@ -533,13 +633,15 @@ async def cmd_models(engine: Any, args: List[str]):
             roles.append("advisor")
         
         roles_str = f" [accent]({', '.join(roles)})[/accent]" if roles else ""
+        effective_api = resolve_api_type(model_cfg, provider_cfg) if provider_cfg else model_cfg.api_type
+        api_str = f" [dim]| API: {effective_api}{'' if model_cfg.api_type != 'auto' else ' (auto)'}[/dim]"
         tags_str = f" [dim][tags: {', '.join(model_cfg.tags)}][/dim]" if model_cfg.tags else ""
         desc_str = f"\n    [dim]{model_cfg.description}[/dim]" if model_cfg.description else ""
 
         console.print(
             f"{mark} [label]{key}[/label] -> {model_cfg.name} via "
             f"[brand]{provider_name}[/brand] ([dim]{model_cfg.model_id}[/dim]) "
-            f"[dim]{EM_DASH} {model_cfg.context_window:,} token context[/dim]{roles_str}{tags_str}{desc_str}"
+            f"[dim]{EM_DASH} {model_cfg.context_window:,} token context[/dim]{api_str}{roles_str}{tags_str}{desc_str}"
         )
     
     if active == "auto":
@@ -548,7 +650,8 @@ async def cmd_models(engine: Any, args: List[str]):
     console.print(
         "\nUsage: [warning]/models[/warning] | "
         "[warning]/models discover [<provider>][/warning] | "
-        "[warning]/models add <provider> [<pattern>] [<context_window>][/warning] | "
+        "[warning]/models add <provider> [<pattern>] [<context_window>] [--api <type>][/warning] | "
+        "[warning]/models api <model_key> [<type>][/warning] | "
         "[warning]/models remove <model_key>[/warning]\n"
     )
 
@@ -707,13 +810,13 @@ async def cmd_switch(engine: Any, args: List[str]):
 def register_model_commands(engine: Any):
     engine.cmd_registry.register(
         "providers",
-        "List, add, remove, test, or configure model providers: /providers [list|add|remove|test|header] <args>",
+        "List, add, remove, test, or configure model providers: /providers [list|add|api|remove|test|header] <args>",
         lambda args: cmd_providers(engine, args),
         category="Models & Settings"
     )
     engine.cmd_registry.register(
         "models",
-        "List, discover, add, or remove models: /models [discover|add|remove] <args>",
+        "List, discover, add, remove models or set their API type: /models [discover|add|api|remove] <args>",
         lambda args: cmd_models(engine, args),
         category="Models & Settings"
     )

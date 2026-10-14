@@ -1,6 +1,6 @@
 {
   "$schema": "./config.schema.json",
-  "active_model": "mindshub:mindshub_air",
+  "active_model": "lmstudio-messages:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic",
   "system_prompt": "You are Mesh, a helpful, precise, and efficient AI assistant running inside an interactive terminal CLI. You have access to a suite of tools and should use them proactively and correctly rather than relying on memory or guesswork.\n\n## Session Goal\nFor any substantial task - something that will span multiple turns, tool calls, or could plausibly get compacted or interrupted - set it with `goal` (`action: set`) as soon as it's clear, including `success_criteria` when \"done\" has concrete conditions. The goal stays pinned in your own instructions for the rest of the session (it survives /compact, /switch, and /clear), so re-check it if you seem to be drifting from what was actually asked. Mark criteria complete as you actually finish them, not preemptively. Don't bother setting a goal for a quick one-off question.\n\n## Task Tracking\nFor any multi-step task (3+ distinct steps, or anything spanning multiple tool calls), use `todo` to plan before you start:\n- `add` each step as its own item before executing it. If a step can only start after another one finishes, set `depends_on` to that step's ID — this keeps independent branches of work visible as independent, rather than forcing everything into one artificial sequence.\n- Use `next` to see which tasks are actually unblocked and ready to work on, especially when the plan has parallel branches — don't just work top-to-bottom through the list.\n- `complete` an item immediately after finishing it, not in a batch at the end. Completion is blocked until its dependencies are done, so trust the tool's error rather than forcing it.\n- `display` the list whenever the user asks for progress/status, or after a plan changes significantly, so they can see it directly rather than you describing it in prose.\n- Skip the todo list for simple, single-step requests — don't add ceremony where it isn't needed.\n\n## File Reading & Editing\n- When reading files you intend to edit or replace lines in, pass `show_hashes: true` to `read_file`. This formats lines with 1-based numbers and 4-character hashes (e.g. `L12|a3f1| def foo():`).\n- For precise, drift-free line replacements, use `hash_edit` specifying `start_line`, `start_hash`, `end_line`, and `end_hash`. `hash_edit` verifies that line content hasn't changed before applying edits.\n- Use `edit_file` for quick string replacements. If exact `old_str` matching fails due to minor indentation or whitespace differences, `edit_file` will automatically use fuzzy block matching to find and replace the target block.\n\n## Notes\nUse `note` to record durable, human-readable information about the project or session that should persist and remain readable outside of chat: decisions made, conventions adopted, open questions, or a running log of what's been done. Keep entries concise and dated/labeled where useful. Don't use notes for information that belongs in memory (structured key-value facts) or in the todo list (actionable steps).\n\n## Memory\nUse `memory` to persist small, structured facts across sessions that you'll want to recall later without re-deriving or re-asking for them — user preferences, configuration values, IDs, or other short key-value data. Check memory before asking the user something you may have already stored. Keep keys short and consistent, and delete entries that become stale rather than letting them accumulate.\nUse `get` when you already know the exact key. Use `search` with a natural-language query when you don't — it finds relevant entries by meaning (paraphrase, synonyms, related concepts), not just exact key matches, so you don't need to guess the exact key name someone used earlier. `search` takes an optional `method`: `auto` (default) tries a free/instant local lexical search first and only falls back to a model call if that finds nothing; force `embedding` when you expect close wording and want to save the token cost, or `llm` directly for a heavy paraphrase you know the local search won't catch.\n\n## General Tool Use\n- Prefer a tool over guessing whenever a tool can give you a verified answer (reading a file instead of assuming its contents, searching the web for anything time-sensitive, etc.).\n- Batch independent tool calls together instead of making them one at a time when there's no dependency between them.\n- After a tool call, use its actual output — don't restate what you expected the result to be.\n- Some tool failures are automatically retried or repaired before you see them (a result may include a `_repaired` note when this happened) — if a result still contains an error after that, treat it as genuine and don't blindly retry the exact same call yourself; adjust your approach or ask for what you're missing.\n- `delegate_task` sub-agents can themselves delegate further sub-tasks (up to a configured recursion depth) rather than doing everything in one conversation — if you delegate a task that genuinely splits into independent pieces, the sub-agent may split it further on its own, so you don't need to pre-decompose it yourself.\n- When writing your own directory-walking code for `execute_python` (e.g. `os.walk`, recursive `glob`), always prune `.venv`, `venv`, `node_modules`, `__pycache__`, `.git`, `dist`, and `build` first. Mesh's own virtual environment lives inside the project directory (`.venv`), so an unfiltered walk from the project root also traverses every installed dependency's source — thousands of extra files that pollute results and can run long enough to hit the tool's timeout. The built-in `grep` and `glob_files` tools already do this for you; your own snippets need to do it explicitly, e.g. `dirs[:] = [d for d in dirs if d not in {'.venv', 'venv', 'node_modules', '__pycache__', '.git', 'dist', 'build'}]`.\n\n## Advisor\nUse `consult_advisor` when you're genuinely torn between approaches, about to do something hard to reverse, or want a sanity check before committing to a plan — it gives an opinion, not an action. Don't use it for things you can just decide yourself, and don't treat its advice as a command; weigh it and use your own judgment.\n\n## Safety Guard\nShell commands (`shell`), background jobs (`job`), file writes/edits (`write_file`, `edit_file`, `hash_edit`), and MCP tool calls are automatically risk-assessed before they run. A low-risk call just proceeds. A call that gets flagged returns a `_guard` note or, if blocked outright, an error explaining why — that's a real safety decision, not a bug, so don't retry the identical call expecting a different outcome. If you believe a blocked or challenged action is actually necessary and safe, explain your reasoning to the user directly rather than trying to route around the guard.\n\n## Communication Style\n- Be direct and concise. Lead with the answer or result, not a restatement of the request.\n- Surface only what changed or matters; don't narrate routine steps.\n- If a request is ambiguous, make the most reasonable assumption and state it briefly rather than stalling with clarifying questions, unless proceeding would clearly waste effort.\n- When something fails, say what failed and why, then either fix it or propose a concrete next step — don't just apologize.",
   "auto_compact": true,
   "auto_compact_threshold": 0.75,
@@ -69,19 +69,22 @@
       "name": "OpenAI Official",
       "base_url": "https://api.openai.com/v1",
       "api_key_env": "OPENAI_API_KEY",
-      "default_headers": null
+      "default_headers": null,
+      "api_type": "auto"
     },
     "anthropic": {
       "name": "Anthropic Official",
       "base_url": "https://api.anthropic.com/v1",
       "api_key_env": "ANTHROPIC_API_KEY",
-      "default_headers": null
+      "default_headers": null,
+      "api_type": "auto"
     },
     "grok": {
       "name": "Grok Cloud",
       "base_url": "https://api.grok.com/openai/v1",
       "api_key_env": "GROK_API_KEY",
-      "default_headers": null
+      "default_headers": null,
+      "api_type": "auto"
     },
     "openrouter": {
       "name": "OpenRouter",
@@ -91,49 +94,64 @@
         "HTTP-Referer": "https://github.com/mossaiby/Mesh",
         "X-Title": "Mesh",
         "X-Description": "Mesh - a modular, text-based AI CLI"
-      }
+      },
+      "api_type": "auto"
     },
     "ollama": {
       "name": "Local Ollama",
       "base_url": "http://localhost:11434/v1",
       "api_key_env": "OLLAMA_API_KEY",
-      "default_headers": null
+      "default_headers": null,
+      "api_type": "auto"
     },
     "lmstudio": {
       "name": "Local LM Studio",
       "base_url": "http://localhost:1234/v1",
       "api_key_env": "LOCAL_API_KEY",
-      "default_headers": null
+      "default_headers": null,
+      "api_type": "auto"
     },
     "agnes": {
       "name": "Agnes AI",
       "base_url": "https://apihub.agnes-ai.com/v1",
       "api_key_env": "AGNES_API_KEY",
-      "default_headers": null
+      "default_headers": null,
+      "api_type": "auto"
     },
     "google": {
       "name": "Google",
       "base_url": "https://generativelanguage.googleapis.com/v1beta/openai",
       "api_key_env": "GOOGLE_API_KEY",
-      "default_headers": null
+      "default_headers": null,
+      "api_type": "auto"
     },
     "abacus": {
       "name": "Abacus",
       "base_url": "https://routellm.abacus.ai/v1",
       "api_key_env": "ABACUS_API_KEY",
-      "default_headers": null
+      "default_headers": null,
+      "api_type": "auto"
     },
     "mindshub": {
       "name": "MindsHub",
       "base_url": "https://api.mindshub.ai/v1",
       "api_key_env": "MINDSHUB_API_KEY",
-      "default_headers": null
+      "default_headers": null,
+      "api_type": "auto"
     },
     "unikey": {
       "name": "Unikey",
       "base_url": "https://www.getunikey.ai/v1",
       "api_key_env": "UNIKEY_API_KEY",
-      "default_headers": null
+      "default_headers": null,
+      "api_type": "auto"
+    },
+    "lmstudio-messages": {
+      "name": "LMStudio (messages)",
+      "base_url": "http://localhost:1234",
+      "api_key_env": "LMSTUDIO_MESSAGES_API_KEY",
+      "default_headers": null,
+      "api_type": "anthropic"
     }
   },
   "models": {
@@ -147,7 +165,8 @@
         "fast",
         "general"
       ],
-      "description": "Lightweight local Gemma model for quick answers, simple prompts, and general text tasks."
+      "description": "Lightweight local Gemma model for quick answers, simple prompts, and general text tasks.",
+      "api_type": "auto"
     },
     "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking-heretic": {
       "name": "MiniCPM5 1B",
@@ -160,7 +179,8 @@
         "router",
         "guard"
       ],
-      "description": "Ultra-fast 1B parameter local model optimized for safety guard checks, routing decisions, and lightweight classification."
+      "description": "Ultra-fast 1B parameter local model optimized for safety guard checks, routing decisions, and lightweight classification.",
+      "api_type": "auto"
     },
     "anthropic:claude-3-7-sonnet-20250219": {
       "name": "Claude 3.7 Sonnet",
@@ -174,7 +194,8 @@
         "thinking",
         "large-context"
       ],
-      "description": "Anthropic's flagship hybrid reasoning model with native extended thinking, prompt caching, and coding agent capabilities."
+      "description": "Anthropic's flagship hybrid reasoning model with native extended thinking, prompt caching, and coding agent capabilities.",
+      "api_type": "auto"
     },
     "anthropic:claude-3-5-haiku-20241022": {
       "name": "Claude 3.5 Haiku",
@@ -185,7 +206,8 @@
         "fast",
         "general"
       ],
-      "description": "Ultra-fast, lightweight Anthropic model with prompt caching for quick developer queries."
+      "description": "Ultra-fast, lightweight Anthropic model with prompt caching for quick developer queries.",
+      "api_type": "auto"
     },
     "openrouter:nvidia/nemotron-3-ultra-550b-a55b": {
       "name": "Nemotron 3 Ultra",
@@ -199,7 +221,8 @@
         "agent",
         "large-context"
       ],
-      "description": "550B MoE frontier reasoning model built for agent orchestration, heavy code refactoring, and multi-step tasks."
+      "description": "550B MoE frontier reasoning model built for agent orchestration, heavy code refactoring, and multi-step tasks.",
+      "api_type": "auto"
     },
     "openrouter:nvidia/nemotron-3-super-120b-a12b": {
       "name": "Nemotron 3 Super",
@@ -211,7 +234,8 @@
         "general",
         "fast"
       ],
-      "description": "120B parameter free model for general instruction following, writing, and analytical queries."
+      "description": "120B parameter free model for general instruction following, writing, and analytical queries.",
+      "api_type": "auto"
     },
     "lmstudio:dorna2-llama3.1-8b-instruct": {
       "name": "Dorna2 Llama3.1 8B Instruct",
@@ -221,7 +245,8 @@
       "tags": [
         "fast"
       ],
-      "description": "Dorna2 Llama3.1 8B Instruct via Local LM Studio"
+      "description": "Dorna2 Llama3.1 8B Instruct via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:gemma-2-9b-it": {
       "name": "Gemma 2 9B It",
@@ -229,7 +254,8 @@
       "model_id": "gemma-2-9b-it",
       "context_window": 128000,
       "tags": [],
-      "description": "Gemma 2 9B It via Local LM Studio"
+      "description": "Gemma 2 9B It via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2": {
       "name": "Gemma 4 12B Agentic Fable5 Composer2.5 V2 3.5X Tau2",
@@ -237,7 +263,8 @@
       "model_id": "gemma-4-12b-agentic-fable5-composer2.5-v2-3.5x-tau2",
       "context_window": 128000,
       "tags": [],
-      "description": "Gemma 4 12B Agentic Fable5 Composer2.5 V2 3.5X Tau2 via Local LM Studio"
+      "description": "Gemma 4 12B Agentic Fable5 Composer2.5 V2 3.5X Tau2 via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:gemma-4-12b-coder-fable5-composer2.5-v1": {
       "name": "Gemma 4 12B Coder Fable5 Composer2.5 V1",
@@ -247,7 +274,8 @@
       "tags": [
         "coding"
       ],
-      "description": "Gemma 4 12B Coder Fable5 Composer2.5 V1 via Local LM Studio"
+      "description": "Gemma 4 12B Coder Fable5 Composer2.5 V1 via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:google/gemma-4-12b": {
       "name": "Gemma 4 12B",
@@ -255,7 +283,8 @@
       "model_id": "google/gemma-4-12b",
       "context_window": 128000,
       "tags": [],
-      "description": "Gemma 4 12B via Local LM Studio"
+      "description": "Gemma 4 12B via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:google/gemma-4-12b-qat": {
       "name": "Gemma 4 12B Qat",
@@ -263,7 +292,8 @@
       "model_id": "google/gemma-4-12b-qat",
       "context_window": 128000,
       "tags": [],
-      "description": "Gemma 4 12B Qat via Local LM Studio"
+      "description": "Gemma 4 12B Qat via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:google/gemma-4-e4b": {
       "name": "Gemma 4 E4B",
@@ -271,7 +301,8 @@
       "model_id": "google/gemma-4-e4b",
       "context_window": 128000,
       "tags": [],
-      "description": "Gemma 4 E4B via Local LM Studio"
+      "description": "Gemma 4 E4B via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:ibm/granite-4-h-tiny": {
       "name": "Granite 4 H Tiny",
@@ -279,7 +310,8 @@
       "model_id": "ibm/granite-4-h-tiny",
       "context_window": 1000000,
       "tags": [],
-      "description": "Granite 4 H Tiny via Local LM Studio"
+      "description": "Granite 4 H Tiny via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:microsoft/phi-4-reasoning-plus": {
       "name": "Phi 4 Reasoning Plus",
@@ -289,7 +321,8 @@
       "tags": [
         "reasoning"
       ],
-      "description": "Phi 4 Reasoning Plus via Local LM Studio"
+      "description": "Phi 4 Reasoning Plus via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:minicpm5-1b": {
       "name": "Minicpm5 1B",
@@ -299,7 +332,8 @@
       "tags": [
         "fast"
       ],
-      "description": "Minicpm5 1B via Local LM Studio"
+      "description": "Minicpm5 1B via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:minicpm5-1b-agent": {
       "name": "Minicpm5 1B Agent",
@@ -309,7 +343,8 @@
       "tags": [
         "fast"
       ],
-      "description": "Minicpm5 1B Agent via Local LM Studio"
+      "description": "Minicpm5 1B Agent via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:minicpm5-1b-claude-opus-fable5-v2-thinking": {
       "name": "Minicpm5 1B Claude Opus Fable5 V2 Thinking",
@@ -320,7 +355,8 @@
         "reasoning",
         "fast"
       ],
-      "description": "Minicpm5 1B Claude Opus Fable5 V2 Thinking via Local LM Studio"
+      "description": "Minicpm5 1B Claude Opus Fable5 V2 Thinking via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:nvidia/nemotron-3-nano-4b": {
       "name": "Nemotron 3 Nano 4B",
@@ -330,7 +366,8 @@
       "tags": [
         "reasoning"
       ],
-      "description": "Nemotron 3 Nano 4B via Local LM Studio"
+      "description": "Nemotron 3 Nano 4B via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:qwen2.5-7b-instruct-1m": {
       "name": "Qwen2.5 7B Instruct 1M",
@@ -338,7 +375,8 @@
       "model_id": "qwen2.5-7b-instruct-1m",
       "context_window": 1000000,
       "tags": [],
-      "description": "Qwen2.5 7B Instruct 1M via Local LM Studio"
+      "description": "Qwen2.5 7B Instruct 1M via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:qwen2.5-vl-3b-instruct": {
       "name": "Qwen2.5 Vl 3B Instruct",
@@ -348,7 +386,8 @@
       "tags": [
         "fast"
       ],
-      "description": "Qwen2.5 Vl 3B Instruct via Local LM Studio"
+      "description": "Qwen2.5 Vl 3B Instruct via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:qwen3.5-4b-claude-4.6-opus-reasoning-distilled": {
       "name": "Qwen3.5 4B Claude 4.6 Opus Reasoning Distilled",
@@ -358,7 +397,8 @@
       "tags": [
         "reasoning"
       ],
-      "description": "Qwen3.5 4B Claude 4.6 Opus Reasoning Distilled via Local LM Studio"
+      "description": "Qwen3.5 4B Claude 4.6 Opus Reasoning Distilled via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:qwopus3.5-9b-coder-mtp": {
       "name": "Qwopus3.5 9B Coder Mtp",
@@ -368,7 +408,8 @@
       "tags": [
         "coding"
       ],
-      "description": "Qwopus3.5 9B Coder Mtp via Local LM Studio"
+      "description": "Qwopus3.5 9B Coder Mtp via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:qwopus3.5-9b-v3": {
       "name": "Qwopus3.5 9B V3",
@@ -376,7 +417,8 @@
       "model_id": "qwopus3.5-9b-v3",
       "context_window": 262144,
       "tags": [],
-      "description": "Qwopus3.5 9B V3 via Local LM Studio"
+      "description": "Qwopus3.5 9B V3 via Local LM Studio",
+      "api_type": "auto"
     },
     "lmstudio:text-embedding-nomic-embed-text-v1.5": {
       "name": "Text Embedding Nomic Embed Text V1.5",
@@ -384,7 +426,8 @@
       "model_id": "text-embedding-nomic-embed-text-v1.5",
       "context_window": 8192,
       "tags": [],
-      "description": "Text Embedding Nomic Embed Text V1.5 via Local LM Studio"
+      "description": "Text Embedding Nomic Embed Text V1.5 via Local LM Studio",
+      "api_type": "auto"
     },
     "agnes:agnes-2.0-flash": {
       "name": "Agnes 2.0 Flash",
@@ -394,7 +437,8 @@
       "tags": [
         "fast"
       ],
-      "description": "Agnes 2.0 Flash via Agnes AI"
+      "description": "Agnes 2.0 Flash via Agnes AI",
+      "api_type": "auto"
     },
     "agnes:agnes-2.5-flash": {
       "name": "Agnes 2.5 Flash",
@@ -404,7 +448,8 @@
       "tags": [
         "fast"
       ],
-      "description": "Agnes 2.5 Flash via Agnes AI"
+      "description": "Agnes 2.5 Flash via Agnes AI",
+      "api_type": "auto"
     },
     "agnes:agnes-2.5-pro": {
       "name": "Agnes 2.5 Pro",
@@ -412,7 +457,8 @@
       "model_id": "agnes-2.5-pro",
       "context_window": 1000000,
       "tags": [],
-      "description": "Agnes 2.5 Pro via Agnes AI"
+      "description": "Agnes 2.5 Pro via Agnes AI",
+      "api_type": "auto"
     },
     "agnes:agnes-2.5-pro-alpha": {
       "name": "Agnes 2.5 Pro Alpha",
@@ -420,7 +466,8 @@
       "model_id": "agnes-2.5-pro-alpha",
       "context_window": 1000000,
       "tags": [],
-      "description": "Agnes 2.5 Pro Alpha via Agnes AI"
+      "description": "Agnes 2.5 Pro Alpha via Agnes AI",
+      "api_type": "auto"
     },
     "openrouter:stealth/ox-alpha": {
       "name": "Ox Alpha",
@@ -428,7 +475,8 @@
       "model_id": "stealth/ox-alpha",
       "context_window": 1048576,
       "tags": [],
-      "description": "Ox Alpha is a reasoning model designed for coding, sustained agentic work, and production workloads. It is suited for long-horizon software engineering, complex reasoning, and workflows that combine text with..."
+      "description": "Ox Alpha is a reasoning model designed for coding, sustained agentic work, and production workloads. It is suited for long-horizon software engineering, complex reasoning, and workflows that combine text with...",
+      "api_type": "auto"
     },
     "google:models/gemini-3.7-flash": {
       "name": "Gemini 3.7 Flash",
@@ -438,7 +486,8 @@
       "tags": [
         "fast"
       ],
-      "description": "Gemini 3.7 Flash via Google"
+      "description": "Gemini 3.7 Flash via Google",
+      "api_type": "auto"
     },
     "openrouter:z-ai/glm-5.2:free": {
       "name": "Z.ai: GLM 5.2 (free)",
@@ -448,7 +497,8 @@
       "tags": [
         "free"
       ],
-      "description": "GLM 5.2 is a large-scale reasoning model from Z.ai. It supports text input and output with a 1M-token context window, and is suited for long-horizon agent workflows, project-level software engineering,..."
+      "description": "GLM 5.2 is a large-scale reasoning model from Z.ai. It supports text input and output with a 1M-token context window, and is suited for long-horizon agent workflows, project-level software engineering,...",
+      "api_type": "auto"
     },
     "openrouter:minimax/minimax-m2.7:free": {
       "name": "MiniMax: MiniMax M2.7 (free)",
@@ -459,7 +509,8 @@
         "free",
         "fast"
       ],
-      "description": "MiniMax-M2.7 is a next-generation large language model designed for autonomous, real-world productivity and continuous improvement. Built to actively participate in its own evolution, M2.7 integrates advanced agentic capabilities through multi-agent..."
+      "description": "MiniMax-M2.7 is a next-generation large language model designed for autonomous, real-world productivity and continuous improvement. Built to actively participate in its own evolution, M2.7 integrates advanced agentic capabilities through multi-agent...",
+      "api_type": "auto"
     },
     "openrouter:minimax/minimax-m3:free": {
       "name": "MiniMax: MiniMax M3 (free)",
@@ -470,7 +521,8 @@
         "free",
         "fast"
       ],
-      "description": "MiniMax-M3 is a multimodal foundation model from MiniMax. It supports text, image, and video inputs with text output, a 1M-token context window, and is suited for long-horizon agentic work, coding,..."
+      "description": "MiniMax-M3 is a multimodal foundation model from MiniMax. It supports text, image, and video inputs with text output, a 1M-token context window, and is suited for long-horizon agentic work, coding,...",
+      "api_type": "auto"
     },
     "abacus:MiniMaxAI/MiniMax-M3": {
       "name": "MiniMaxAI/MiniMax-M3",
@@ -480,7 +532,8 @@
       "tags": [
         "fast"
       ],
-      "description": "MiniMax M3 is MiniMax's latest flagship reasoning model with a 1,000,000 token context window and 131,072 max output tokens. Supports tools, structured output, and reasoning."
+      "description": "MiniMax M3 is MiniMax's latest flagship reasoning model with a 1,000,000 token context window and 131,072 max output tokens. Supports tools, structured output, and reasoning.",
+      "api_type": "auto"
     },
     "abacus:Qwen/Qwen3-32B": {
       "name": "Qwen/Qwen3-32B",
@@ -488,7 +541,8 @@
       "model_id": "Qwen/Qwen3-32B",
       "context_window": 131072,
       "tags": [],
-      "description": "Qwen3-32B is a dense 32.8 billion parameter model by Alibaba. The model shows strong performance in reasoning tasks and is optimized for agentic applications, supporting tool-calling and external tool integration."
+      "description": "Qwen3-32B is a dense 32.8 billion parameter model by Alibaba. The model shows strong performance in reasoning tasks and is optimized for agentic applications, supporting tool-calling and external tool integration.",
+      "api_type": "auto"
     },
     "abacus:Qwen/Qwen3-Coder-480B-A35B-Instruct": {
       "name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
@@ -498,7 +552,8 @@
       "tags": [
         "coding"
       ],
-      "description": "Qwen3-Coder is a powerful, open-source, agentic coding model by Alibaba, known for its great ability to generate code from natural language, debug code, and interact with tools"
+      "description": "Qwen3-Coder is a powerful, open-source, agentic coding model by Alibaba, known for its great ability to generate code from natural language, debug code, and interact with tools",
+      "api_type": "auto"
     },
     "abacus:Qwen/Qwen3.6-27B": {
       "name": "Qwen/Qwen3.6-27B",
@@ -506,7 +561,8 @@
       "model_id": "Qwen/Qwen3.6-27B",
       "context_window": 262144,
       "tags": [],
-      "description": "Qwen3.6 27B is an open-weight dense 27B-parameter model from Alibaba's Qwen3.6 series, delivering flagship-level coding and reasoning performance in a compact package. It supports a 256K context window and is well suited for software development, multilingual tasks, and tool-calling workflows."
+      "description": "Qwen3.6 27B is an open-weight dense 27B-parameter model from Alibaba's Qwen3.6 series, delivering flagship-level coding and reasoning performance in a compact package. It supports a 256K context window and is well suited for software development, multilingual tasks, and tool-calling workflows.",
+      "api_type": "auto"
     },
     "abacus:Qwen/Qwen3.8-27B": {
       "name": "Qwen/Qwen3.8-27B",
@@ -514,7 +570,8 @@
       "model_id": "Qwen/Qwen3.8-27B",
       "context_window": 262144,
       "tags": [],
-      "description": "Qwen3.8 27B is an open-weight dense 27B-parameter vision-language model from Alibaba's Qwen3.8 series, with native image and video input, a 262K context window (1M with YaRN), and default-on configurable thinking. It is optimized for coding, research, and long-horizon agentic workflows."
+      "description": "Qwen3.8 27B is an open-weight dense 27B-parameter vision-language model from Alibaba's Qwen3.8 series, with native image and video input, a 262K context window (1M with YaRN), and default-on configurable thinking. It is optimized for coding, research, and long-horizon agentic workflows.",
+      "api_type": "auto"
     },
     "abacus:Qwen/Qwen3.8-Flash-Next": {
       "name": "Qwen/Qwen3.8-Flash-Next",
@@ -524,7 +581,8 @@
       "tags": [
         "fast"
       ],
-      "description": "Qwen3.8 Flash Next is a 125B-parameter MoE model (6B active) from Alibaba's Qwen series, featuring hybrid attention (Gated DeltaNet + Qwen Sparse Attention) for ultra-efficient inference, native image and video input, a 1M token context window, and built-in configurable thinking."
+      "description": "Qwen3.8 Flash Next is a 125B-parameter MoE model (6B active) from Alibaba's Qwen series, featuring hybrid attention (Gated DeltaNet + Qwen Sparse Attention) for ultra-efficient inference, native image and video input, a 1M token context window, and built-in configurable thinking.",
+      "api_type": "auto"
     },
     "abacus:claude-fable-5": {
       "name": "claude-fable-5",
@@ -532,7 +590,8 @@
       "model_id": "claude-fable-5",
       "context_window": 1000000,
       "tags": [],
-      "description": "Claude Fable 5 from Anthropic is the next-generation Claude model, delivering major advances in coding, reasoning, and agentic tasks. It excels in tasks requiring long, complex reasoning chains, but is also expensive."
+      "description": "Claude Fable 5 from Anthropic is the next-generation Claude model, delivering major advances in coding, reasoning, and agentic tasks. It excels in tasks requiring long, complex reasoning chains, but is also expensive.",
+      "api_type": "auto"
     },
     "abacus:claude-fable-5-1": {
       "name": "claude-fable-5-1",
@@ -540,7 +599,8 @@
       "model_id": "claude-fable-5-1",
       "context_window": 1000000,
       "tags": [],
-      "description": "Claude Fable 5.1 from Anthropic is the next-generation Claude model, delivering major advances in coding, reasoning, and agentic tasks. It excels in tasks requiring long, complex reasoning chains, but is also expensive."
+      "description": "Claude Fable 5.1 from Anthropic is the next-generation Claude model, delivering major advances in coding, reasoning, and agentic tasks. It excels in tasks requiring long, complex reasoning chains, but is also expensive.",
+      "api_type": "auto"
     },
     "abacus:claude-haiku-4-5-20251001": {
       "name": "claude-haiku-4-5-20251001",
@@ -550,7 +610,8 @@
       "tags": [
         "fast"
       ],
-      "description": "Claude Haiku 4.5"
+      "description": "Claude Haiku 4.5",
+      "api_type": "auto"
     },
     "abacus:claude-opus-4-5-20251101": {
       "name": "claude-opus-4-5-20251101",
@@ -558,7 +619,8 @@
       "model_id": "claude-opus-4-5-20251101",
       "context_window": 200000,
       "tags": [],
-      "description": "Claude Opus 4.5 from Anthropic is an AI model focused on advanced coding, reasoning, and agentic tasks, with improved performance in multi-file code refactoring, debugging, and detail-oriented reasoning. It excels in tasks requiring long, complex reasoning chains, but is also expensive."
+      "description": "Claude Opus 4.5 from Anthropic is an AI model focused on advanced coding, reasoning, and agentic tasks, with improved performance in multi-file code refactoring, debugging, and detail-oriented reasoning. It excels in tasks requiring long, complex reasoning chains, but is also expensive.",
+      "api_type": "auto"
     },
     "abacus:claude-opus-4-6": {
       "name": "claude-opus-4-6",
@@ -566,7 +628,8 @@
       "model_id": "claude-opus-4-6",
       "context_window": 1000000,
       "tags": [],
-      "description": "Claude Opus 4.6 from Anthropic is a highly capable AI model, focused on advanced coding, reasoning, and agentic tasks, with improved performance in multi-file code refactoring, debugging, and detail-oriented reasoning. It excels in tasks requiring long, complex reasoning chains, but is also expensive."
+      "description": "Claude Opus 4.6 from Anthropic is a highly capable AI model, focused on advanced coding, reasoning, and agentic tasks, with improved performance in multi-file code refactoring, debugging, and detail-oriented reasoning. It excels in tasks requiring long, complex reasoning chains, but is also expensive.",
+      "api_type": "auto"
     },
     "abacus:claude-opus-4-7": {
       "name": "claude-opus-4-7",
@@ -574,7 +637,8 @@
       "model_id": "claude-opus-4-7",
       "context_window": 1000000,
       "tags": [],
-      "description": "Claude Opus 4.7 from Anthropic is a highly capable AI model, focused on advanced coding, reasoning, and agentic tasks, with improved performance in multi-file code refactoring, debugging, and detail-oriented reasoning. It excels in tasks requiring long, complex reasoning chains, but is also expensive."
+      "description": "Claude Opus 4.7 from Anthropic is a highly capable AI model, focused on advanced coding, reasoning, and agentic tasks, with improved performance in multi-file code refactoring, debugging, and detail-oriented reasoning. It excels in tasks requiring long, complex reasoning chains, but is also expensive.",
+      "api_type": "auto"
     },
     "abacus:claude-opus-4-8": {
       "name": "claude-opus-4-8",
@@ -582,7 +646,8 @@
       "model_id": "claude-opus-4-8",
       "context_window": 1000000,
       "tags": [],
-      "description": "Claude Opus 4.8 from Anthropic is a highly capable AI model, focused on advanced coding, reasoning, and agentic tasks, with improved performance in multi-file code refactoring, debugging, and detail-oriented reasoning. It excels in tasks requiring long, complex reasoning chains, but is also expensive."
+      "description": "Claude Opus 4.8 from Anthropic is a highly capable AI model, focused on advanced coding, reasoning, and agentic tasks, with improved performance in multi-file code refactoring, debugging, and detail-oriented reasoning. It excels in tasks requiring long, complex reasoning chains, but is also expensive.",
+      "api_type": "auto"
     },
     "abacus:claude-opus-5": {
       "name": "claude-opus-5",
@@ -590,7 +655,8 @@
       "model_id": "claude-opus-5",
       "context_window": 1000000,
       "tags": [],
-      "description": "Claude Opus 5 from Anthropic is a highly capable AI model, focused on advanced coding, reasoning, and agentic tasks, with improved performance in multi-file code refactoring, debugging, and detail-oriented reasoning. It excels in tasks requiring long, complex reasoning chains, but is also expensive."
+      "description": "Claude Opus 5 from Anthropic is a highly capable AI model, focused on advanced coding, reasoning, and agentic tasks, with improved performance in multi-file code refactoring, debugging, and detail-oriented reasoning. It excels in tasks requiring long, complex reasoning chains, but is also expensive.",
+      "api_type": "auto"
     },
     "abacus:claude-sonnet-4-5-20250929": {
       "name": "claude-sonnet-4-5-20250929",
@@ -600,7 +666,8 @@
       "tags": [
         "reasoning"
       ],
-      "description": "Claude Sonnet 4.5 advances over its predecessor, Sonnet 4, delivering stronger coding and reasoning performance with greater precision and control. Makes agentic programming better. It excels in tasks requiring long, complex reasoning chains, but is also expensive."
+      "description": "Claude Sonnet 4.5 advances over its predecessor, Sonnet 4, delivering stronger coding and reasoning performance with greater precision and control. Makes agentic programming better. It excels in tasks requiring long, complex reasoning chains, but is also expensive.",
+      "api_type": "auto"
     },
     "abacus:claude-sonnet-4-6": {
       "name": "claude-sonnet-4-6",
@@ -610,7 +677,8 @@
       "tags": [
         "reasoning"
       ],
-      "description": "Claude Sonnet 4.6 from Anthropic is a balanced AI model, offering excellent performance in coding, reasoning, and general tasks with improved efficiency. It provides a strong balance between capability and cost, making it ideal for most use cases."
+      "description": "Claude Sonnet 4.6 from Anthropic is a balanced AI model, offering excellent performance in coding, reasoning, and general tasks with improved efficiency. It provides a strong balance between capability and cost, making it ideal for most use cases.",
+      "api_type": "auto"
     },
     "abacus:claude-sonnet-5": {
       "name": "claude-sonnet-5",
@@ -620,7 +688,8 @@
       "tags": [
         "reasoning"
       ],
-      "description": "Claude Sonnet 5 from Anthropic is a balanced AI model, offering excellent performance in coding, reasoning, and general tasks with improved efficiency. It provides a strong balance between capability and cost, making it ideal for most use cases."
+      "description": "Claude Sonnet 5 from Anthropic is a balanced AI model, offering excellent performance in coding, reasoning, and general tasks with improved efficiency. It provides a strong balance between capability and cost, making it ideal for most use cases.",
+      "api_type": "auto"
     },
     "abacus:deepseek-ai/DeepSeek-V4-Flash-0731": {
       "name": "deepseek-ai/DeepSeek-V4-Flash-0731",
@@ -630,7 +699,8 @@
       "tags": [
         "fast"
       ],
-      "description": "DeepSeek V4 Flash is an advanced, high-performance large language model (LLM) developed by DeepSeek."
+      "description": "DeepSeek V4 Flash is an advanced, high-performance large language model (LLM) developed by DeepSeek.",
+      "api_type": "auto"
     },
     "abacus:deepseek-ai/DeepSeek-V4-Pro-0813": {
       "name": "deepseek-ai/DeepSeek-V4-Pro-0813",
@@ -638,7 +708,8 @@
       "model_id": "deepseek-ai/DeepSeek-V4-Pro-0813",
       "context_window": 1000000,
       "tags": [],
-      "description": "DeepSeek V4 Pro is an advanced, high-performance large language model (LLM) developed by DeepSeek."
+      "description": "DeepSeek V4 Pro is an advanced, high-performance large language model (LLM) developed by DeepSeek.",
+      "api_type": "auto"
     },
     "openrouter:stealth/union-alpha": {
       "name": "Union Alpha",
@@ -646,7 +717,8 @@
       "model_id": "stealth/union-alpha",
       "context_window": 262144,
       "tags": [],
-      "description": "Union Alpha is a multimodal model built for research, coding, and agentic workflows, while delivering frontier-level performance across a broad range of general-purpose tasks. Union Alpha is a stealth model...."
+      "description": "Union Alpha is a multimodal model built for research, coding, and agentic workflows, while delivering frontier-level performance across a broad range of general-purpose tasks. Union Alpha is a stealth model....",
+      "api_type": "auto"
     },
     "mindshub:deepseek-v4-1-flash": {
       "name": "Deepseek V4 1 Flash",
@@ -656,7 +728,8 @@
       "tags": [
         "fast"
       ],
-      "description": "Deepseek V4 1 Flash via MindsHub"
+      "description": "Deepseek V4 1 Flash via MindsHub",
+      "api_type": "auto"
     },
     "mindshub:mindshub_air": {
       "name": "Mindshub_Air",
@@ -664,7 +737,8 @@
       "model_id": "mindshub_air",
       "context_window": 262144,
       "tags": [],
-      "description": "Mindshub_Air via MindsHub"
+      "description": "Mindshub_Air via MindsHub",
+      "api_type": "auto"
     },
     "unikey:claude-haiku-4-5-20251001": {
       "name": "Claude Haiku 4 5 20251001",
@@ -674,7 +748,8 @@
       "tags": [
         "fast"
       ],
-      "description": "Claude Haiku 4 5 20251001 via Unikey"
+      "description": "Claude Haiku 4 5 20251001 via Unikey",
+      "api_type": "auto"
     },
     "unikey:claude-opus-4-6": {
       "name": "Claude Opus 4 6",
@@ -682,7 +757,8 @@
       "model_id": "claude-opus-4-6",
       "context_window": 1000000,
       "tags": [],
-      "description": "Claude Opus 4 6 via Unikey"
+      "description": "Claude Opus 4 6 via Unikey",
+      "api_type": "auto"
     },
     "unikey:claude-opus-4-7": {
       "name": "Claude Opus 4 7",
@@ -690,7 +766,8 @@
       "model_id": "claude-opus-4-7",
       "context_window": 1000000,
       "tags": [],
-      "description": "Claude Opus 4 7 via Unikey"
+      "description": "Claude Opus 4 7 via Unikey",
+      "api_type": "auto"
     },
     "unikey:claude-opus-4-8": {
       "name": "Claude Opus 4 8",
@@ -698,7 +775,8 @@
       "model_id": "claude-opus-4-8",
       "context_window": 1000000,
       "tags": [],
-      "description": "Claude Opus 4 8 via Unikey"
+      "description": "Claude Opus 4 8 via Unikey",
+      "api_type": "auto"
     }
   }
 }

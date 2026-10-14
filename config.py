@@ -1,7 +1,7 @@
 import json
 import os
-from typing import Dict, Optional, Tuple, List, Any
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Dict, Optional, Tuple, List, Any, Literal
+from pydantic import BaseModel, Field, ConfigDict, field_validator
 
 APP_ROOT = os.path.dirname(os.path.abspath(__file__))
 
@@ -108,6 +108,46 @@ class LoggingConfig(BaseModel):
     filepath: str = Field(default="session.md", description="Filepath for Markdown session log file.")
 
 
+# ---------------------------------------------------------------------------
+# API (endpoint) types
+#
+#   auto              - detect from the provider (Anthropic's own API -> "anthropic", else "openai-chat")
+#   openai-chat       - OpenAI Chat Completions  (POST /v1/chat/completions)
+#   openai-responses  - OpenAI Responses API     (POST /v1/responses)
+#   anthropic         - Anthropic Messages API   (POST /v1/messages)
+#
+# A model's api_type overrides its provider's api_type; "auto" defers to the
+# provider and finally to detection.
+# ---------------------------------------------------------------------------
+API_TYPES = ("auto", "openai-chat", "openai-responses", "anthropic")
+ApiType = Literal["auto", "openai-chat", "openai-responses", "anthropic"]
+
+_API_TYPE_ALIASES = {
+    "": "auto",
+    "default": "auto",
+    "openai": "openai-chat",
+    "chat": "openai-chat",
+    "completions": "openai-chat",
+    "chat-completions": "openai-chat",
+    "openai-chat-completions": "openai-chat",
+    "responses": "openai-responses",
+    "openai-response": "openai-responses",
+    "messages": "anthropic",
+    "anthropic-messages": "anthropic",
+}
+
+
+def normalize_api_type(value: Any) -> str:
+    """Normalizes user input (case, underscores, common aliases) to a canonical API type or raises ValueError."""
+    if value is None:
+        return "auto"
+    key = str(value).strip().lower().replace("_", "-").replace(" ", "-")
+    key = _API_TYPE_ALIASES.get(key, key)
+    if key not in API_TYPES:
+        raise ValueError(f"Unknown API type '{value}'. Valid types: {', '.join(API_TYPES)}")
+    return key
+
+
 class ProviderConfig(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -115,6 +155,15 @@ class ProviderConfig(BaseModel):
     base_url: str = Field(description="REST API base URL endpoint (e.g. https://api.openai.com/v1).")
     api_key_env: str = Field(default="OPENAI_API_KEY", description="Environment variable name storing the provider API key.")
     default_headers: Optional[Dict[str, str]] = Field(default=None, description="Optional custom HTTP headers sent with every request.")
+    api_type: ApiType = Field(
+        default="auto",
+        description="Default endpoint type for this provider's models: auto, openai-chat (Chat Completions), openai-responses (Responses API) or anthropic (Messages API). A model's own api_type overrides this."
+    )
+
+    @field_validator("api_type", mode="before")
+    @classmethod
+    def _normalize_api_type(cls, v: Any) -> str:
+        return normalize_api_type(v)
 
     @property
     def api_key(self) -> str:
@@ -130,6 +179,15 @@ class ModelConfig(BaseModel):
     context_window: int = Field(default=8192, description="Maximum token context window size for the model.")
     tags: List[str] = Field(default_factory=list, description="Categorization tags (e.g. reasoning, coding, fast, free, router, guard).")
     description: Optional[str] = Field(default=None, description="Detailed description of model capabilities and intended use cases.")
+    api_type: ApiType = Field(
+        default="auto",
+        description="Endpoint type used for this model: auto (use the provider's api_type, else detect), openai-chat (Chat Completions), openai-responses (Responses API) or anthropic (Messages API)."
+    )
+
+    @field_validator("api_type", mode="before")
+    @classmethod
+    def _normalize_api_type(cls, v: Any) -> str:
+        return normalize_api_type(v)
 
 
 class MeshConfig(BaseModel):
@@ -336,14 +394,16 @@ class ConfigManager:
         name: str,
         base_url: str,
         api_key_env: str = "OPENAI_API_KEY",
-        default_headers: Optional[Dict[str, str]] = None
+        default_headers: Optional[Dict[str, str]] = None,
+        api_type: str = "auto"
     ) -> None:
         """Adds or updates a provider endpoint configuration and persists to config.json."""
         provider_cfg = ProviderConfig(
             name=name,
             base_url=base_url,
             api_key_env=api_key_env,
-            default_headers=default_headers
+            default_headers=default_headers,
+            api_type=api_type
         )
         self.config.providers[key] = provider_cfg
         self.save()
@@ -399,7 +459,8 @@ class ConfigManager:
         name: Optional[str] = None,
         context_window: int = 8192,
         tags: Optional[List[str]] = None,
-        description: Optional[str] = None
+        description: Optional[str] = None,
+        api_type: str = "auto"
     ) -> None:
         if provider not in self.config.providers:
             raise KeyError(f"Provider '{provider}' not found in providers configuration.")
@@ -411,10 +472,29 @@ class ConfigManager:
             model_id=model_id,
             context_window=context_window,
             tags=tags or [],
-            description=description
+            description=description,
+            api_type=api_type
         )
         self.config.models[key] = model_cfg
         self.save()
+
+    def set_provider_api_type(self, key: str, api_type: str) -> str:
+        """Sets a provider's default endpoint type and persists it. Returns the normalized type."""
+        if key not in self.config.providers:
+            raise KeyError(f"Provider '{key}' not found in providers configuration.")
+        normalized = normalize_api_type(api_type)
+        self.config.providers[key].api_type = normalized
+        self.save()
+        return normalized
+
+    def set_model_api_type(self, key: str, api_type: str) -> str:
+        """Sets a model's endpoint type and persists it. Returns the normalized type."""
+        if key not in self.config.models:
+            raise KeyError(f"Model key '{key}' does not exist.")
+        normalized = normalize_api_type(api_type)
+        self.config.models[key].api_type = normalized
+        self.save()
+        return normalized
 
     def remove_model(self, key: str) -> bool:
         """Removes a model from configuration and resets active/router/guard bindings if needed."""
