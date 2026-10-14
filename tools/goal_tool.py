@@ -59,10 +59,27 @@ class GoalTool(BaseTool):
     }
     is_proxied = False  # Small, structured state - no benefit to distillation.
 
-    def __init__(self, on_change: Optional[Callable[[], None]] = None):
+    def __init__(
+        self,
+        on_change: Optional[Callable[[], None]] = None,
+        on_display: Optional[Callable[[bool], None]] = None,
+    ):
+        """
+        on_change:  called on every state update (used to refresh the system prompt).
+        on_display: called with `changed` when the goal should be shown to the user:
+                    changed=True after a real state change (set, criterion completed,
+                    cleared, restored from a checkpoint or session; never when nothing
+                    changed), changed=False for an explicit 'display' request.
+        """
         self._on_change = on_change
+        self._on_display = on_display
         self._goal: Optional[str] = None
         self._criteria: List[Dict[str, Any]] = []
+        self._last_shown_key = self.state_key()
+
+    def state_key(self) -> tuple:
+        """Hashable fingerprint of the goal text and each criterion's text/done flag."""
+        return (self._goal, tuple((c["text"], bool(c["done"])) for c in self._criteria))
 
     def is_read_only(self, action: str = "", **kwargs) -> bool:
         return str(action).lower() == "get"
@@ -100,6 +117,18 @@ class GoalTool(BaseTool):
     def _notify(self) -> None:
         if self._on_change:
             self._on_change()
+        key = self.state_key()
+        if key != self._last_shown_key:
+            self._last_shown_key = key
+            if self._on_display:
+                self._on_display(True)
+
+    def show(self, console, cleared: bool = False) -> None:
+        """Displays the goal after a change; says so explicitly when the goal was removed."""
+        if cleared and not self._goal:
+            console.print("[warning]Goal cleared.[/warning]")
+        else:
+            self.render(console)
 
     def render(self, console) -> None:
         """Prints the current goal to the user via the given themed console."""
@@ -145,6 +174,8 @@ class GoalTool(BaseTool):
             return {"status": "ok", **self._snapshot()}
 
         elif action_lower == "display":
+            if self._on_display:
+                self._on_display(False)
             return {"status": "displayed", **self._snapshot()}
 
         elif action_lower == "complete_criterion":

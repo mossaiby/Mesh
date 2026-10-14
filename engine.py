@@ -196,7 +196,10 @@ class MeshEngine:
         self.tool_registry.register(GitPushTool())
         self.tool_registry.register(GitBranchTool())
         self.tool_registry.register(DelegateTaskTool(self.tool_registry, self.config_mgr))
-        self.goal_tool = GoalTool(on_change=lambda: self.update_system_message())
+        self.goal_tool = GoalTool(
+            on_change=lambda: self.update_system_message(),
+            on_display=lambda changed: self.goal_tool.show(console, cleared=changed)
+        )
         self.tool_registry.register(self.goal_tool)
         self.tool_registry.register(AdvisorTool(self.config_mgr))
         self.tool_registry.register(ExploreTool(self.tool_registry, self.config_mgr))

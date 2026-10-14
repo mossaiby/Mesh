@@ -553,15 +553,25 @@ async def cmd_git(engine: Any, args: List[str]):
 
 
 async def cmd_goal(engine: Any, args: List[str]):
+    goal_tool = engine.goal_tool
+
     if not args:
-        engine.goal_tool.render(console)
+        goal_tool.render(console)
         return
+
+    def show_if_unchanged(before: tuple) -> None:
+        # A real change is displayed automatically by the goal tool; if the command
+        # changed nothing (e.g. re-setting the same goal), show the goal anyway.
+        if goal_tool.state_key() == before:
+            goal_tool.render(console)
 
     subcmd = args[0].lower()
 
     if subcmd == "clear":
-        await engine.goal_tool.execute("clear")
-        console.print("[warning]Goal cleared.[/warning]")
+        had_goal = goal_tool.has_goal()
+        await goal_tool.execute("clear")
+        if not had_goal:
+            console.print("[muted]No goal is currently set.[/muted]")
 
     elif subcmd == "done":
         if len(args) < 2:
@@ -572,23 +582,25 @@ async def cmd_goal(engine: Any, args: List[str]):
         except ValueError:
             console.print("[error]Usage: /goal done <criterion number>[/error]")
             return
-        result = await engine.goal_tool.execute("complete_criterion", criterion_index=idx)
+        before = goal_tool.state_key()
+        result = await goal_tool.execute("complete_criterion", criterion_index=idx)
         if "error" in result:
             console.print(f"[error]{result['error']}[/error]")
         else:
             console.print(f"[success]Marked criterion #{idx} complete.[/success]")
-            engine.goal_tool.render(console)
+            show_if_unchanged(before)
 
     else:
         raw = " ".join(args)
         parts = [p.strip() for p in raw.split("|")]
         goal_text, criteria = parts[0], [p for p in parts[1:] if p]
 
-        result = await engine.goal_tool.execute("set", goal=goal_text, success_criteria=criteria)
+        before = goal_tool.state_key()
+        result = await goal_tool.execute("set", goal=goal_text, success_criteria=criteria)
         if "error" in result:
             console.print(f"[error]{result['error']}[/error]")
         else:
-            engine.goal_tool.render(console)
+            show_if_unchanged(before)
 
 
 async def cmd_todo(engine: Any, args: List[str]):

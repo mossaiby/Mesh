@@ -207,7 +207,7 @@ For the `anthropic` type a trailing `/v1` on the provider `base_url` is dropped 
 ### Memory & Knowledge
 | Command | Description |
 | --- | --- |
-| `/goal [<text>] [\| criteria]`, `/goal done <#>`, `/goal clear` | View, set, or manage pinned session goal |
+| `/goal [<text>] [\| criteria]`, `/goal done <#>`, `/goal clear` | View, set, or manage pinned session goal (the goal is shown automatically whenever it changes, whether you or the model changed it) |
 | `/note [append <text>\|clear]` | View or edit persistent Markdown notes |
 | `/memory [save\|get\|list\|search\|delete\|clear] <args>` | View or edit persistent memory key-value store |
 | `/dream` | Analyze conversation transcript and extract persistent notes, memory facts, and skills |
