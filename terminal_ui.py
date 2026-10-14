@@ -236,7 +236,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
             elif current_arg_index == 2:
                 word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
                 if word1 in ("remove", "delete", "test", "check", "header", "api"):
-                    providers = list(self.mesh.config_mgr.config.providers.keys())
+                    providers = sorted(self.mesh.config_mgr.config.providers.keys(), key=str.lower)
                     for p in providers:
                         if p.lower().startswith(current_word.lower()):
                             yield Completion(p, start_position=-len(current_word))
@@ -365,12 +365,12 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
             elif current_arg_index == 2:
                 word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
                 if word1 in ("discover", "add"):
-                    providers = list(self.mesh.config_mgr.config.providers.keys())
+                    providers = sorted(self.mesh.config_mgr.config.providers.keys(), key=str.lower)
                     for p in providers:
                         if p.lower().startswith(current_word.lower()):
                             yield Completion(p, start_position=-len(current_word))
                 elif word1 in ("remove", "delete", "api"):
-                    models = list(self.mesh.config_mgr.config.models.keys())
+                    models = sorted(self.mesh.config_mgr.config.models.keys(), key=str.lower)
                     for m in models:
                         if m.lower().startswith(current_word.lower()):
                             yield Completion(m, start_position=-len(current_word))
@@ -412,7 +412,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                     if sub.startswith(current_word.lower()):
                         yield Completion(sub, start_position=-len(current_word), display_meta=meta)
 
-                models = list(self.mesh.config_mgr.config.models.keys())
+                models = sorted(self.mesh.config_mgr.config.models.keys(), key=str.lower)
                 for m in models:
                     if m.lower().startswith(current_word.lower()):
                         cfg = self.mesh.config_mgr.config.models[m]
@@ -420,7 +420,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
             elif current_arg_index == 2:
                 word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
                 if word1 in ("router", "advisor"):
-                    models = list(self.mesh.config_mgr.config.models.keys()) + ["clear", "reset"]
+                    models = sorted(self.mesh.config_mgr.config.models.keys(), key=str.lower) + ["clear", "reset"]
                     for m in models:
                         if m.lower().startswith(current_word.lower()):
                             yield Completion(m, start_position=-len(current_word))
@@ -510,7 +510,7 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
                         if mode.startswith(current_word.lower()):
                             yield Completion(mode, start_position=-len(current_word))
                 elif word1 == "model":
-                    models = list(self.mesh.config_mgr.config.models.keys())
+                    models = sorted(self.mesh.config_mgr.config.models.keys(), key=str.lower)
                     for m in models:
                         if m.lower().startswith(current_word.lower()):
                             yield Completion(m, start_position=-len(current_word))

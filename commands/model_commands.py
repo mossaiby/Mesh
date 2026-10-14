@@ -33,7 +33,18 @@ COMMON_CONTEXT_SIZES = [
 
 
 
-def _interactive_item_picker(items: List[str], title: str) -> Optional[str]:
+def _sorted_provider_keys(cfg: Any) -> List[str]:
+    """Provider keys ordered alphabetically by display name (then key)."""
+    return sorted(cfg.providers.keys(), key=lambda k: (cfg.providers[k].name.lower(), k.lower()))
+
+
+def _sorted_model_keys(cfg: Any, provider: Optional[str] = None) -> List[str]:
+    """Model keys ordered alphabetically by display name (then key), optionally for one provider."""
+    keys = [k for k, m in cfg.models.items() if provider is None or m.provider == provider]
+    return sorted(keys, key=lambda k: (cfg.models[k].name.lower(), k.lower()))
+
+
+def _interactive_item_picker(items: List[str], title: str, initial_idx: int = 0) -> Optional[str]:
     """Helper to render an interactive arrow-key picker for selecting an item from a list."""
     if not items:
         return None
@@ -46,7 +57,7 @@ def _interactive_item_picker(items: List[str], title: str) -> Optional[str]:
             return items[int(raw) - 1]
         return raw if raw else None
 
-    current_idx = 0
+    current_idx = initial_idx if 0 <= initial_idx < len(items) else 0
     max_visible = 15
 
     def render_menu(selected_idx: int) -> Text:
@@ -212,7 +223,8 @@ async def cmd_providers(engine: Any, args: List[str]):
         if not cfg.providers:
             console.print("  [dim]No providers configured in config.json.[/dim]\n")
         else:
-            for p_key, p_cfg in cfg.providers.items():
+            for p_key in _sorted_provider_keys(cfg):
+                p_cfg = cfg.providers[p_key]
                 env_val = os.getenv(p_cfg.api_key_env)
                 env_status = "[success]SET[/success]" if env_val else "[warning]NOT SET[/warning]"
                 
@@ -364,7 +376,7 @@ async def cmd_providers(engine: Any, args: List[str]):
     if sub in ("test", "check"):
         target_key = args[1].lower().strip() if len(args) > 1 else None
         if not target_key or target_key not in cfg.providers:
-            providers_list = ", ".join(cfg.providers.keys())
+            providers_list = ", ".join(_sorted_provider_keys(cfg))
             console.print(f"[error]Usage: /providers test <key>. Configured providers: {providers_list}[/error]")
             return
 
@@ -421,7 +433,7 @@ async def cmd_models(engine: Any, args: List[str]):
 
     if sub == "add":
         if len(args) == 1:
-            providers_str = ", ".join(engine.config_mgr.config.providers.keys())
+            providers_str = ", ".join(_sorted_provider_keys(engine.config_mgr.config))
             console.print(
                 "[error]Usage: /models add <provider> [<pattern>] [<context_window>] [--api <type>][/error]\n"
                 f"Configured providers: [accent]{providers_str}[/accent]\n"
@@ -447,7 +459,7 @@ async def cmd_models(engine: Any, args: List[str]):
         explicit_ctx = int(add_args[2]) if len(add_args) >= 3 and add_args[2].isdigit() else None
 
         if p_key not in engine.config_mgr.config.providers:
-            console.print(f"[error]Unknown provider '{p_key}'. Configured providers: {', '.join(engine.config_mgr.config.providers.keys())}[/error]")
+            console.print(f"[error]Unknown provider '{p_key}'. Configured providers: {', '.join(_sorted_provider_keys(engine.config_mgr.config))}[/error]")
             return
 
         p_cfg = engine.config_mgr.config.providers[p_key]
@@ -544,7 +556,7 @@ async def cmd_models(engine: Any, args: List[str]):
 
     elif sub in ("remove", "delete"):
         if len(args) < 2:
-            models_list = ", ".join(cfg.models.keys())
+            models_list = ", ".join(_sorted_model_keys(cfg))
             console.print(f"[error]Usage: /models remove <model_key>\nConfigured models: {models_list}[/error]")
             return
 
@@ -571,10 +583,12 @@ async def cmd_models(engine: Any, args: List[str]):
             if target_provider in engine.config_mgr.config.providers:
                 providers_to_query[target_provider] = engine.config_mgr.config.providers[target_provider]
             else:
-                console.print(f"[error]Unknown provider '{target_provider}'. Configured providers: {', '.join(engine.config_mgr.config.providers.keys())}[/error]")
+                console.print(f"[error]Unknown provider '{target_provider}'. Configured providers: {', '.join(_sorted_provider_keys(engine.config_mgr.config))}[/error]")
                 return
         else:
             providers_to_query = engine.config_mgr.config.providers
+
+        providers_to_query = {k: providers_to_query[k] for k in _sorted_provider_keys(engine.config_mgr.config) if k in providers_to_query}
 
         if not providers_to_query:
             console.print("[error]No providers configured in config.json.[/error]")
@@ -590,7 +604,10 @@ async def cmd_models(engine: Any, args: List[str]):
 
         results = await asyncio.gather(*(query_p(k, p) for k, p in providers_to_query.items()))
 
+        results = sorted(results, key=lambda r: (r[1].name.lower(), r[0].lower()))
         for p_key, p_cfg, success, model_details, err in results:
+            if success and model_details:
+                model_details = sorted(model_details, key=lambda m: m["id"].lower())
             console.print(f"{BULLET} [label]{p_cfg.name}[/label] ([brand]{p_key}[/brand]) {EM_DASH} [dim]{p_cfg.base_url}[/dim]")
             if success:
                 if not model_details:
@@ -614,7 +631,12 @@ async def cmd_models(engine: Any, args: List[str]):
 
     active = cfg.active_model
     console.print("[success]Configured Models:[/success]")
-    for key, model_cfg in sorted(cfg.models.items()):
+    for key in sorted(cfg.models.keys(), key=lambda k: (
+        (cfg.providers[cfg.models[k].provider].name if cfg.models[k].provider in cfg.providers else cfg.models[k].provider).lower(),
+        cfg.models[k].name.lower(),
+        k.lower(),
+    )):
+        model_cfg = cfg.models[key]
         provider_cfg = cfg.providers.get(model_cfg.provider)
         provider_name = provider_cfg.name if provider_cfg else model_cfg.provider
         
@@ -735,65 +757,68 @@ async def cmd_switch(engine: Any, args: List[str]):
             return
         selected_key = target_key
     else:
-        model_keys = list(models_dict.keys()) + ["auto (Dynamic LLM Router)"]
         active_key = cfg.active_model
-        current_idx = 0
+        AUTO_LABEL = f"{SHUFFLE} Auto-Routing Mode (using router: {cfg.router_model or 'none'})" + (" (active)" if active_key == "auto" else "")
 
-        def render_switch_menu(selected_idx: int):
-            lines = ["\n[success]Select a Model or Mode to Switch to:[/success]", f"[dim]Use {ARROW_UP}/{ARROW_DOWN} Arrow Keys to navigate, Enter to select:[/dim]\n"]
-            for idx, key in enumerate(model_keys):
-                if key.startswith("auto"):
-                    is_active = (active_key == "auto")
-                    active_tag = " [accent](active)[/accent]" if is_active else ""
-                    router_tag = f" [dim](using router: {cfg.router_model or 'none'})[/dim]"
-                    item_text = f"{SHUFFLE} Auto-Routing Mode{active_tag}{router_tag}"
-                else:
-                    m_cfg = models_dict[key]
-                    provider_cfg = cfg.providers.get(m_cfg.provider)
-                    p_name = provider_cfg.name if provider_cfg else m_cfg.provider
-                    is_active = (key == active_key)
-                    active_tag = " [accent](active)[/accent]" if is_active else ""
-                    item_text = f"{m_cfg.name} ({key}) via {p_name}{active_tag}"
-                
-                if idx == selected_idx:
-                    lines.append(f"  [accent]{ANGLE_RIGHT} {RADIO_ON} {item_text}[/accent]")
-                else:
-                    lines.append(f"    [dim]{RADIO_OFF} {item_text}[/dim]")
-            return Text.from_markup("\n".join(lines))
+        def provider_label(p_key: str) -> str:
+            p_cfg = cfg.providers.get(p_key)
+            name = p_cfg.name if p_cfg else p_key
+            count = len(_sorted_model_keys(cfg, p_key))
+            active_tag = " (active)" if active_key in models_dict and models_dict[active_key].provider == p_key else ""
+            return f"{name} ({p_key}) {EM_DASH} {count} model{'s' if count != 1 else ''}{active_tag}"
 
-        def interactive_switch():
-            if not sys.stdin.isatty():
-                console.print("[accent]Available Options:[/accent]")
-                for idx, k in enumerate(model_keys, 1):
-                    console.print(f"  {idx}. {k}")
-                raw = input("Choice > ").strip()
-                if raw.isdigit() and 1 <= int(raw) <= len(model_keys):
-                    return model_keys[int(raw) - 1]
-                return raw
-
-            nonlocal current_idx
-            with Live(render_switch_menu(current_idx), console=console, auto_refresh=False, vertical_overflow="visible") as live:
-                while True:
-                    live.update(render_switch_menu(current_idx), refresh=True)
-                    try:
-                        key = _read_single_key()
-                    except Exception:
-                        break
-
-                    if key == "up":
-                        current_idx = (current_idx - 1) % len(model_keys)
-                    elif key == "down":
-                        current_idx = (current_idx + 1) % len(model_keys)
-                    elif key == "enter":
-                        break
-
-            return model_keys[current_idx]
-
+        # Providers referenced by models (including any not declared in `providers`), alphabetical.
+        provider_keys = sorted(
+            {m.provider for m in models_dict.values()},
+            key=lambda k: ((cfg.providers[k].name if k in cfg.providers else k).lower(), k.lower()),
+        )
+        provider_labels = {provider_label(k): k for k in provider_keys}
+        provider_items = list(provider_labels.keys()) + [AUTO_LABEL]
         loop = asyncio.get_running_loop()
-        selected_key = await loop.run_in_executor(None, interactive_switch)
+        selected_key = None
+
+        while selected_key is None:
+            p_initial = 0
+            if active_key == "auto":
+                p_initial = len(provider_items) - 1
+            elif active_key in models_dict and models_dict[active_key].provider in provider_keys:
+                p_initial = provider_keys.index(models_dict[active_key].provider)
+
+            chosen = await loop.run_in_executor(
+                None,
+                lambda: _interactive_item_picker(provider_items, "Select a Provider (or Auto-Routing Mode)", p_initial),
+            )
+            if not chosen:
+                console.print("[warning]Switch cancelled.[/warning]")
+                return
+            if chosen == AUTO_LABEL:
+                selected_key = "auto"
+                break
+            if chosen not in provider_labels:
+                console.print(f"[error]Invalid choice '{chosen}'.[/error]")
+                return
+
+            p_key = provider_labels[chosen]
+            m_keys = _sorted_model_keys(cfg, p_key)
+            m_labels = {}
+            for k in m_keys:
+                m_cfg = models_dict[k]
+                tag = " (active)" if k == active_key else ""
+                m_labels[f"{m_cfg.name} ({k}){tag}"] = k
+            m_items = list(m_labels.keys())
+            m_initial = m_keys.index(active_key) if active_key in m_keys else 0
+            p_name = cfg.providers[p_key].name if p_key in cfg.providers else p_key
+
+            m_chosen = await loop.run_in_executor(
+                None,
+                lambda: _interactive_item_picker(m_items, f"Select a Model from {p_name} (Esc to go back)", m_initial),
+            )
+            if m_chosen and m_chosen in m_labels:
+                selected_key = m_labels[m_chosen]
+            # Esc / empty input -> loop back to the provider list
 
     try:
-        if selected_key.startswith("auto"):
+        if selected_key == "auto":
             if not cfg.router_model or cfg.router_model not in cfg.models:
                 console.print("[error]Cannot enable auto-routing: 'router_model' is not set or invalid in config.json.[/error]")
                 return
