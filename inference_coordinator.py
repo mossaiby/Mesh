@@ -1,4 +1,5 @@
 import asyncio
+import sys
 import time
 from typing import Optional, List, Dict, Any
 from providers import get_provider
@@ -6,6 +7,7 @@ from pricing import pricing_manager
 from compaction import maybe_auto_compact, estimate_tokens, count_text_tokens
 import router
 from theme import console
+from tools.ask_tool import _read_single_key
 from glyphs import NO_ENTRY, SHUFFLE, TABS
 
 
@@ -39,13 +41,66 @@ class InferenceCoordinator:
     def session_logger(self):
         return self.engine.session_logger
 
+    async def _confirm_continue(self, max_turns: int) -> bool:
+        """
+        Called when the per-prompt turn limit is used up while the model still wants to run tools.
+        Asks the user whether to grant another batch of turns. Returns True to continue, False to stop.
+        Non-interactive sessions (no TTY) stop without prompting so scripts never hang.
+        """
+        console.print(
+            f"\n[warning]{NO_ENTRY} Reached the limit of {max_turns} assistant turn(s) for this prompt "
+            f"and the model has not finished.[/warning]"
+        )
+        if not sys.stdin.isatty():
+            console.print("[dim]Non-interactive session: stopping. Raise `turns.engine` in config.json to allow more turns.[/dim]\n")
+            return False
+
+        console.print(
+            f"[accent]Continue for another {max_turns} turn(s)?[/accent] "
+            f"[label][C][/label]ontinue / [label][S][/label]top [dim](Enter = continue, Esc = stop)[/dim]"
+        )
+
+        def ask() -> bool:
+            while True:
+                try:
+                    key = _read_single_key()
+                except (KeyboardInterrupt, EOFError):
+                    return False
+                except Exception:
+                    return False
+                k = (key or "").lower()
+                if k in ("c", "y", "enter"):
+                    return True
+                if k in ("s", "n", "q", "escape"):
+                    return False
+
+        loop = asyncio.get_running_loop()
+        try:
+            should_continue = await loop.run_in_executor(None, ask)
+        except (KeyboardInterrupt, asyncio.CancelledError):
+            should_continue = False
+
+        if should_continue:
+            console.print(f"[success]Continuing for up to {max_turns} more turn(s).[/success]\n")
+        else:
+            console.print("[warning]Stopped. You can send another prompt (e.g. \"continue\") to resume.[/warning]\n")
+        return should_continue
+
     async def process_inference(self, pre_prompt_count: Optional[int] = None) -> None:
         max_turns = self.config_mgr.config.turns.engine
         current_turn = 0
         rollback_count = pre_prompt_count if pre_prompt_count is not None else max(0, len(self.engine.messages) - 1)
 
         try:
-            while current_turn < max_turns and self.engine.is_running:
+            while self.engine.is_running:
+                if current_turn >= max_turns:
+                    # Only reached after a turn that executed tools (otherwise the loop already broke).
+                    self.session_logger.log_system_event(f"Turn limit ({max_turns}) reached; asking user whether to continue.")
+                    if not await self._confirm_continue(max_turns):
+                        self.session_logger.log_system_event("Stopped at turn limit by user.")
+                        break
+                    self.session_logger.log_system_event("User chose to continue past turn limit.")
+                    current_turn = 0
                 current_turn += 1
 
                 # 1. Model resolution (auto-routing vs. static)

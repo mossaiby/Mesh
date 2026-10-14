@@ -127,6 +127,10 @@ python main.py --ascii
 
 ---
 
+## 🔁 Turn Limit
+
+`turns.engine` (default 10) caps how many assistant turns Mesh runs for one prompt. If the limit is reached while the model still wants to run tools, Mesh asks whether to continue: press **C** (or Enter) to allow another `turns.engine` turns, or **S** (or Esc / Ctrl-C) to stop. Your work so far is kept, and you can send another prompt to resume. Non-interactive runs (no TTY) stop without prompting.
+
 ## 🔌 Endpoint (API) Types
 
 Each model can use a different wire protocol, set with `api_type` on a model or a provider:
