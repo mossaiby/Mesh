@@ -10,6 +10,10 @@ class CommandRegistry:
         self._commands: Dict[str, CommandHandler] = {}
         self._descriptions: Dict[str, str] = {}
         self._categories: Dict[str, str] = {}
+        # Raw (unsplit) argument text of the command currently being dispatched.
+        # Lets commands that take a single free-form value (e.g. a file path with
+        # spaces) read it verbatim instead of re-joining whitespace-split tokens.
+        self.last_raw_args: str = ""
 
     def register(
         self,
@@ -33,6 +37,8 @@ class CommandRegistry:
 
         cmd = parts[0].lower()
         args = parts[1:]
+        stripped = text.strip()
+        self.last_raw_args = stripped[len(parts[0]):].strip()
 
         if cmd in self._commands:
             try:

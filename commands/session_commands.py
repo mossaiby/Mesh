@@ -3,7 +3,7 @@ import os
 import sys
 import subprocess
 from pathlib import Path
-from typing import List, Any
+from typing import List, Any, Tuple
 from rich.markdown import Markdown
 from tools.note_tool import _read_notes, _write_notes, _append_notes
 from tools.memory_tool import _load_memory, _save_memory
@@ -23,23 +23,55 @@ from theme import console
 from glyphs import BRAIN, BULLET, CHECK, EM_DASH, HAMMER_WRENCH, LIGHTNING, MAG_RIGHT, MEMO, NO_ENTRY, POSTBOX, ROCKET, SLEEP, SNAKE, VS16
 
 
+def _unquote_path(path: str) -> str:
+    """Strip one pair of matching surrounding quotes so `"my log.md"` works."""
+    path = path.strip()
+    if len(path) >= 2 and path[0] == path[-1] and path[0] in ("\"", "'"):
+        path = path[1:-1].strip()
+    return path
+
+
+def _parse_log_args(engine: Any, args: List[str]) -> Tuple[str, str]:
+    """
+    Split `/log` arguments into (subcommand, path) without breaking on spaces in the path.
+
+    The registry splits on whitespace, so the path is taken from the raw argument text
+    (falling back to re-joining tokens) rather than from a single token.
+    """
+    raw = getattr(getattr(engine, "cmd_registry", None), "last_raw_args", "") or ""
+    # Only trust the raw text if it is consistent with the tokens we were given.
+    if raw.split() != list(args):
+        raw = " ".join(args)
+
+    if not raw:
+        return "", ""
+
+    parts = raw.split(None, 1)
+    first = parts[0].lower()
+    if first in ("on", "off", "status"):
+        return first, _unquote_path(parts[1]) if len(parts) > 1 else ""
+    # Anything else is treated as a file path (possibly containing spaces).
+    return "path", _unquote_path(raw)
+
+
 async def cmd_log(engine: Any, args: List[str]):
     logger = engine.session_logger
     cfg = engine.config_mgr.config.logging
 
-    if not args:
+    sub, path = _parse_log_args(engine, args) if args else ("", "")
+
+    if not sub:
         state_str = "[success]ENABLED[/success]" if logger.enabled else "[error]DISABLED[/error]"
         console.print(
             f"Session Markdown logging is currently {state_str}.\n"
             f"Active log file: `{logger.filepath}`\n"
-            f"Usage: [warning]/log on [<path>][/warning] | [warning]/log off[/warning] | [warning]/log status[/warning]"
+            f"Usage: [warning]/log on [<path>][/warning] | [warning]/log off[/warning] | [warning]/log status[/warning]\n"
+            f"Paths containing spaces are supported, e.g. /log on my notes.md or /log on \"my notes.md\""
         )
         return
 
-    sub = args[0].lower()
-
     if sub == "on":
-        target_path = args[1] if len(args) >= 2 else logger.filepath
+        target_path = path or logger.filepath
         logger.enable(target_path)
         cfg.enabled = True
         cfg.filepath = target_path
@@ -56,11 +88,14 @@ async def cmd_log(engine: Any, args: List[str]):
         await cmd_log(engine, [])
 
     else:
-        logger.enable(sub)
+        if not path:
+            await cmd_log(engine, [])
+            return
+        logger.enable(path)
         cfg.enabled = True
-        cfg.filepath = sub
+        cfg.filepath = path
         engine.config_mgr.save()
-        console.print(f"[success]Session Markdown logging ENABLED -> `{sub}`[/success]")
+        console.print(f"[success]Session Markdown logging ENABLED -> `{path}`[/success]")
 
 
 async def cmd_session(engine: Any, args: List[str]):

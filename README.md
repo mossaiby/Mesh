@@ -127,6 +127,13 @@ python main.py --ascii
 
 ---
 
+## ⌨️ Prompt Input Keys
+
+- **Enter** submits the prompt.
+- **Alt-Enter** inserts a new line without sending. This works in the VS Code terminal on Windows and most other terminals.
+- **Shift-Enter** also inserts a new line, but only in terminals that report modified Enter (e.g. kitty, WezTerm, foot). In VS Code you can make it work by adding a `terminal.sendSequence` keybinding for `shift+enter` with text `\u001b\r`.
+- Ctrl-Enter and Ctrl-J submit.
+
 ## 🛠️ Slash Commands Reference
 
 ### Models & Providers
@@ -149,7 +156,7 @@ python main.py --ascii
 | `/retry` | Retry the last assistant turn: `/retry` |
 | `/debug [on\|off]` | View or toggle debug mode (CoT & tool execution traces): `/debug [on\|off]` |
 | `/session [save\|load\|list\|delete] [<name>]` | Save, load, list, or delete disk session states in `sessions/` |
-| `/log [on\|off\|status\|<filepath>]` | View or configure Markdown session logging |
+| `/log [on\|off\|status\|<filepath>]` | View or configure Markdown session logging (paths may contain spaces, quoted or not) |
 | `/checkpoint [save\|fork\|restore\|list] <args>` | Save, fork, restore, or list session checkpoints |
 | `/exit` | Close active sessions and exit Mesh: `/exit` |
 

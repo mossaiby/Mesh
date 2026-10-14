@@ -12,12 +12,81 @@ try:
     from prompt_toolkit.completion import Completer, Completion
     from prompt_toolkit.styles import Style
     from prompt_toolkit.history import FileHistory
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.keys import Keys
+    from prompt_toolkit.input.ansi_escape_sequences import ANSI_SEQUENCES
     PROMPT_TOOLKIT_AVAILABLE = True
 except ImportError:
     PROMPT_TOOLKIT_AVAILABLE = False
 
 
 HISTORY_FILE = os.path.join(APP_ROOT, ".mesh", "history.txt")
+
+
+# ---------------------------------------------------------------------------
+# Shift-Enter support
+#
+# prompt_toolkit has no dedicated Shift-Enter key and most terminals send a
+# plain carriage return for it. Terminals that can report modified Enter
+# (kitty/foot/WezTerm/Windows Terminal with CSI-u, xterm modifyOtherKeys, ...)
+# send one of the sequences below, which we map onto an otherwise unused key
+# (Ctrl-F15) that is bound to "insert newline". Alt-Enter is the portable way
+# to insert a newline (e.g. VS Code's terminal on Windows). Every other key,
+# including plain Enter, Ctrl-J and Ctrl-Enter, submits the prompt.
+# ---------------------------------------------------------------------------
+if PROMPT_TOOLKIT_AVAILABLE:
+    SHIFT_ENTER_KEY = Keys.ControlF15
+    _SHIFT_ENTER_SEQUENCES = (
+        "\x1b[13;2u",     # CSI-u / kitty keyboard protocol
+        "\x1b[27;2;13~",  # xterm modifyOtherKeys=2
+    )
+    for _seq in _SHIFT_ENTER_SEQUENCES:
+        ANSI_SEQUENCES[_seq] = SHIFT_ENTER_KEY
+
+    def _patch_windows_shift_enter() -> None:
+        """Make the legacy Windows console reader report Shift-Enter as SHIFT_ENTER_KEY."""
+        if sys.platform != "win32":
+            return
+        try:
+            from prompt_toolkit.input import win32 as pt_win32
+            reader_cls = pt_win32.ConsoleInputReader
+            if getattr(reader_cls, "_mesh_shift_enter_patched", False):
+                return
+            original = reader_cls._event_to_key_presses
+
+            def patched(self, ev):
+                presses = original(self, ev)
+                try:
+                    shift = bool(ev.ControlKeyState & self.SHIFT_PRESSED)
+                    ctrl = bool(ev.ControlKeyState & (self.LEFT_CTRL_PRESSED | self.RIGHT_CTRL_PRESSED))
+                    alt = bool(ev.ControlKeyState & (self.LEFT_ALT_PRESSED | self.RIGHT_ALT_PRESSED))
+                    if shift and not ctrl and not alt:
+                        for kp in presses:
+                            if kp.key == Keys.ControlM:
+                                kp.key = SHIFT_ENTER_KEY
+                except Exception:
+                    pass
+                return presses
+
+            reader_cls._event_to_key_presses = patched
+            reader_cls._mesh_shift_enter_patched = True
+        except Exception:
+            pass
+
+    def build_prompt_key_bindings() -> "KeyBindings":
+        """Enter submits; Alt-Enter (and Shift-Enter where the terminal reports it) inserts a newline."""
+        kb = KeyBindings()
+
+        @kb.add("enter")  # Enter / Ctrl-M (Ctrl-J is forwarded here by prompt_toolkit)
+        def _submit(event):
+            event.current_buffer.validate_and_handle()
+
+        @kb.add("escape", "enter")  # Alt-Enter (Esc followed by Enter)
+        @kb.add(SHIFT_ENTER_KEY)
+        def _newline(event):
+            event.current_buffer.insert_text("\n")
+
+        return kb
 
 
 def get_path_completions(partial_path: str, prefix: str = "") -> List[Tuple[str, str, str]]:
@@ -171,23 +240,41 @@ class MeshCompleter(Completer if PROMPT_TOOLKIT_AVAILABLE else object):
 
         # --- /log ---
         if cmd0 == "/log":
-            if current_arg_index == 1:
+            # The path may contain spaces, so complete against everything after the
+            # subcommand rather than just the last whitespace-separated word.
+            after_cmd = text.lstrip()[len(raw_words[0]):].lstrip()
+            head = after_cmd.split(None, 1)[0].lower() if after_cmd else ""
+            has_sub_sep = bool(head) and len(after_cmd) > len(head) and after_cmd[len(head)].isspace()
+            sub_lower = head
+
+            if sub_lower in ("on",) and has_sub_sep:
+                path_text = after_cmd[len(sub_lower):].lstrip()
+                offer_subs = False
+            elif sub_lower in ("off", "status") and has_sub_sep:
+                return
+            else:
+                path_text = after_cmd
+                offer_subs = True
+
+            if offer_subs and " " not in path_text:
                 subs = [
                     ("on", "Enable Markdown session logging"),
                     ("off", "Disable Markdown session logging"),
                     ("status", "Show logging status and file path")
                 ]
                 for sub, meta in subs:
-                    if sub.startswith(current_word.lower()):
-                        yield Completion(sub, start_position=-len(current_word), display_meta=meta)
+                    if sub.startswith(path_text.lower()):
+                        yield Completion(sub, start_position=-len(path_text), display_meta=meta)
 
-                for full_text, display, meta in get_path_completions(current_word):
-                    yield Completion(full_text, start_position=-len(current_word), display=display, display_meta=meta)
-            elif current_arg_index == 2:
-                word1 = typed_words[1].lower() if len(typed_words) > 1 else ""
-                if word1 == "on":
-                    for full_text, display, meta in get_path_completions(current_word):
-                        yield Completion(full_text, start_position=-len(current_word), display=display, display_meta=meta)
+            quote = path_text[:1] if path_text[:1] in ("\"", "'") else ""
+            bare_path = path_text[1:] if quote else path_text
+            for full_text, display, meta in get_path_completions(bare_path):
+                yield Completion(
+                    f"{quote}{full_text}",
+                    start_position=-len(path_text),
+                    display=display,
+                    display_meta=meta,
+                )
             return
 
         # --- /session ---
@@ -696,11 +783,15 @@ class MeshPromptSession:
                 self.history = None
 
             try:
+                _patch_windows_shift_enter()
                 self.session = PromptSession(
                     completer=self.completer,
                     style=self.style,
                     history=self.history,
-                    complete_while_typing=True
+                    complete_while_typing=True,
+                    multiline=True,
+                    key_bindings=build_prompt_key_bindings(),
+                    prompt_continuation=lambda width, line_number, wrap_count: " " * max(width - 2, 0) + "| ",
                 )
             except Exception:
                 # Catch NoConsoleScreenBufferError on Windows in captured/pytest/headless environments
